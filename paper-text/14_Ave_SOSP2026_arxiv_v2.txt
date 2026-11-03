@@ -1,0 +1,1575 @@
+Source: 14_Ave_SOSP2026_arxiv_v2.pdf
+Pages: 15
+
+===== PDF PAGE 1 =====
+arXiv:2604.18616v2 [cs.DC] 14 Sep 2026
+Ave: Guiding Agentic GPU Optimization Using
+Data-Flow Invariants
+Haohui Maiˇ “( ,1 Xiaoyan Guo4 Xiangyun Dingˇ “( ,5 Daifeng Li1 Qiuchu Yu4
+Chenzhun Guo4 Cong Wang2 Jiacheng Zhao4 Christos Kozyrakis3 Binhang Yuan1
+CausalFlow Inc.ˇ “( HKUST1 Tsinghua University2 Stanford University3 UCAS4 UC Riverside5
+Abstract
+LLM coding agents can generate correct GPU kernels, yet
+their performance still lags behind expert libraries. Achiev-
+ing peak GPU throughput requires coordinating low-level
+transformations such as shared-memory staging, software
+pipelining, and instruction scheduling. Unit tests and per-
+formance profiles provide only sparse end-to-end feedback,
+leaving agents unable to localize violations of the global
+constraints that these transformations must preserve.
+We present Ave, an agentic framework that uses data-flow
+invariants as compile-time guardrails for kernel optimiza-
+tion. These invariants specify relationships among data val-
+ues that must hold throughout execution. Ave’s tile-based
+Pythonic DSL exposes hardware instructions and compiler
+policies while abstracting complex memory layout encodings
+as tiles. Tag functions assign symbolic labels derived from
+selected logical coordinates and expressions. The compiler
+propagates these labels through data and control flow, and
+tag assertions enforce required relationships among them
+at use sites. The compiler checks these assertions with a
+tractable, flow-sensitive, path-insensitive analysis backed
+by an SMT solver, returning concrete assignments that wit-
+ness abstract violations and guide repairs with no runtime
+overhead. An in-context reinforcement learning (ICRL) plan-
+ner proposes optimizations from a curated knowledge base.
+A lowering agent implements them and instantiates their
+invariants.
+We evaluate Ave on AMD MI300X across GEMM, flash
+attention, and MoE, which together account for up to 90% of
+GPU time in LLM inference. With GPT-5.6 Sol, its optimized
+kernels achieve 89–99% of the effective throughput of state-
+of-the-art hand-optimized libraries and improve geometric-
+mean throughput by 1.62–1176×over uncontaminated agen-
+tic baselines. On 200 KernelBench tasks, with GPT-5.6 Sol and
+in-context DSL examples, Ave produces valid kernels within
+three attempts for 100% of Level 1 and 88% of Level 2 prob-
+lems. Ave is open source at https://github.com/causalflow-
+ai/avelang.
+CCS Concepts:• Software and its engineering →Com-
+pilers; Automated static analysis; • Computing method-
+ologies →Artificial intelligence.
+Keywords: GPU kernel optimization, LLM coding agents,
+data-flow invariants, static analysis
+ACM Reference Format:
+Haohui Mai, Xiaoyan Guo, Xiangyun Ding, Daifeng Li, Qiuchu Yu,
+Chenzhun Guo, Cong Wang, Jiacheng Zhao, Christos Kozyrakis,
+and Binhang Yuan. 2026. Ave: Guiding Agentic GPU Optimization
+Using Data-Flow Invariants. In Symposium on Operating Systems
+Principles (SOSP ’26), September 29–October 2, 2026, Prague, Czech
+Republic. ACM, New York, NY, USA, 15 pages. https://doi.org/10.1
+145/3830418.3843902
+1 Introduction
+Modern large language models (LLMs) [55] increasingly ex-
+hibit broad, human-level capabilities and may be approach-
+ing a tipping point for recursive self-improvement. GPU
+kernel optimization lets LLMs improve software governing
+their own execution efficiency [14, 16].
+LLMs can now generate functionally correct kernels for
+diverse workloads [6, 9, 18, 25, 26, 32, 43, 56, 64, 70, 78],
+but their performance remains unsuitable for production.
+With GPT-5.6 Sol on AMD MI300X, existing agentic har-
+ness systems produce GEMM kernels that are 1.8–14.3×
+slower than hipBLASLt [4], AMD’s state-of-the-art GEMM
+library. Closing this gap requires more than functional cor-
+rectness: agents must coordinate optimizations across the
+software-hardware stack while preserving program seman-
+tics. For example, a high-performance GEMM implementa-
+tion combines matrix cores [45], software pipelining [38],
+memory-hierarchy optimizations [42], and instruction sched-
+uling [34], many of which require low-level assembly. Kernel-
+design agents [30, 72] combine expert knowledge bases with
+powerful models and iterate using unit-test outcomes and
+performance profiles, yet they struggle to apply performance-
+critical, low-level optimizations for two reasons. First, vali-
+dating such transformations requires reasoning about non-
+trivial properties, including memory aliasing [60] and data
+races [7], at the assembly level. This reasoning consumes
+many tokens and expands the context, ultimately degrading
+This work is licensed under a Creative Commons Attribution 4.0 Interna-
+tional License.
+SOSP ’26, Prague, Czech Republic
+© 2026 Copyright held by the owner/author(s).
+ACM ISBN 979-8-4007-2585-2/26/09
+https://doi.org/10.1145/3830418.3843902
+1
+
+===== PDF PAGE 2 =====
+model performance [44]. Second, unit tests and performance
+profiling only provide sparse, end-to-end feedback. These
+signals reveal that a kernel is incorrect or slow but do not
+identify the responsible transformation or ordering.
+One alternative is to trade optimization control for com-
+piler automation by targeting a higher-level language such
+as Triton [66], which delegates many low-level decisions to a
+tensor compiler [14, 29, 46, 66, 69, 71, 80]. In our evaluation,
+the ROCm Triton baseline narrows the gap to approximately
+2×. However, this baseline does not expose fine-grained con-
+trol over instruction scheduling or wavefront specialization,
+preventing agents from closing the remaining gap.
+In this paper, we present Ave, an agentic framework for
+automating complex, multilevel GPU kernel optimizations.
+Ave uses data-flow invariants to validate transformations and
+provide guardrails as LLMs apply them. These compile-time
+assertions specify relationships among data values that must
+hold throughout kernel execution, even across multiple lay-
+ers of optimization. Data-flow invariants are an established
+concept in information-flow security [50, 73, 75]. Ave adapts
+them to GPU kernel optimization. For example, a GEMM
+kernel tiles and stages matrices A and B in shared memory
+before passing them to hardware matrix fused multiply-add
+(MFMA) instructions, which expect the operands in a partic-
+ular swizzled layout. A data-flow invariant can assert that
+these instructions always receive correctly paired elements
+of A and B, regardless of the transformations applied. By
+making such requirements explicit, Ave gives the agent con-
+crete correctness constraints for intrusive transformations
+such as software pipelining and data-layout reorganization.
+Three challenges arise in realizing this approach. First,
+the invariant language must express global properties con-
+cisely in one place while producing concrete violation re-
+ports that guide repairs, such as the thread holding a mis-
+matched element and the program point where the mismatch
+occurs. Second, enforcing invariants must incur zero runtime
+overhead. Optimized kernels saturate hardware units, tailor
+access patterns to the memory hierarchy, and depend on
+precise instruction schedules. The analysis must therefore
+operate entirely at compile time across tiling, staging, and
+layout transformations, without perturbing the generated
+code. Third, application-specific invariant templates must be
+instantiated automatically. The assignment of A and B tiles
+to wavefronts, their staging in shared memory, and their
+eventual consumption by MFMA instructions vary across
+GEMM kernels, so Ave must instantiate the corresponding
+invariants without per-kernel human intervention.
+Ave combines three ideas: tag functions, static analysis,
+and an in-context reinforcement learning (ICRL) agent.
+First, Ave introduces tag functions and tag assertions, a
+concise language for expressing data-flow invariants. It gen-
+erates and optimizes kernels in a tile-based, Pythonic DSL
+inspired by CuTe [52] and TileLang [69]. Tag functions at-
+tach symbolic values, such as logical coordinates, to tensor
+elements and propagate them through control and data flow.
+Tag assertions require tags at a use site either to match or to
+differ. Conformity assertions encode alignment constraints,
+such as requiring paired matrix-multiplication operands to
+carry compatible tags. Non-conformity assertions encode
+separation constraints, such as ensuring that concurrent pro-
+ducers do not overwrite the same shared-memory region.
+Second, Ave uses static analysis to enforce these invariants
+entirely at compile time and turn failures into actionable feed-
+back for the LLM coding agent. The tags are purely symbolic
+and never materialized at runtime. The Ave compiler tracks
+their propagation using the abstract interpretation [17] over
+a layout algebra [52] and leverages an SMT solver [20] to
+solve the resulting integer constraints. To remain tractable
+for heavily optimized kernels, the analysis is path-insensitive.
+When an assertion fails, the compiler reports a concrete as-
+signment witnessing the violating abstract state, including
+the thread ID, data element, and program point, thereby
+guiding the agent’s next revision.
+Third, Ave uses ICRL [26, 49] to adapt a planner that pro-
+poses optimizations and their corresponding invariant tem-
+plates. The planner observes the kernel implementation, the
+compile-time invariant violations, and the runtime profiles,
+retrieves applicable optimizations from a persistent knowl-
+edge base, and proposes optimization instructions with their
+templates (Figure 1). A lowering agent binds the selected
+instructions to code and instantiates the templates as tag
+functions and assertions. Each invariant specifies a property
+that its transformation must preserve. Ave makes planner
+prompts learnable, uses invariant violations and runtime per-
+formance as reward signals, and applies text gradients [74]
+to improve subsequent optimization plans.
+These three ideas reinforce one another. Tag functions
+alone provide only declarative specifications. Static analysis
+can check properties but cannot repair violations, and an
+ICRL agent alone lacks the structured feedback needed to
+navigate a vast optimization space. Together, they form a
+closed loop: tag functions express correctness properties,
+static analysis checks them at compile time, and concrete
+assignments witnessing abstract violations provide dense
+feedback. This feedback lets the agent reason about abstract
+correctness properties instead of repairing implementations
+through trial and error. Ave thereby applies complex, multi-
+level optimizations more reliably while reducing the effort
+required to preserve correctness. Discovering new algorith-
+mic optimizations [30] and fully verifying implementation
+correctness [7, 11] remain outside its scope.
+We evaluate Ave on three production-level kernel families
+using GPT-5.6 Sol, including general matrix multiplications
+(GEMM) [4], flash attention [19], and mixture-of-experts
+(MoE) feed-forward networks [62]. On AMD MI300X, these
+kernels account for up to 90% of GPU execution time dur-
+ing LLM inference [27]. Kernels optimized by Ave achieve
+2
+
+===== PDF PAGE 3 =====
+89–99% of the effective throughput of state-of-the-art hand-
+optimized libraries [1, 4]. Across the evaluated workloads,
+Ave improves geometric-mean throughput by 1.62–1176×
+over uncontaminated agentic baselines. For flash attention,
+Ave outperforms KernelFalcon [70] by 3×. Beyond these ker-
+nel families, Ave can also generalize to KernelBench [56]:
+with in-context DSL examples, it solves all 100 Level 1 and
+88 Level 2 tasks within three attempts.
+Concretely, we make the following contributions:
+•We introduce data-flow invariants for agentic GPU
+kernel optimization, improving the reliability and per-
+formance of generated kernels.
+•We design a tile-based DSL with tag functions and
+assertions, together with a static analysis that validates
+invariants at compile time with zero runtime overhead.
+•We build an agentic optimization harness with an ICRL
+planner that proposes optimization candidates, a se-
+lector that constructs plans, and a lowering agent that
+implements them and instantiates their invariants in
+the Ave DSL.
+•We evaluate Ave on GEMM, flash attention, MoE, and
+KernelBench, demonstrating substantial gains over
+existing agentic baselines.
+2 Motivating Example
+We use flash attention [19] on the AMD MI300X GPU as
+a running example to illustrate why high-performance ker-
+nel development demands tightly coupled algorithmic and
+hardware-level reasoning. Together with GEMM and MoE
+layers, attention accounts for up to 90% of GPU execution
+time in LLM serving [27], making its optimization critical.
+The standard attention mechanism operates on three input
+matrices Q,K,V ∈R𝑁×𝑑, where 𝑁 is the sequence length
+and 𝑑 is the head dimension. It computes S= QK𝑇, applies
+softmax row-wise to obtain P= softmax(S), and produces
+O= PV. A naïve implementation materializes the 𝑁 ×𝑁
+score matrix S, requiring (𝑁2)memory, prohibitive for
+long contexts (e.g., 𝑁= 256K). Flash attention avoids this
+by tiling: it loads a 𝐵𝑟 ×𝑑 block of Q into registers, then
+streams through K and V in 𝐵𝑐 ×𝑑 blocks staged in shared
+memory, accumulating into O via online softmax [48] to
+achieve (𝑁)memory. The tile sizes 𝐵𝑟 and 𝐵𝑐 are chosen
+so the working set fits in registers and shared memory.
+GPU Architecture. Ave targets the AMD MI300X GPU, which
+implements the CDNA3 architecture [2]. Like other mod-
+ern GPUs, the MI300X follows a Single Instruction, Multiple
+Threads (SIMT) design. Each Compute Unit (CU) contains
+in-order execution cores, a shared register file, and Local
+Data Share (LDS), or shared memory, and is analogous to
+an NVIDIA streaming multiprocessor. A 64-thread wave-
+front (AMD’s warp) executes in lockstep on a 16-lane vec-
+tor unit. Several wavefronts form a workgroup sharing LDS.
+MI300X also provides MFMA matrix cores, 2-wide vector
+fused multiply-add instructions, and Vector Accumulation
+Registers (AGPRs) that expand the available register pool.
+These features require explicit compiler support.
+Achieving peak performance on a GPU requires exploit-
+ing this architecture along three axes. First, kernels balance
+per-workgroup register and shared-memory use against oc-
+cupancy. Second, MI300X’s arithmetic-to-bandwidth ratio
+of∼250 demands vectorized accesses, shared-memory reuse,
+and software pipelining to overlap computation with trans-
+fers. Third, instruction scheduling and register allocation
+matter at the assembly level: poor schedules stall in-order
+pipelines, while excessive register use causes spills [58].
+Optimizing Flash Attention on MI300X. Turning flash atten-
+tion into a kernel reaching peak throughput requires a cas-
+cade of hardware-specific optimizations. Figure 1 shows a
+simplified Ave DSL implementation with 512 threads, 𝑑=128,
+𝐵𝑟=256, and 𝐵𝑐=64, embodying these optimizations. The
+pseudocode focuses on layouts and operand pairing, eliding
+the full pipeline schedule and wavefront-group control flow.
+The kernel executes two GEMMs S= QK𝑇 and O=
+PV on matrix cores via MFMA instructions. Each 32×32×8
+MFMA expects column-major input operands A and B and
+accumulator C in hardware-specific swizzled layouts. Each
+thread contributes 4 elements from each input. Adapting
+row-major attention to these layouts requires operand re-
+ordering and transposition. Reaching peak throughput also
+requires shared-memory reuse, software pipelining to over-
+lap global memory loads with MFMA computation, partition-
+ing data-flow across disjoint wavefront groups, and careful
+instruction scheduling to keep the in-order cores busy with-
+out pipeline stalls while staying within the register budget
+to avoid spills. For example, AITER’s handwritten assembly
+kernel uses 11 pipeline stages across two wavefront groups.
+Section 4 details how the DSL expresses these optimizations.
+The data shuffling and layout transformations are error-
+prone: mismatches between expected and actual data layouts
+cause correctness bugs. Ensuring correctness of these global
+properties is time-consuming when drafting and debugging
+optimizations. Ave introduces tag functions and data-flow
+invariants, expressed as assert statements in Figure 1, to
+check that values are correctly paired at each use site. Sec-
+tion 4 describes these mechanisms in detail.
+3 Overview of Ave
+Ave combines three components to generate and optimize
+GPU kernels: (i) a tile-based, Pythonic DSL with tag functions
+and assertions (§4), (ii) compile-time invariant analysis with
+zero runtime cost (§5), and (iii) an agentic harness guided
+by invariant feedback (§6). The implementation primarily
+targets AMD MI300X and generalizes to AMD MI350X and
+NVIDIA H200 (§9.3).
+Ave DSL. The Pythonic, tile-based DSL resembles CuTe and
+Triton and adds tag functions and assertions for data-flow
+3
+
+===== PDF PAGE 4 =====
+Kernel description HW specifications
+Initial kernel
+Learnable Planner
+(via ICRL)
+Compile-time & runtime feedback
+Optimization
+candidates
+Optimization Selector
+Instructions +
+invariant templates
+Lowering Agent
+Ave DSL
+Invariant Validation
+Testing & Profiling
+Knowledge Base Runtime Libraries
+Agentic Harness
+1 def attn(d:const,gqa:const,Q:Tensor((sq,hq,d),bf16),K:Tensor((sq,hkv,d),bf16),
+2 V:Tensor((sq,hkv,d),bf16),O:Tensor((sq,hq,d),bf16),...):
+3 # Assign tags to QKV
+4 TQ,TK,TV = Q[sq,hq,d]→(hq/gqa,d), K[sq,hkv,d]→(hkv,d), V[sq,hkv,d]→(hkv,sq)
+5 # Vectorize and tile memory access for MFMA
+6 idxq,idxh,tid = blockIdx.x, blockIdx.y, threadIdx.x
+7 wid,wtid,nw,rO = tid/64,tid%64,(wid&2)*2+wid/4*2+wid%2,make_local((4,),u256)
+8 gQ,rQ = Q.view((sq/Br,Br,hq,d/8),u128), make_local((8,),u128)
+9 gK,sK = K.view((sq/Bc,Bc,hkv,d/8),u128), make_shared((512,2),u128)
+10 gV,sV = V.view((sq/Bc,Bc,hkv,d/2),u32), make_shared((2,2,4,4,32),u64)
+11 sK,sV = sK.view((2,32,8,2),u128), sV.view((2,2,4,4,16),u128)
+12 rS,rS,tU = make_local((2,),u256),rS.view((4,8),bf16),make_local((2,4,),u32)
+13 ∀𝑖 ∈[0,8): rQ[i] = gQ[idxq,wid*32+wtid%32,idxh,i*2+wtid/32]
+14 for i in range(sq/Bc):
+15 for j in range(2):
+16 sK[tid,j] = gK[i,j*32+tid/16,idxh/gqa,tid%16]
+17 # Vectorize VT via bit rearrangements
+18 ∀𝑘 ∈[0,4): tU[j,k] = gV[i,j*32+wid*4+k,idxh/gqa,wtid]
+19 sV[0,j,wtid/16,nw%4,(wtid%16)*2+nw/4] = concat3
+𝑘=0(tU[j,k]lo)
+20 sV[1,j,wtid/16,nw%4,(wtid%16)*2+nw/4] = concat3
+𝑘=0(tU[j,k]hi)
+21 syncthreads()
+22 TrS
+= rS[x,y]→( idxh
+gqa ,i*Bc+ x
+2 *32+x%2*16+ y
+4 *8+ wtid
+32 *4+y%4)
+23 for j in range(16):
+24 tK,tQ = sK[j/8,wtid%32,j%8,wtid/32], rQ[j%8]
+25 tK,tQ = tK.view((8,),bf16), tQ.view((8,),bf16)
+26 assert tag(tK[...]) == tag(tQ[...]) # tQ and tK should match
+27 rS[j/8] = matmul(tK,tQ,...) # FP32 accumulate and pack S=QKT
+28 ... # Online softmax: overwrite rS with packed P and rescale rO
+29 for j in range(16): # PV, V is transposed due to MFMA
+30 tV = sV[wtid%2,j/8,j%4,j%8/4*2+wtid/32,(wtid/2)%16]
+31 tV = tV.view((8,),bf16)
+32 assert tag(tV[...]) == tag(rS[...]) # tV and rS should match
+33 rO[j%4] = matmul(tV,rS[j/4],...) # FP32 accumulate and pack O
+34 syncthreads()
+35 ... # Normalize, pack, and store O
+r0
+r8
+Figure 1. Overview of Ave. Left: Simplified DSL implementation of flash attention (𝑑=128, 𝐵𝑟=256, 𝐵𝑐=64, 512 threads). Top right: Ave’s
+workflow for agentic optimization. Bottom right: Tag propagation for 𝑉 across memory levels. Each color represents a unique sequence-
+coordinate tag, and background shading links code regions to memory access patterns. r0 and r8 represent row 0 and row 8.
+Optimized kernel
+Global memory
+d
+lo
+hi
+wid=0 wid=2
+sq
+.
+.
+.
+tid
+Shared
+memory Registers
+invariants. It exposes hardware instructions and compiler
+policies while abstracting complex memory layout encodings
+as tiles (§4).
+Invariant Validation. Ave validates data-flow invariants at
+compile time with zero runtime overhead. The compiler
+lowers the DSL to MLIR [40] and propagates tags across
+assignments and shared memory using flow-sensitive, path-
+insensitive analysis. Path-insensitive merging keeps solving
+tractable. An SMT solver checks tag assertions and returns
+concrete assignments that witness violations and guide the
+agent [20] (§5).
+Agentic Optimization Harness. Ave adopts an agentic work-
+flow to iteratively optimize kernels, as shown at the top
+right of Figure 1. Starting from a DSL kernel and unit tests,
+a planner retrieves optimization knowledge, a selector or-
+ders compatible proposals, and a lowering agent implements
+them. Validation checks invariants and tests before profiling.
+Invariant violations and performance update the benchmark-
+local planner through ICRL (§6).
+4 The Ave DSL
+Layouts and Tiles. The Ave DSL models all memory accesses
+via tiles [24, 41, 52, 69]. A tile is a memory region paired with
+a layout function [10] that maps multi-dimensional logical
+coordinates to one-dimensional physical offsets. A layout
+function (s,t) is parameterized by two tuples: shapes s =
+(𝑠1,...,𝑠𝑛)and strides t = (𝑡1,...,𝑡𝑛). It maps an 𝑛-element
+coordinate c = (𝑐1,...,𝑐𝑛)to a linear index. Following the
+4
+
+===== PDF PAGE 5 =====
+CuTe layout algebra, when all elements of s and t are integers,
+the layout computes
+(𝑐1,...,𝑐𝑛)=
+𝑛
+∑︁
+𝑖=1
+𝑐𝑖𝑡𝑖
+For a contiguous row-major tensor, 𝑡𝑖 =
+𝑛
+𝑗=𝑖+1 𝑠𝑗: each
+stride is the product of the dimensions that follow it, and
+𝑡𝑛 = 1. For brevity, these strides are omitted. For example,
+the Q:Tensor((sq,hq,d),bf16) in Figure 1 has the layout
+Q (𝑐1,𝑐2,𝑐3)= 𝑐1hqd +𝑐2d +𝑐3.
+The subscript operator in Figure 1 maps coordinates to a lin-
+ear index and accesses the corresponding memory location.
+Following CuTe, a nested layout represents its shape, stride,
+and natural coordinate as congruent hierarchical tuples: ev-
+ery coordinate leaf pairs with the stride leaf at the same
+position. A scalar coordinate for a nested mode is first con-
+verted to this hierarchical form by mixed-radix division and
+remainder using the mode’s shape. The layout recursively
+sums the coordinate–stride products. For example, for the
+first nested coordinate c1 = (𝑐1,1,𝑐1,2), with shape (𝑠1,1,𝑠1,2)
+and stride (𝑡1,1,𝑡1,2), the corresponding sub-layout computes
+1 (c1)= 𝑐1,1𝑡1,1 +𝑐1,2𝑡1,2. Nested layouts primarily repre-
+sent hardware-swizzled layouts used by tensor cores and
+matrix cores. Layout algebras further define composition,
+logical division, and logical projection over layout functions
+to represent operations such as data shuffling and dispatch-
+ing disjoint work to warps (wavefronts on AMD) and threads.
+We refer the reader to [10] for details.
+DSL programs use make_local() and make_shared() to
+allocate a tile backed by registers and shared memory. DSL
+programs may use the view() function to reinterpret a tile
+under a different logical layout. For example, line 8 of Figure 1
+derives gQ to logically partition Q by 𝐵𝑟 and access data in
+16-byte chunks:
+gQ = Q.view((sq/Br,Br,hq,d/8),u128)
+Vectorizing loads in 16-byte chunks is a common optimiza-
+tion to fully utilize GPU memory bandwidth. However, Ave
+requires tiles to express all memory accesses and restricts
+layout operations. For example, view() requires source and
+destination layouts to cover identical memory sizes. These
+constraints simplify program analysis and eliminate the need
+for full-scale alias analysis.
+Continuing with the flash attention example in Figure 1,
+the kernel maps work across 8 wavefronts. Each wavefront
+owns 32 rows of Q and produces the corresponding rows of
+O, while all wavefronts share 𝐵𝑐×𝑑tiles of K and V in shared
+memory. MFMA expects column-major input operands A
+and B and accumulator C. In attention, S must be row-major
+because P=softmax(S)is computed row-wise, and O must
+also be row-major. The kernel therefore swaps Q and K for
+QK𝑇 and transposes V during staging for PV. The matmul
+helper combines two MFMAs along the reduction dimen-
+sion to perform a 32×32×16 operation per wavefront. Each
+thread holds 8 BF16 elements from each input and 16 FP32
+accumulator elements.
+In Figure 1, matmul accumulates S in FP32 and packs it
+into the BF16 rS tile. The elided online softmax computes P
+row-wise, overwrites rS with the packed probabilities, and
+rescales rO. To transpose V, each thread loads a 4×2 sub-
+tile into tU (line 18) and scatters its low and high halves
+into transposed positions in sV (lines 19–20). This organiza-
+tion uses 4-byte global loads, 8-byte shared-memory stores,
+and 16-byte swizzled shared-memory loads that feed the
+PV loop directly (lines 29–33, highlighted in gray). matmul
+accumulates the output in FP32 and packs it into rO. After
+all sequence tiles, the kernel normalizes, packs, and stores
+O. The final steps and lane-to-output mapping are elided in
+the figure.
+Tag Functions and Assertions. A tag function annotates tensor
+elements with symbolic tags: tuples of constants, symbolic
+expressions of coordinates, or the special symbols ⊥and ⊤.
+Tags propagate through assignments.
+For example, TQ, TK, and TV in Figure 1 assign tags to el-
+ements of Q, K, and V based on their coordinates (the type
+bf16 is omitted for brevity):
+TQ = Q[sq,hq,d] →(hq/gqa, d)
+TK = K[sq,hkv,d] →(hkv, d)
+TV = V[sq,hkv,d] →(hkv, sq)
+Tag assertions require conformity or non-conformity be-
+tween tags. The assertion on line 26 in Figure 1 requires
+matching tags for elements of Q and K:
+assert tag(tK[...]) == tag(tQ[...])
+Computing S= QK𝑇 requires each wavefront to multiply
+its 32 rows of Q with two 32×128 blocks of K per iteration.
+The tag functions TQ and TK return the attention-head and
+reduction-dimension indices, so their tags match only when
+the operands belong to the same head and represent the same
+position along the reduction dimension. A passing assertion
+confirms that the implementation preserves this operand-
+pairing requirement across optimizations such as shared-
+memory staging or software pipelining. Similarly, the tag
+functions TV and TrS return the attention-head and reduction-
+dimension indices. The assertion on line 32 therefore checks
+that the operands of O= PV belong to the same head and
+represent the same position along their shared reduction
+dimension, without equating their independent output di-
+mensions. Figure 1 (bottom right) visualizes V’s sequence-
+coordinate tags as data propagate from global memory to
+shared memory and registers.
+Compiler and Hardware Primitives. The DSL exposes compiler
+and hardware primitives that enable agents to explore low-
+level optimizations. The DSL operates at the thread level:
+kernels manage thread indices and synchronization (e.g.,
+5
+
+===== PDF PAGE 6 =====
+syncthreads()) directly, enabling the topology-aware dis-
+patch optimizations [69].
+Ave also exposes the eager materializations and compiler
+scheduling barriers for tuning instruction scheduling in the
+backend. These compiler barriers constrain instruction place-
+ment around runtime synchronization primitives such as
+s_barrier. Unlike s_barrier, they emit no synchroniza-
+tion instruction. These interfaces provide LLMs explicit con-
+trol over hardware features that are critical for reaching peak
+performance on GPUs [33, 67].
+Additionally, Ave exposes vectorized instructions for ex-
+plicit use in the DSL. For example, the AMD MI300X issues
+one 2-way vectorized FMA per cycle on packed registers,
+doubling scalar FMA throughput. The AMD GPU backend
+can emit these instructions, but suboptimal register alloca-
+tion often prevents it, so explicit vectorization in the DSL
+sidesteps this limitation. Ave further exposes instructions
+such as buffer_load_dwordx4 for branchless memory ac-
+cess with hardware out-of-bounds (OOB) protection, and al-
+lows selecting the accumulator register class (AGPR) directly
+in buffer load and MFMA instructions, practically doubling
+available vector registers over off-the-shelf toolchains.
+5 Validating Data-Flow Invariants
+Ave validates data-flow invariants by tracking tags through
+control and data flow at compile time. The compiler low-
+ers DSL programs to MLIR and performs a flow-sensitive,
+path-insensitive analysis that propagates tags through as-
+signments and shared-memory accesses. At control-flow
+joins, Ave merges incoming tags in a lattice with the partial
+order ⊥< 𝑡 < ⊤for every concrete tag 𝑡:
+merge(𝑡1,𝑡2)=
+
+𝑡1 if 𝑡2 ≤𝑡1
+𝑡2 if 𝑡1 < 𝑡2
+⊤ otherwise
+Constants carry ⊥. Consider the guarded selection rQ = 0
+if isOOB(...) else Q[...], where isOOB prevents an
+out-of-bounds access. The zero-valued branch contributes
+⊥, so rQ retains the tag of Q[...] because merge(⊥,𝑡)= 𝑡.
+Conversely, merging different concrete tags yields ⊤, denot-
+ing non-conformity. Accordingly,== requires the merge to
+be below ⊤, whereas != requires ⊤: ⊥conforms with any
+concrete tag, while ⊤does not conform even with itself. Ave
+can reset shared-memory tags to ⊥, permitting storage to
+be reused safely across pipeline stages without disabling
+subsequent tag tracking.
+The analysis tracks memory at byte granularity. This
+granularity covers the evaluated byte-aligned accesses and
+supports packed storage for formats such as mxfp4 and
+nvfp4, although we do not evaluate FP4 kernels. Ave models
+global and shared memory as typed chunks and automat-
+ically propagates tags across accesses of different widths,
+such as loads vectorized into 16-byte chunks. To keep the
+analysis bounded, it does not model the full heap or track
+tags written to global memory. The trade-off is that Ave can-
+not express invariants depending on heap-resident values.
+For example, in MoE sorting, where global <expert,token>
+tuples are grouped by expert ID, Ave cannot assert that each
+tuple reaches the correct bucket in shared memory. Once
+data is in shared memory or registers, Ave can assign address-
+derived labels and track transformations such as swizzling.
+Multi-GPU MoE kernels such as COMET [77] exchange data
+via global cross-GPU buffers, which Ave does not currently
+track. Modeling these buffers as explicit producer–consumer
+queues remains future work.
+Ave encodes propagated tags and tag assertions as sat-
+isfiability modulo theories (SMT) constraints and uses the
+solver to reason about the resulting layout algebra. The goal
+is to validate data-flow invariants, not to construct full for-
+mal proofs. In particular, path-insensitive merging avoids
+enumerating branch conditions and keeps analysis tractable
+for optimized kernels. When an assertion fails, the solver
+returns a concrete assignment witnessing the violating ab-
+stract state, including values for symbolic program variables
+such as thread IDs, loop indices, and tensor coordinates.
+Tags are purely compile-time constructs: all tracking and
+validation occur within the compiler and incur no runtime
+overhead. The current prototype requires workgroup dimen-
+sions known at compile time, allowing Ave to model regis-
+ters as a fixed-size array indexed by thread ID. It also unrolls
+loops before analysis.
+6 Agentic Optimization Harness
+The Ave harness starts from a compile-and-test-passing DSL
+kernel and retains the fastest candidate that passes auto-
+mated invariant checks and unit tests. In each round, a plan-
+ner proposes optimization candidates, a selector constructs
+an ordered plan, and a lowering agent implements it. Only a
+measured speedup replaces the current kernel.
+Persistent Expert Knowledge. The knowledge base  contains
+auditable, expert-curated hardware facts, DSL references,
+and optimization recipes. Recipes specify applicability, trans-
+formations, hardware controls, and invariant templates. We
+curate entries from KernelWiki-style documentation [36],
+vendor examples, public pull requests, and microbenchmarks.
+Retrieve filters them by the request, GPU, and current ker-
+nel to produce 𝐾𝑡.
+Local Planner State. For a request denoted by 𝑞, the fixed LLM
+𝜋𝜙 uses a benchmark-local prompt 𝜃𝑞,𝑡 updated after each
+optimization round through in-context reinforcement learn-
+ing (ICRL) [26, 49]. In round 𝑡, it observes 𝑥𝑡 = ⟨𝑞,𝑠★,𝐾𝑡,𝐹⟩:
+the best kernel 𝑠★, retrieved knowledge 𝐾𝑡, and feedback
+history 𝐹. The initial history entry contains the initial kernel
+𝑠0 and its profile. Later entries record candidates, validation
+feedback, and profiles. The LLM produces ranked proposals
+𝑃𝑡 specifying optimizations, preconditions, target regions,
+6
+
+===== PDF PAGE 7 =====
+invariant templates, and expected benefits. Select orders
+compatible proposals into 𝑎𝑡 = (𝑎𝑡,1,...,𝑎𝑡,𝑚𝑡 ).
+Lowering and Validation. Lower invokes the lowering agent
+to apply every optimization in 𝑎𝑡 to 𝑠★. The agent binds
+each selected instruction to code, specializes its parameters,
+and materializes its invariant templates as tag functions and
+assertions, returningˆ
+𝑠𝑡. Validation compiles this candidate,
+checks every generated invariant (the set may be empty),
+and runs unit tests. Validate returns compilation status 𝐶𝑡,
+source-level assertion sites 𝐴𝑡, failed sites 𝑉𝑡, test status 𝑈𝑡,
+and record 𝑓𝑡. For a passing candidate, Profile returns its
+latency and appends the runtime profile to 𝑓𝑡. Appending 𝑓𝑡
+to 𝐹 gives the next round its transformation and outcome.
+Reward Function. Let 𝐶𝑡 ∈{0,1}indicate successful compila-
+tion and 𝑈𝑡 ∈{0,1}indicate that all unit tests pass. Let 𝐴𝑡 be
+the source-level assertion sites inˆ
+𝑠𝑡, and let 𝑉𝑡 ⊆𝐴𝑡 be those
+with at least one failing check. Thus, compiler unrolling does
+not change the number of assertions. If compilation succeeds
+and 𝐴𝑡 ≠ ∅, the invariant score is 𝐼𝑡 = 1 −|𝑉𝑡|/|𝐴𝑡|. Other-
+wise, 𝐼𝑡 = 0. If compilation fails, invariant checking does not
+run, and we define 𝑉𝑡 = ∅. Unit tests run only when 𝐶𝑡 = 1
+and 𝑉𝑡 = ∅. If they do not run, 𝑈𝑡 = 0. For a kernel that
+compiles, passes every invariant check, and passes all unit
+tests, letˆ
+ℓ𝑡 be its measured latency and ℓ★ the latency of the
+current best kernel. Runtime improvement is defined as:
+Δ𝑡 =
+
+ˆ
+ℓ★
+−
+ℓ𝑡
+ℓ★ , 𝐶𝑡 = 1 ∧𝑉𝑡 = ∅∧𝑈𝑡 = 1,
+0, otherwise.
+Thus, a positive Δ𝑡 denotes lower latency, while a validated
+slowdown receives a negative performance term. The com-
+plete reward is 𝑅𝑡 = 𝐶𝑡 +𝐼𝑡 +𝑈𝑡 +Δ𝑡. The replay record
+stores the planner input 𝑥𝑡, candidate record 𝑓𝑡, validation
+outcomes 𝐶𝑡, 𝐴𝑡, 𝑉𝑡, and 𝑈𝑡, performance term Δ𝑡, and re-
+ward 𝑅𝑡. We denote this record by 𝑑𝑡.
+Text-Gradient Planner Update. Algorithm 1 summarizes the
+planner update. After each optimization round, PolicyE-
+val summarizes 𝑑𝑡 as 𝐸𝑡, Analyze converts it into a textual
+critique 𝑔𝑡, and ParameterUpdate applies a constrained
+text-gradient edit to produce 𝜃𝑞,𝑡+1 [74]. Neither the LLM
+weights nor  change.
+Example. We provide a concrete example to illustrate the pro-
+cess. On AMD MI300X, hardware entries cover MFMA, buffer
+operations, data parallel primitive (DPP) instructions, and
+LDS, vector general-purpose register (VGPR), and AGPR lim-
+its. The omitted matmul helper in Figure 1 uses two 32×32×8
+BF16 MFMA instructions for a 32×32×16 operation. For row-
+major 𝑄𝐾𝑇, it swaps 𝑄and 𝐾as detailed in §4. Figure 1 keeps
+𝑄 in rQ and stages 𝐾 in sK, read through sK. The planner
+targets this region with a recipe whose templates define the
+𝑄/𝐾 tags and operand assertion. Here, 𝑎𝑡 contains only this
+Algorithm 1: ICRL-guided optimization.
+Input: Query 𝑞, initial compile-and-test-passing kernel 𝑠0,
+fixed knowledge base , fixed LLM 𝜋𝜙, initial
+prompt 𝜃𝑞,0, optimization rounds 𝑁
+𝑠★ ←𝑠0; (ℓ★,𝑓−1)←Profile(𝑠0,⟨𝑠0⟩); 𝐹 ←⟨𝑓−1⟩;
+for 𝑡 = 0,1,...,𝑁−1 do
+𝐾𝑡 ←Retrieve(,𝑞,𝑠★);
+𝑥𝑡 ←⟨𝑞,𝑠★,𝐾𝑡,𝐹⟩;
+𝑃𝑡 ←𝜋𝜙(𝑥𝑡; 𝜃𝑞,𝑡);
+𝑎𝑡 ←Select(𝑃𝑡);
+ˆ
+𝑠𝑡 ←Lower(𝑠★,𝑎𝑡);
+𝑓𝑡 ←⟨𝑎𝑡,
+ˆ
+𝑠𝑡⟩;
+(𝐶𝑡,𝐴𝑡,𝑉𝑡,𝑈𝑡,𝑓𝑡)←Validate(ˆ
+𝑠𝑡,𝑓𝑡);
+(𝐼𝑡,Δ𝑡)←(0,0);
+if 𝐶𝑡 = 1 ∧𝐴𝑡 ≠ ∅then
+𝐼𝑡 ←1 −|𝑉𝑡|/|𝐴𝑡|;
+end
+if 𝐶𝑡 = 1 ∧𝑉𝑡 = ∅∧𝑈𝑡 = 1 then
+(ˆ
+ℓ𝑡,𝑓𝑡)←Profile(ˆ
+𝑠𝑡,𝑓𝑡);
+ˆ
+Δ𝑡 ←(ℓ★
+−
+ℓ𝑡)/ℓ★;
+end
+(𝑅𝑡,𝐹)←(𝐶𝑡 +𝐼𝑡 +𝑈𝑡 +Δ𝑡,𝐹 ∥⟨𝑓𝑡⟩);
+𝑑𝑡 ←⟨𝑥𝑡,𝑓𝑡,𝐶𝑡,𝐴𝑡,𝑉𝑡,𝑈𝑡,Δ𝑡,𝑅𝑡⟩;
+if Δ𝑡 > 0 then
+(𝑠★,ℓ★)←(ˆ
+𝑠𝑡,
+ˆ
+ℓ𝑡);
+end
+𝐸𝑡 ←PolicyEval(𝑑𝑡);
+𝑔𝑡 ←Analyze(𝐸𝑡);
+𝜃𝑞,𝑡+1 ←ParameterUpdate(𝜃𝑞,𝑡,𝑔𝑡);
+end
+Output: Best kernel 𝑠★
+action. Lowering preserves existing assertions and adds this
+one with the prompt:
+Tile the scalar 𝑄𝐾𝑇 dot products into 32×32×16 accu-
+mulations, using two 32×32×8 BF16 MFMA instruc-
+tions per accumulation. Pass BF16 views of tK and tQ
+to matmul, which accumulates in FP32 and packs the
+result into BF16 scores.
+The lowering agent materialized the tags and assertion
+and staged 𝐾 in sK, but formed tK from the original (512,2)
+layout. The kernel compiled, but the tags of tK and tQ dis-
+agreed at the matmul use site, so tests and profiling did not
+run. Thus, (𝐶𝑡,𝑈𝑡,Δ𝑡)= (1,0,0), 𝐼𝑡 < 1, and 𝑅𝑡 = 1 +𝐼𝑡 < 2.
+The validator added the following witness to 𝑓𝑡, which the
+harness subsequently appended to 𝐹:
+Assertion failed at attn:26: tag(tK[0])≠ tag(tQ[0]).
+Witness: i=0, j=1, tid=0, wid=wtid=0, idxq=idxh=0.
+The witness identified the mismatched MFMA operands.
+PolicyEval summarized 𝑑𝑡, including the candidate code
+and witness, as 𝐸𝑡. Analyze then traced the mismatch to the
+flattened LDS access and produced the critique 𝑔𝑡. Parame-
+terUpdate applied 𝑔𝑡 to produce 𝜃𝑞,𝑡+1. In the next round,
+the planner proposed the following revision, which Select
+placed at 𝑎𝑡+1,1:
+7
+
+===== PDF PAGE 8 =====
+Stage 𝐾in sK with 16-byte cooperative loads, synchro-
+nize, and reinterpret its (512,2)layout as (2,32,8,2)
+u128. For MFMA-loop index 𝑗 ∈[0,16), let 𝑙= wtid.
+Read tK from sK at (𝑗/8,𝑙%32,𝑗%8,𝑙/32), pair it with
+tQ= rQ[𝑗%8], and view both as 8 BF16 elements. Up-
+date rS[j/8] with matmul, which accumulates these
+views in FP32 and packs the result into rS[j/8].
+The revised binding reads 𝐾 through sK and leaves rQ
+unchanged. It passed all checks and was profiled.
+7 Implementation
+The Ave prototype comprises approximately 22,000 lines
+of C++ and 7,000 lines of Python across the DSL compiler,
+program analysis, agentic harness, and JIT infrastructure.
+We use Codex as the harness runtime [54] and configure
+the planner, lowering agent, PolicyEval, Analyze, and Pa-
+rameterUpdate with the same selected model. Ave retains
+the current best kernel and summaries of prior candidates,
+validation outcomes, and profiles. The harness periodically
+compacts the feedback history. The Python front-end parses
+DSL programs into an AST, which the C++ compiler lowers
+to an extended MLIR dialect encoding layout algebras, then
+to LLVM IR and GPU executables. We extend the LLVM 20
+AMDGPU backend with explicit synchronization barrier
+scheduling, register-class selection for buffer load and MFMA
+instructions, and eager materialization through phantom
+uses in inline assembly.
+Tag propagation and invariant checking use custom passes
+built on MLIR’s pass infrastructure. These passes traverse the
+IR and emit SMT constraints encoding data-flow invariants,
+which Z3 solves [20].
+The JIT layer follows Triton’s model: generics propagate
+compile-time constants into GPU kernels, compiled binaries
+are cached, and Python bindings expose kernel invocation.
+8 Discussion
+Limitations of Data-Flow Invariants. Data-flow invariants val-
+idate concrete transformations but do not propose algorith-
+mic changes, such as restructuring standard attention into
+tiled flash attention with online softmax [19], or selecting
+search-space parameters such as tile sizes and warp/wave-
+front specialization. The planner and knowledge base handle
+these decisions. Applying invariants while the algorithm is
+still changing could also constrain exploration. A full op-
+timization can be separated into two stages: algorithm se-
+lection and initial kernel generation occur first, after which
+data-flow invariants guard low-level optimizations.
+Full formal verification can establish stronger properties,
+but requires substantial proof engineering [7, 31, 37] and pro-
+duces implementation-specific proofs. Ave instead checks
+shared-memory layouts and operand pairing with tractable,
+flow-sensitive, path-insensitive analysis. As Section 5 de-
+tails, properties involving global-memory writes, such as
+MoE routing and multi-GPU communication, require new ab-
+stractions. The tensor memory (TMEM) extension discussed
+below illustrates one such extension [53]. Additionally, the
+analysis tracks memory at byte granularity. It treats two
+packed FP4 values within a byte as one unit, so permutations
+of individual nibbles are invisible to data-flow invariants.
+Using More Tokens and Stronger Models. As shown in Sec-
+tion 9, stronger models often improve generated GPU ker-
+nels, but higher token use alone does not close the gap with
+expert libraries: without invariants, lowering agents can still
+exhaust their contexts through trial-and-error repairs.
+Unguided agentic optimization is vulnerable to reward
+hacking, which can inflate measured speedups without yield-
+ing useful kernels [30]. Our manual inspection is qualitative
+and targets known shortcut patterns that bypass the main
+computation, including PyTorch fallbacks, precomputed or
+zeroed outputs, and branches on benchmark values. We do
+not classify semantics-preserving changes within a convolu-
+tion kernel, such as strength reduction for fixed filter dimen-
+sions, as reward hacking. Data-flow invariants additionally
+reject shortcuts that violate declared use-site relationships.
+Neither mechanism is exhaustive: inspection may miss sub-
+tler shortcuts outside known patterns, and invariants cannot
+detect behavior outside their vocabulary.
+Compiler and Language Design. Higher-level DSLs such as
+Triton automate layouts and thread scheduling, eliminat-
+ing several manual optimizations. Peak performance still
+requires low-level controls such as inline assembly, explicit
+register-class selection, and scheduling barriers [1, 67]. Be-
+cause compiler stacks often lag behind new hardware, ven-
+dors rely on leaky language abstractions [67], or just ship
+hand-optimized assembly. Ave exposes these controls as
+policies chosen by LLMs and implemented by the compiler.
+Ave remains syntactically close to existing DSLs so that
+LLMs can generalize from their training data via in-context
+learning [49], enabling adoption of new frontier models
+without retraining. Better compiler automation could ab-
+sorb more low-level decisions, while a more radical LLM-
+oriented language could improve token efficiency and sup-
+port stronger code generation.
+Generalizing across Hardware Architectures. Porting Ave to
+a new GPU requires (i) integrating the target toolchain and
+exposing its low-level intrinsics and (ii) adding hardware-
+specific optimizations to the knowledge base. ICRL binds
+these entries to new kernels without model retraining, but
+experts must encode new techniques.
+We added NVIDIA Hopper and AMD CDNA4 backends
+with localized changes. Initial support for both architectures
+took approximately one person-week. For CDNA4, we ex-
+posed FP4 intrinsics. For Hopper, we exposed warp-group
+matrix multiply-accumulate (WGMMA) and mbarrier. We
+then added architecture-specific knowledge entries. NVIDIA
+Blackwell requires one further abstraction because its kernels
+8
+
+===== PDF PAGE 9 =====
+GPT-5.6 Sol DeepSeek V4 Pro DeepSeek V4 Flash
+Method Perf Time Turns Tok. Cost Perf Time Turns Tok. Cost Perf Time Turns Tok. Cost
+GEMM
+Ave 0.89 2552/185/107 12 0.70 $6.49 0.88 2809/191/96 17 0.93 $1.16 0.90 3947/187/112 13 1.00 $0.61
+KernelFalcon 0.55 1507/81/337 12 0.14 $2.92 0.39 1327/137/353 12 0.10 $0.23 0.49 306/21/51 8 0.05 $0.04
+KSearch 0.36 802/127/209 12 0.16 $2.09 0.06 3399/220/97 20 0.41 $0.81 0.30 5621/326/117 20 0.86 $0.71
+CUDAForge 0.07 752/294/919 11 0.11 $1.86 0.01 1789/159/512 19 0.17 $0.34 0.03 489/238/776 17 0.13 $0.08
+Atrex 0.51 11201/1/465 327 60.56 $46.26 0.24 9980/0/123 524 105.54 $8.17 0.88 2033/13/295 207 22.64 $0.56
+Attention
+Ave 0.99 1999/16/63 6 0.44 $4.67 0.94 1175/14/66 5 0.35 $0.51 0.94 2569/18/67 7 0.70 $0.40
+KernelFalcon 0.33 1570/215/336 12 0.14 $2.93 0.09 1958/50/175 13 0.13 $0.27 0.10 523/23/54 10 0.11 $0.07
+KSearch 0.15 1237/121/130 19 0.31 $4.06 0.03 2891/211/130 14 0.34 $0.68 0.03 3812/31/133 10 0.62 $0.51
+CUDAForge 0.001 681/271/896 11 0.12 $2.08 0.01 1648/344/1123 14 0.20 $0.44 0.01 615/187/314 17 0.17 $0.10
+Atrex 0.91 9477/2/660 347 49.68 $34.55 0.68 8524/6/153 356 60.47 $4.35 1.01 4350/6404/1254 720 112.21 $1.57
+Fused MoE
+Ave 0.94 2651/17/57 9 0.75 $7.01 0.91 2400/26/80 10 0.77 $1.10 0.92 3416/67/224 11 1.02 $0.56
+KernelFalcon 0.12 725/23/54 8 0.11 $1.80 0.0002 1282/130/321 12 0.18 $0.29 0.02 764/123/231 13 0.16 $0.10
+KSearch 0.07 2111/113/110 14 0.39 $5.71 Fail 5829/484/579 20 0.83 $1.38 0.002 937/379/367 14 0.27 $0.14
+CUDAForge 0.02 676/272/1375 10 0.11 $2.03 0.001 1135/156/357 19 0.16 $0.30 Fail 4320/461/640 20 0.70 $0.57
+Atrex 0.32 14084/14/670 265 196.98 $146.77 Fail 9723/61/2129 1170 145.34 $9.20 0.01 7706/6/4 556 193.98 $2.71
+Table 1. Optimization performance and resource costs across workloads, frameworks, and models.
+dynamically manage TMEM. We plan to model TMEM as
+shared memory using a simple lifetime heuristic: optimized
+kernels typically allocate TMEM near entry and release it
+near exit. This abstraction would propagate tags through
+TMEM reads and writes without modifying the core analy-
+sis.
+Q2. 9 Evaluation
+Our evaluation answers the following research questions:
+Q1. How effectively does Ave optimize high-performance
+GPU kernels? (§9.1)
+How do ICRL and data-flow invariants affect an agent’s
+ability to apply optimizations? (§9.2)
+Q3. How well does Ave generalize across kernel families
+and GPU architectures? (§9.3)
+Q4. How do data-flow invariants affect optimization suc-
+cess and cost? (§9.4)
+Experimental Environment. Our primary server has two 64-
+core AMD EPYC 9554 CPUs, 2 TB of DDR5, and eight 192 GB
+AMD MI300X GPUs. It runs Ubuntu 22.04.5, Linux 5.15.0,
+and ROCm 7.2.2 [5], whose LLVM 20.0 fork underlies our
+compiler extensions. Our portability server has two 48-core
+Intel Xeon Platinum 8558 CPUs, 2 TB of DDR5, and eight
+141 GB NVIDIA H200 GPUs. It runs Ubuntu 24.04.1, CUDA
+12.8, and driver 570.148.08. We warm up each kernel for
+one second and report its mean latency over at least 100
+runs within GPU graphs, pinning each process to the GPU-
+local CPU socket. We evaluate all agentic frameworks with
+GPT-5.6 Sol (GPT) [55], DeepSeek V4 Pro (DSv4) [23], and
+DeepSeek V4 Flash (DSv4F) [23], adapting their prompts for
+MI300X. For Ave, the selected model drives every Codex-
+based harness stage, including planning, lowering, policy
+evaluation, analysis, and prompt updates.
+Turns, Tok., Cost, and Time are averages over attempted
+problems. Pass@𝑘generation entries are per attempt. A turn
+is an LLM-generation segment between tool calls. Tok. is
+in millions, Cost is the API charge in U.S. dollars, and Time
+splits LLM/compile/evaluate wall time in seconds. DeepSeek
+Cost averages on- and off-peak prices.
+Unless noted, throughput is normalized to hipBLASLt for
+MI300X GEMM, AITER for MI300X attention and MoE, and
+the PyTorch reference supplied by KernelBench. We con-
+sider a kernel valid if it compiles, passes all invariant checks,
+correctness tests, and a manual reward-hacking review (§8).
+Only valid kernels contribute to performance. Perf. and Mean
+are geometric means of normalized throughput. Min and Max
+are extrema, and >1×counts ratios above parity. Pass@𝑘
+counts tasks solved within 𝑘 attempts. KernelBench genera-
+tion is a separate first phase that stops at the first test-passing
+candidate. Optimization starts from that candidate. Post-hoc
+rejection counts as failure without resuming. Fail means
+no valid implementation while we report the costs for refer-
+ences. Success requires every requested transformation.
+9
+
+===== PDF PAGE 10 =====
+Ave
+hipBLASLt
+HipKittens
+AITER
+Triton
+Atrex
+KernelFalcon
+KSearch
+CUDAForge
+Global intrusive changes
+Software pipelining ✓ ✓ ✓ ✓ ✓ ✓ ✓- -
+Split K- - - ✓- - - - -
+MFMA matrix multiplication ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓-
+Stagger K ✓ ✓ ✓ ✓ ✓- - - -
+Async memcpy ✓ ✓ ✓ ✓- ✓- - -
+Local source changes
+Tile-size specialization Bank conflict mitigation Vectorized loads Loop unrolling Workgroup swizzling ✓ ✓ ✓ ✓ ✓- ✓- -
+✓ ✓ ✓ ✓ ✓ ✓- - ✕
+✓ ✓ ✓ ✓ ✓ ✓ ✓- -
+✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓-
+✓ ✓ ✓ ✓ ✓- ✓- -
+ISA-specific optimizations
+HW OOB-guarded loads ✓ ✓ ✓ ✓- ✓- - -
+Use AGPRs ✓ ✓ ✓ ✓- ✓- - -
+Explicit instruction scheduling ✓ ✓ ✓ ✓- ✓- - -
+Table 2. GEMM optimizations implemented by Ave and other
+agentic frameworks using GPT-5.6 Sol, alongside hand-optimized
+libraries. ✓, -, and ✕ denote implemented, absent, and incorrectly
+implemented optimizations.
+9.1 Kernel Performance
+To answer Q1, we evaluate five configurations each of three
+LLM-inference kernels. GEMM multiplies square BF16 ma-
+trices with normally distributed entries. Flash attention uses
+causal BF16 grouped-query attention (GQA) with batch 16,
+eight query heads, one key-value head, and head dimen-
+sion 128, matching LLaMA-3 70B prefill under eight-way
+tensor parallelism. Fused MoE uses DeepSeek-V3.2’s block-
+quantized FP8 configuration [22]: model dimension 7168,
+intermediate dimension 2048, top-𝑘 4, 32 experts per GPU,
+and expert parallelism of eight. Each workload starts from a
+naïve implementation. Table 1 covers the complete optimiza-
+tion process, including costs for failed attempts.
+Expert-optimized baselines include hipBLASLt [4], HipKit-
+tens [33], AITER [1], and Triton [66]. Agentic baselines in-
+clude Atrex [72], KernelFalcon [70], KSearch [9], and CUDA-
+Forge [78]. We run Ave, KernelFalcon, KSearch, and CUDA-
+Forge for up to ten optimization trials and Atrex for up to
+five because of its API cost, reporting the best valid result.
+Each trial is one optimization round and may contain multi-
+ple LLM turns. These limits may leave some opportunities
+unexplored. In our experiments, we adopt hipBLASLt from
+ROCm 7.2.2, AITER 0.1.10post3, and the ROCm Triton fork
+3.6.0+rocm7.2.2.git4ed88892. For each workload, the Triton
+baseline adopts the faster available Triton implementation
+Ave
+hipBLASLt
+HipKittens
+AITER
+Triton
+Atrex
+KernelFalcon
+KSearch
+CUDAForge
+Normalized FLOPS
+Normalized FLOPS
+Normalized FLOPS
+(hipBLASLt = 1.0×)
+(AITER = 1.0×)
+(AITER = 1.0×)
+1
+0.1
+0.01
+0.001
+1
+0.1
+0.01
+0.001
+1
+0.1
+0.01
+0.001
+1024 2048 4096 8192 16384
+(a) BF16 Square GEMM Matrix size (𝑀= 𝑁= 𝐾)
+1024 2048 4096 8192 16384
+(b) GQA Flash Attention (𝐷= 128) Sequence length
+1024 2048 4096 8192 16384
+(c) Fused MoE Sequence length
+Figure 2. Optimization performance on MI300X using GPT-5.6 Sol.
+Dashed lines denote parity. Vertical axes are logarithmic.
+from HipKittens or AITER. HipKittens GQA lacks MI300X
+support. We enable available autotuning.
+In Figure 2, hipBLASLt for GEMM and AITER for atten-
+tion and MoE serve as the expert references for each work-
+load. With GPT, Ave’s normalized throughput is 0.89–0.99×
+relative to these references and 1.62–1176×relative to un-
+contaminated agentic baselines. Atrex uses many more turns
+than Ave and the other agentic frameworks because it relies
+on coding agents such as Codex and Claude Code for long
+optimization trajectories.
+GEMM. Table 2 groups optimizations by implementation
+difficulty for an LLM, not performance impact. Global in-
+trusive changes are hardest because they coordinate control
+flow, data movement, and layouts across a kernel. These
+include pipelining, Split 𝐾, MFMA layouts, Stagger 𝐾 for
+memory-controller hotspots [3], and asynchronous copies.
+Local changes need only small patches for tile specialization,
+bank-conflict mitigation, vectorization, unrolling, or work-
+group swizzling. ISA-specific optimizations require architec-
+tural knowledge and low-level support for hardware OOB
+protection, AGPRs, and explicit scheduling. AMD intrinsics
+cover guarded loads and scheduling, while AGPR allocation
+requires assembly or whole-kernel register management, as
+in HipKittens.
+10
+
+===== PDF PAGE 11 =====
+Naïve
+𝑉𝑇 +Async+Bank +Pipe.+Schedule
+Effective TFLOPS
+800
+600
+400
+200
+0
+1024 2048 4096 8192 16384
+GQA Flash Attention Optimization Sequence length
+(a) Optimization performance.
+Ablation Optimization outcome TFLOPS
+(i) Runtime feedback only +Async and +Bank ineffective 190
+(ii) +KB +invariants, -ICRL VT, +Async, +Bank, +Schedule
+255
+attempted (+Pipe not reached)
+(iii) +KB +ICRL, -invariants VT fails 194
+(iv) Full Ave All five applied 588
+(b) Harness ablations.
+Figure 3. Flash attention optimization. Panel (a) applies stages
+cumulatively in legend order. Panel (b) reports geometric-mean
+effective TFLOPs across sequence lengths.
+Ave’s normalized throughput is 0.89×relative to hip-
+BLASLt. Atrex and KernelFalcon are the strongest agentic
+competitors, while among the agentic baselines, KernelFal-
+con is the only framework that completes every workload
+with every model. Among direct CUDA/HIP frameworks,
+only KSearch requests and uses MFMA.
+KernelFalcon relies on Triton for pipelining, vectorization,
+unrolling, and tile autotuning, but lacks Stagger 𝐾 and low-
+level scheduling. Ave’s normalized throughput is 1.62×rela-
+tive to KernelFalcon and 1.76×relative to Atrex’s CuTe-like
+FlyDSL [41] kernel. Atrex applies most listed transformations
+but misses workgroup swizzling, while incomplete FlyDSL
+autotuning prevents tile specialization. Ave’s normalized
+throughput is also 1.6×relative to expert Triton. The eval-
+uated ROCm Triton baseline cannot express asynchronous
+copies, explicit AGPR allocation, hardware-guarded loads,
+or explicit scheduling, which contribute to this gap. AITER
+is near parity with hipBLASLt at 𝑀= 𝑁= 𝐾= 1024, but its
+normalized throughput decreases at larger sizes as Split 𝐾
+becomes less effective than grid partitioning.
+Flash Attention. Ave matches AITER’s handwritten assem-
+bly. Atrex reaches 0.91×through the contaminated retrieval
+1. Among uncontaminated agentic baselines, Ave’s normal-
+ized throughput is 6.6×and 1176×relative to KSearch and
+CUDAForge, respectively, and 3×relative to KernelFalcon.
+KSearch and CUDAForge omit matrix cores for QK𝑇 and PV.
+KernelFalcon’s Triton kernel neither reorganizes and stages
+V for an on-the-fly transpose nor pipelines and interleaves
+1Atrex copies the AITER reference kernel from its knowledge base rather
+than deriving it through optimization.
+instructions. The evaluated ROCm Triton baseline cannot
+express wavefront specialization or fine-grained pipeline
+scheduling. When paired with DSv4F, Atrex also spends sub-
+stantial compilation time in a trial-and-error search for a
+working compiler configuration.
+Fused MoE. Ave and AITER partition tokens and experts,
+use matrix cores, and quantize up-projection intermediates
+to FP8, enabling FP8 matrix cores with 16×the throughput
+of scalar units. Ave’s normalized throughput is 8×relative
+to KernelFalcon and 51×relative to CUDAForge. A correct
+fused MoE kernel must preserve blockwise quantization,
+route tokens through sorted expert maps, and group accesses
+for coalescing. With DeepSeek V4 Pro, Atrex and KSearch
+fail to produce stable kernels.
+KernelFalcon uses one stage with DSv4 and two with GPT
+and DSv4F. Successful KSearch and CUDAForge kernels
+also fuse the up projection and activation before writing
+a workspace. These two-stage designs omit FP8 requantiza-
+tion before the down projection and therefore cannot use
+FP8 matrix cores. They also omit expert parallelism and full
+vectorization despite 16-byte alignment.
+Table 1 shows that Ave remains effective across models,
+whereas competing frameworks are more model-sensitive.
+GPT usually produces higher-throughput kernels but can
+generate excessive code, causing instruction-cache thrash-
+ing in CUDAForge attention. DSv4 and DSv4F more often
+omit optimizations or choose ineffective strategies. For exam-
+ple, DSv4 gives KernelFalcon a low-occupancy, single-stage
+MoE kernel. Attention invariant checks take only 10–40 ms,
+negligible beside LLM inference.
+9.2 Ablation Study of Ave’s Optimization
+To answer Q2, we use GPT and the same five attention con-
+figurations as Q1. We cumulatively apply five optimizations
+to naïve flash attention: on-demand VT materialization, asyn-
+chronous loads of Q and K (+Async), bank-conflict mitigation
+(+Bank), pipelining with wavefront specialization (+Pipe.),
+and instruction scheduling (+Schedule). Ave also exposes
+fine-grained register allocation and data-flow invariants.
+Figure 3(a) shows throughput increasing monotonically
+across all five stages. +Pipe gives the largest incremental
+gain: 75–116% across sequence lengths and 100% by geomet-
+ric mean. The final configuration reaches 2.7–3.6×Naïve
+throughput. Effective TFLOPS use dense-attention FLOPs,
+including the causally skipped upper triangle. Figure 3(b) iso-
+lates harness components while retaining unit tests and run-
+time feedback in every configuration. Because each knowl-
+edge base (KB) entry normally pairs an optimization recipe
+with invariant templates, the no-invariant ablation uses the
+same KB after stripping those templates. In (i), feedback
+prompts +Async and +Bank but cannot diagnose their inef-
+fective implementations, leaving performance near Naïve.
+In (ii), the KB provides optimization recipes and invariant
+11
+
+===== PDF PAGE 12 =====
+Syntax reference only In-context examples In-context optimization
+Dataset–Model Pass@1/3 Turns Tok. Cost Time Pass@1/3 Turns Tok. Cost Time >1×Mean/Min/Max Turns Tok. Cost Time
+L1-GPT L1-DSv4 96/99 19.20 0.81 $0.85 156/18/3 98/100 16.71 0.63 $0.73 158/15/6 54 1.10/0.12/25.56 4.11 0.10 $0.67 319/42/5
+94/96 22.45 1.21 $0.13 190/28/14 95/95 19.69 0.76 $0.09 226/25/35 40 0.64/0.01/29.23 4.18 0.14 $0.18 782/41/18
+L1-DSv4F 97/100 17.71 0.94 $0.05 137/17/4 100/100 15.64 0.70 $0.04 97/14/6 50 0.99/0.09/30.45 4.52 0.25 $0.16 1481/43/5
+L2-GPT 82/87 37.59 1.96 $1.81 289/41/4 84/88 34.30 1.94 $1.78 312/38/18 29 1.03/0.07/19.80 5.62 0.20 $1.46 605/54/11
+L2-DSv4 82/86 41.60 3.25 $0.30 287/58/23 83/86 30.78 1.82 $0.19 258/35/61 18 0.47/0.03/6.52 4.92 0.17 $0.24 968/39/14
+L2-DSv4F 77/86 40.07 3.79 $0.13 281/24/14 79/84 30.31 2.63 $0.10 170/20/13 34 0.99/0.05/41.66 5.59 0.34 $0.23 2043/44/10
+Table 3. KernelBench generation under syntax-reference and in-context prompting, followed by optimization of the in-context results.
+Dataset–Model Success Turns Tok. Cost Time
+No invariants
+L1-GPT 8 7.00 0.24 $1.74 607/45/1
+L1-DSv4 1 4.00 0.19 $0.28 1105/40/2
+L1-DSv4F 1 12.00 0.86 $0.58 4968/99/6
+L2-GPT 12 6.50 0.25 $1.73 719/60/2
+L2-DSv4 7 6.43 0.28 $0.44 1763/71/2
+L2-DSv4F 7 6.57 0.37 $0.23 1963/67/10
+With invariants
+L1-GPT 18 6.06 0.22 $1.54 679/40/2
+L1-DSv4 16 5.88 0.26 $0.43 1956/38/2
+L1-DSv4F 19 6.47 0.39 $0.26 2313/43/2
+L2-GPT 25 6.12 0.22 $1.61 656/56/6
+L2-DSv4 26 5.54 0.22 $0.34 1273/43/4
+L2-DSv4F 23 5.74 0.37 $0.26 2100/50/4
+Table 4. Effect of data-flow invariants on optimizing 60 selected
+KernelBench tasks.
+templates, but without ICRL, the planner attempts +Schedule
+before +Pipe. Scheduling has no effect, leaving performance
+at +Bank. In (iii), ICRL orders the steps, but without invari-
+ants the agent cannot diagnose and repair a VT layout that
+mispairs reduction coordinates, so performance remains near
+Naïve. The full system in (iv) completes the sequence: VT
+,
++Async, +Bank, +Pipe., and +Schedule.
+9.3 Generality Across Architectures and Kernels
+To answer Q3, we evaluate both cross-architecture portabil-
+ity and generality beyond the production kernels in §9.1. For
+portability, we add an NVIDIA Hopper backend and use GPT
+to optimize the same five configurations of each workload on
+H200. Against cuBLASLt [51], vLLM’s FlashAttention-3 fork
+(b3964b1) [68], and vLLM’s DeepGEMM fork (a6b593d) [21],
+Ave achieves geometric-mean normalized throughputs of
+0.98×, 1.00×, and 0.99×over the five GEMM, attention, and
+fused-MoE configurations, respectively.
+To assess cross-kernel generality, we evaluate 100 Level 1
+(L1) and 100 Level 2 (L2) KernelBench tasks on MI300X with
+each model. Because the Ave DSL is absent from their train-
+ing corpora, Table 3 compares prompting with only a com-
+pact syntax reference against prompting with in-context
+examples. Generation uses only unit-test feedback and stops
+at the first test-passing candidate. Among generations using
+in-context examples, manual review flags direct PyTorch
+calls or input-specific shortcuts in 3 L1-DSv4, 6 L2-GPT, 13
+L2-DSv4, and 5 L2-DSv4F cases. Optimization starts from this
+candidate and runs only for the in-context condition. One
+L2-DSv4 optimization ignores instructions and falls back to
+PyTorch. The reported pass rates count these outputs as fail-
+ures. In-context examples improve Pass@1 while reducing
+turns, tokens, and API cost.
+During optimization, Ave applies layout transformations,
+fusion, vectorized loads, shared-memory staging, and instruc-
+tion scheduling. Some kernels remain below parity because
+their references call hipBLASLt or MIOpen. DSv4 and DSv4F
+have lower aggregate pass rates and mean throughput than
+GPT, partly because they more often omit transformations
+such as im2col [12].
+9.4 Effectiveness and Cost of Data-Flow Invariants
+To isolate the impact of data-flow invariants (Q4), we com-
+pare the full system with an ablation that removes invariant
+templates and, consequently, generates no tag functions,
+assertions, or invariant-violation feedback. We select Kernel-
+Bench GEMM and convolution tasks from L1 (L1) and L2 (L2).
+Each task requests MFMA matrix multiplication, software
+pipelining, and HW OOB-guarded loads. Success requires
+applying all three.
+Table 4 shows that invariants improve success in every
+dataset–model pair. They generally reduce turns, tokens,
+and API cost, while their effect on wall time is mixed. Thus,
+invariants consistently make intrusive transformations more
+reliable.
+10 Related Work
+Synthesizing GPU Kernels with LLMs. Frontier coding mod-
+els [23, 55] combined with agentic workflows [6, 9, 15, 18,
+25, 26, 30, 32, 56, 70, 72, 76, 78] have made generating GPU
+12
+
+===== PDF PAGE 13 =====
+kernels from natural language specifications practical. These
+workflows differ along three axes: reward signals, optimiza-
+tion knowledge, and execution quality. Most use correctness
+and relative performance gains as rewards, which are sus-
+ceptible to reward hacking [39]. The concurrent 𝜇CUTLASS
+system instead uses Speed-of-Light guidance, penalizing
+claims that exceed hardware capabilities to reduce reward
+hacking [30]. Sources include fine-tuning and reinforcement
+learning [64], world models [9], and evolutionary search [43].
+Reliable execution of complex optimizations is essential
+for meaningful performance gains on production kernels.
+Ave incorporates data-flow invariants as dense process re-
+wards that guide optimization. Exposing low-level hardware
+and compiler intrinsics further enables optimizations such
+as instruction scheduling, distinguishing Ave from systems
+limited to end-to-end correctness and performance rewards.
+ICL and ICRL. In-context learning (ICL) enables LLMs to
+adapt to new downstream tasks from examples provided in
+the prompt without model parameter updates [49]. Further-
+more, in-context reinforcement learning (ICRL) extends ICL
+by treating the prompt as a dynamic learnable policy and up-
+dating it based on reward signals. For example, TextGrad [74]
+provides a general framework for computing text-based gra-
+dients over LLM outputs. In terms of kernel code generation,
+KernelBlaster [26] applies ICRL to CUDA kernel optimiza-
+tion, maintaining a memory of past optimization trajectories
+and using them to improve cross-task generalization. Ave
+builds on these techniques: we use ICRL to learn planner
+prompts that bind optimization knowledge to concrete ker-
+nels, with data-flow invariant violations serving as process
+rewards alongside runtime performance.
+DSL Designs for GPU Kernels. GPU DSLs balance productivity
+against low-level control through their choice of abstraction.
+Triton describes workloads at the block level, hiding ex-
+plicit memory layouts and synchronization. Halide [59] and
+Exo [35] separate algorithm specification from scheduling
+policy for tensor workloads. Tile-based DSLs [24, 30, 52, 69]
+further structure programs around tiles as primitives for data
+movement and matrix multiplication, shifting implementa-
+tion complexity to compilers. This convenience can impose
+an abstraction tax. Triton extensions such as Gluon [67] re-
+cover performance by exposing direct control over memory
+layouts, warp specialization, register allocation, and instruc-
+tion scheduling.
+The Ave DSL combines tile abstractions with explicit com-
+piler controls for LLM-driven development. Its restricted
+memory model keeps static analysis tractable, while compile-
+time data-flow invariants provide dense structural feedback
+during optimization. Its Triton-like syntax lets LLMs reuse
+knowledge from training.
+Optimizing Compilers for Tensor Programs. Tensor compil-
+ers [14, 29, 42, 46, 61, 71, 79, 80] lower DSLs and tensor
+programs to GPU binaries. Their optimizations target high
+tensor core utilization, efficient memory layout, software
+pipelining, operator fusion, and overlapping computation
+with memory access. They rely on heuristics and exhaus-
+tive search to find efficient schedules. Note that Ave com-
+plements these compilers: we expose the hardware SIMT
+programming model along with low-level intrinsics in the
+DSL, and delegate schedule exploration to LLMs.
+Invariants and Information Flow Systems. Invariants provide
+a concise way to specify and reason about end-to-end prop-
+erties across multi-layered systems [47, 65, 73]. Information
+flow analysis enforces such invariants at the system level.
+HiStar [75] assigns security labels to data, defines a partial
+order on labels, tracks their propagation, and permits infor-
+mation flow only along that order. JFlow [50] augments Java
+with information labels and enforces information flows at
+the language level. These prior systems focus on enforcing
+security policies. Ave adapts the same tracking and enforce-
+ment mechanisms to GPU kernel optimization, using tag
+propagation to check correct operand pairings and giving
+LLMs a cross-layer view of relevant data-flow constraints.
+Formal verification [11, 13, 37, 63] can detect invariant
+violations precisely, but multiplies development effort by
+2–6×[37] for sequential programs. Verifying concurrent
+GPU kernels demands additional modeling effort [7]. Ave
+instead adopts lightweight static analysis to report action-
+able validation failures, enabling the agentic loop to iterate
+automatically. The current prototype uses Z3 [20] to rea-
+son about layout algebra. A refined version could leverage
+polyhedral analysis [8, 28, 57] for faster validation.
+11 Conclusion
+We introduced Ave, an agentic framework that uses compile-
+time data-flow invariants to make LLM-generated GPU opti-
+mizations more reliable. Its tile-based DSL and static analysis
+turn invariant violations into concrete witnesses, guiding
+agents through intrusive transformations without runtime
+overhead. With ICRL, Ave reaches near-library performance
+on AMD MI300X and generalizes to NVIDIA H200. More
+broadly, pairing domain abstractions with actionable correct-
+ness feedback offers a path to reliable agentic optimization
+wherever correctness depends on cross-layer data flow.
+Acknowledgments
+We thank our shepherd, the anonymous reviewers, and Mark
+Hill for their thoughtful feedback. We also thank InnoMa-
+trix for providing the evaluation servers. This work was
+partially supported in part by donation grant PD26EG02 to
+CSE HKUST, HKUST startup grant R9895, RGC-ECS project
+26218024, RGC-NSFC project CRS_HKUST601/24, and Na-
+tional Natural Science Foundation of China grant 62232015.
+13
+
+===== PDF PAGE 14 =====
+References
+[1] AMD. AITER: AI Tensor Engine for ROCm. https://github.c
+om/ROCm/aiter.
+[2] AMD. AMD Instinct MI300 Instruction Set Architecture. https:
+//www.amd.com/content/dam/amd/en/documents/instinct-
+tech-docs/instruction-set-architectures/amd-instinct-
+mi300-cdna3-instruction-set-architecture.pdf.
+[3] AMD. AMD Instinct MI300X workload optimization. https:
+//rocm.docs.amd.com/en/latest/how-to/rocm-for-ai/inferen
+ce-optimization/workload.html.
+[4] AMD. hipBLASLt: General Matrix-Matrix Operations Library
+for AMD GPUs. https://rocm.docs.amd.com/projects/hipBL
+ASLt/en/latest.
+[5] AMD. ROCm Software. https://github.com/ROCm/ROCm.
+[6] Carlo Baronio, Pietro Marsella, Ben Pan, et al. Kevin: Multi-
+Turn RL for Generating CUDA Kernels (ICLR’26).
+[7] Adam Betts, Nathan Chong, Alastair Donaldson, et al. GPU-
+Verify: a verifier for GPU kernels (OOPSLA ’12).
+[8] Uday Bondhugula, Albert Hartono, J. Ramanujam, et al. A
+practical automatic polyhedral parallelizer and locality opti-
+mizer (PLDI ’08).
+[9] Shiyi Cao, Ziming Mao, Joseph E. Gonzalez, et al. K-Search:
+LLM Kernel Generation via Co-Evolving Intrinsic World
+Model. arXiv:2602.19128.
+[10] Jack Carlisle, Jay Shah, Reuben Stern, et al. Categorical Foun-
+dations for CuTe Layouts. arXiv:2601.05972.
+[11] Bodhisatwa Chatterjee, Drew Zagieboylo, Sana Damani, et al.
+ProofWright: Towards Agentic Formal Verification of CUDA.
+arXiv:2511.12294.
+[12] Kumar Chellapilla, Sidd Puri, and Patrice Simard. High Per-
+formance Convolutional Neural Networks for Document Pro-
+cessing (IWFHR’06).
+[13] Haogang Chen, Daniel Ziegler, Tej Chajed, et al. Using Crash
+Hoare Logic for Certifying the FSCQ File System (USENIX
+ATC’16).
+[14] Tianqi Chen, Thierry Moreau, Ziheng Jiang, et al. TVM: An
+Automated End-to-End Optimizing Compiler for Deep Learn-
+ing (OSDI’18).
+[15] Terry Chen, Zhifan Ye, Bing Xu, et al. AVO: Agentic
+Variation Operators for Autonomous Evolutionary Search.
+arXiv:2603.24517.
+[16] Xinhao Cheng, Zhihao Zhang, Yu Zhou, et al. MPK: A Com-
+piler and Runtime for Mega-Kernelizing Tensor Programs
+(OSDI’26).
+[17] Patrick Cousot and Radhia Cousot. Abstract interpretation: a
+unified lattice model for static analysis of programs by con-
+struction or approximation of fixpoints (POPL’77).
+[18] Weinan Dai, Hanlin Wu, Qiying Yu, et al. CUDA Agent: Large-
+Scale Agentic RL for High-Performance CUDA Kernel Gener-
+ation. arXiv:2602.24286.
+[19] Tri Dao. Flashattention-2: Faster attention with better paral-
+lelism and work partitioning. arXiv:2307.08691.
+[20] Leonardo de Moura and Nikolaj Bjørner. Z3: An Efficient SMT
+Solver (TACAS’08).
+[21] DeepSeek-AI. DeepGEMM: A High-Performance Tensor Core
+Kernel Library. https://github.com/deepseek-ai/DeepGEMM.
+[22] DeepSeek-AI. DeepSeek-V3.2: Pushing the Frontier of Open
+Large Language Models. arXiv:2512.02556.
+[23] DeepSeek-AI, Anyi Xu, Bangcai Lin, et al. DeepSeek-V4: To-
+wards Highly Efficient Million-Token Context Intelligence.
+arXiv:2606.19348.
+[24] Yaoyao Ding, Bohan Hou, Xiao Zhang, et al. Tilus: A Tile-Level
+GPGPU Programming Language for Low-Precision Computa-
+tion (ASPLOS ’26).
+[25] Juncheng Dong, Yang Yang, Tao Liu, et al. STARK: Strategic
+Team of Agents for Refining Kernels (ICLR’26).
+[26] Shengjun Kris Dong, Sahil Modi, Dima Nikiforov, et al. Ker-
+nelBlaster: Continual Cross-Task CUDA Optimization via
+Memory-Augmented In-Context Reinforcement Learning.
+arXiv:2602.14293.
+[27] GLM-5-Team. GLM-5: from Vibe Coding to Agentic Engineer-
+ing. arXiv:2602.15763.
+[28] Tobias Grosser, Armin Groesslinger, and Christian Lengauer.
+Polly - Performing polyhedral optimizations on a low-level
+intermediate representation. Parallel Processing Letters 22, 4
+(2012), 1250010.
+[29] Yue Guan, Xinwei Qiang, Zaifeng Pan, et al. Mercury: Unlock-
+ing Multi-GPU Operator Optimization for LLMs via Remote
+Memory Scheduling (SOSP ’25).
+[30] Siva Kumar Sastry Hari, Vignesh Balaji, Sana Damani, et al.
+Improving Efficiency of GPU Kernel Optimization Agents us-
+ing a Domain-Specific Language and Speed-of-Light Guidance.
+arXiv:2603.29010.
+[31] Chris Hawblitzel, Jon Howell, Manos Kapritsos, et al. IronFleet:
+proving practical distributed systems correct (SOSP ’15).
+[32] Bodun Hu, Yoga Sri Varshan V, Saurabh Agarwal, et al. CUCo:
+An Agentic Framework for Compute and Communication
+Co-design. arXiv:2603.02376.
+[33] William Hu, Drew Wadsworth, Sean Siddens, et al. HipKittens:
+Fast and Furious AMD Kernels. arXiv:2511.08083.
+[34] Rodrigo Huerta, Mojtaba Abaie Shoushtary, José-Lorenzo
+Cruz, et al. Dissecting and Modeling the Architecture of Mod-
+ern GPU Cores (MICRO ’25).
+[35] Yuka Ikarashi, Kevin Qian, Samir Droubi, et al. Exo 2: Growing
+a Scheduling Language (ASPLOS ’25).
+[36] KernelWiki. KernelWiki — Blackwell & Hopper Kernel Op-
+timization Knowledge Base. https://github.com/mit-han-
+lab/KernelWiki.
+[37] Gerwin Klein, Kevin Elphinstone, Gernot Heiser, et al. seL4:
+formal verification of an OS kernel (SOSP ’09).
+[38] Monica Lam. Software pipelining: an effective scheduling
+technique for VLIW machines (PLDI ’88).
+[39] Robert Tjarko Lange, Qi Sun, Aaditya Prasad, et al. Towards
+Robust Agentic CUDA Kernel Benchmarking, Verification, and
+Optimization. arXiv:2509.14279.
+14
+
+===== PDF PAGE 15 =====
+[40] Chris Lattner, Mehdi Amini, Uday Bondhugula, et al. MLIR:
+Scaling Compiler Infrastructure for Domain Specific Compu-
+tation (CGO’21).
+[41] Felix Li, Shijie Feng, Carlus Huang, et al. FlyDSL. https:
+//github.com/ROCm/FlyDSL.
+[42] Yijin Li, Jiacheng Zhao, Sun Qianqi, et al. SIRIUS: Harvest-
+ing Whole-Program Optimization Opportunities for DNNs
+(MLSys’23).
+[43] Gang Liao, Hongsen Qin, Ying Wang, et al. KernelEvolve: Scal-
+ing Agentic Kernel Coding for Heterogeneous AI Accelerators
+at Meta. arXiv:2512.23236.
+[44] Nelson F. Liu, Kevin Lin, John Hewitt, et al. Lost in the Middle:
+How Language Models Use Long Contexts (TACL’24).
+[45] Weile Luo, Ruibo Fan, Zeyu Li, et al. Benchmarking and
+Dissecting the Nvidia Hopper GPU Architecture (IPDPS’24).
+[46] Lingxiao Ma, Zhiqiang Xie, Zhi Yang, et al. Rammer: Enabling
+Holistic Deep Learning Compiler Optimizations with rTasks
+(OSDI’20).
+[47] Haohui Mai, Edgar Pek, Hui Xue, et al. Verifying security
+invariants in ExpressOS (ASPLOS ’13).
+[48] Maxim Milakov and Natalia Gimelshein. Online normalizer
+calculation for softmax. arXiv:1805.02867.
+[49] Giovanni Monea, Antoine Bosselut, Kianté Brantley, et al.
+LLMs Are In-Context Bandit Reinforcement Learners
+(COLM’25).
+[50] Andrew C. Myers. JFlow: practical mostly-static information
+flow control (POPL ’99).
+[51] NVIDIA. cuBLAS Library Documentation. https://docs.nvidi
+a.com/cuda/archive/12.8.0/cublas.
+[52] NVIDIA. CUTLASS: CUDA Templates for Linear Algebra
+Subroutines and Solvers. https://github.com/NVIDIA/cutlass.
+[53] NVIDIA. Parallel Thread Execution ISA Version 9.3. https:
+//docs.nvidia.com/cuda/parallel-thread-execution.
+[54] OpenAI. Lightweight coding agent that runs in your terminal.
+https://github.com/openai/codex.
+[55] OpenAI. GPT-5.6: Frontier intelligence that scales with your
+ambition. https://openai.com/index/gpt-5-6.
+[56] Anne Ouyang, Simon Guo, Simran Arora, et al. KernelBench:
+Can LLMs Write Efficient GPU Kernels? (ICML’25).
+[57] Benoît Pradelle, Benoît Meister, Muthu Baskaran, et al. Poly-
+hedral Optimization of TensorFlow Computation Graphs (Pro-
+Tools’18).
+[58] Fernando Magno Quintão Pereira and Jens Palsberg. Register
+allocation by puzzle solving (PLDI ’08).
+[59] Jonathan Ragan-Kelley, Connelly Barnes, Andrew Adams, et al.
+Halide: a language and compiler for optimizing parallelism,
+locality, and recomputation in image processing pipelines
+(PLDI ’13).
+[60] G. Ramalingam. The undecidability of aliasing. ACM Trans.
+Program. Lang. Syst. 16, 5 (Sept. 1994), 1467–1471.
+[61] Amit Sabne. XLA: Compiling Machine Learning for Peak
+Performance (DEEM’20).
+[62] Noam Shazeer, Azalia Mirhoseini, Krzysztof Maziarz, et al.
+Outrageously Large Neural Networks: The Sparsely-Gated
+Mixture-of-Experts Layer (ICLR’17).
+[63] Helgi Sigurbjarnarson, James Bornholt, Emina Torlak, et al.
+Push-Button Verification of File Systems via Crash Refinement
+(OSDI’16).
+[64] Songqiao Su, Xiaofei Sun, Xiaoya Li, et al. CUDA-L2: Surpass-
+ing cuBLAS Performance for Matrix Multiplication through
+Reinforcement Learning. arXiv:2512.02551.
+[65] Shuo Tang, Haohui Mai, and Samuel T. King. Trust and pro-
+tection in the Illinois browser operating system (OSDI’10).
+[66] Philippe Tillet, H. T. Kung, and David Cox. Triton: an in-
+termediate language and compiler for tiled neural network
+computations (MAPL’19).
+[67] Triton. Gluon. https://github.com/triton-lang/triton/tree/mai
+n/lib/Dialect/Gluon.
+[68] vllm-project. Fast and memory-efficient exact attention. https:
+//github.com/vllm-project/flash-attention.
+[69] Lei Wang, Yu Cheng, Yining Shi, et al. TileLang: Bridge Pro-
+grammability and Performance in Modern Neural Kernels
+(ICLR’26).
+[70] Laura Wang and PyTorch Team. KernelFalcon: Autonomous
+GPU Kernel Generation via Deep Agents. https://pytorch.org/
+blog/kernelfalcon-autonomous-gpu-kernel-generation-via-
+deep-agents.
+[71] Mengdi Wu, Xinhao Cheng, Shengyu Liu, et al. Mirage: a
+multi-level superoptimizer for tensor programs (OSDI ’25).
+[72] Lingyun Yang, Yuxiao Wang, Shenghao Liang, et al. Are LLM-
+Generated GPU Kernels Production-Ready? A Trace-Driven
+Benchmark and Optimization Agent. arXiv:2607.14541.
+[73] Alexander Yip, Xi Wang, Nickolai Zeldovich, et al. Improving
+application security with data flow assertions (SOSP ’09).
+[74] Mert Yuksekgonul, Federico Bianchi, Joseph Boen,
+et al. TextGrad: Automatic "Differentiation" via Text.
+arXiv:2406.07496.
+[75] Nickolai Zeldovich, Silas Boyd-Wickizer, Eddie Kohler, et al.
+Making Information Flow Explicit in HiStar (OSDI’06).
+[76] Yi Zhai, Sijia Yang, Keyu Pan, et al. Enabling Tensor Language
+Model to Assist in Generating High-Performance Tensor Pro-
+grams for Deep Learning (OSDI’24).
+[77] Shulai Zhang, Ningxin Zheng, Haibin Lin, et al. COMET:
+Fine-grained Computation-communication Overlapping for
+Mixture-of-Experts (MLSys’25).
+[78] Zijian Zhang, Rong Wang, Shiyang Li, et al. CudaForge: An
+Agent Framework with Hardware Feedback for CUDA Kernel
+Optimization. arXiv:2511.01884.
+[79] Jie Zhao, Bojie Li, Wang Nie, et al. AKG: automatic kernel
+generation for neural processing units using polyhedral trans-
+formations (PLDI’21).
+[80] Lianmin Zheng, Chengfan Jia, Minmin Sun, et al. Ansor: Gen-
+erating High-Performance Tensor Programs for Deep Learning
+(OSDI’20).
+15

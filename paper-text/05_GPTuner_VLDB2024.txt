@@ -1,0 +1,1050 @@
+Source: 05_GPTuner_VLDB2024.pdf
+Pages: 14
+
+===== PDF PAGE 1 =====
+GPTuner: A Manual-Reading Database Tuning System via
+GPT-Guided Bayesian Optimization
+Jiale Lao
+Sichuan University
+solidlao.jiale@gmail.com
+Yibo Wang
+Sichuan University
+wangyibo.cs@gmail.com
+Yufei Li
+Sichuan University
+liyufeievangeline@gmail.com
+Jianping Wang
+Northwest Normal University
+2022222119@nwnu.edu.cn
+Yunjia Zhang
+University of Wisconsin-Madison
+yunjia@cs.wisc.edu
+Zhiyuan Cheng
+Purdue University
+cheng443@purdue.edu
+Wanghu Chen
+Northwest Normal University
+chenwh@nwnu.edu.cn
+Mingjie Tang∗
+Sichuan University
+tangrock@gmail.com
+ABSTRACT
+Modern database management systems (DBMS) expose hundreds of
+configurable knobs to control system behaviours. Determining the
+appropriate values for these knobs to improve DBMS performance is
+a long-standing problem in the database community. As there is an
+increasing number of knobs to tune and each knob could be in con-
+tinuous or categorical values, manual tuning becomes impractical.
+Recently, automatic tuning systems using machine learning meth-
+ods have shown great potentials. However, existing approaches
+still incur significant tuning costs or only yield sub-optimal per-
+formance. This is because they either ignore the extensive domain
+knowledge available (e.g., DBMS manuals and forum discussions)
+and only rely on the runtime feedback of benchmark evaluations
+to guide the optimization, or they utilize the domain knowledge
+in a limited way. Hence, we propose GPTuner, a manual-reading
+database tuning system that leverages domain knowledge exten-
+sively and automatically to optimize search space and enhance the
+runtime feedback-based optimization process. Firstly, we develop a
+Large Language Model (LLM)-based pipeline to collect and refine
+heterogeneous knowledge, and propose a prompt ensemble algo-
+rithm to unify a structured view of the refined knowledge. Secondly,
+using the structured knowledge, we (1) design a workload-aware
+and training-free knob selection strategy, (2) develop a search space
+optimization technique considering the value range of each knob,
+and (3) propose a Coarse-to-Fine Bayesian Optimization Framework
+to explore the optimized space. Finally, we evaluate GPTuner under
+different benchmarks (TPC-C and TPC-H), metrics (throughput and
+latency) as well as DBMS (PostgreSQL and MySQL). Compared to
+the state-of-the-art approaches, GPTuner identifies better configu-
+rations in 16x less time on average. Moreover, GPTuner achieves
+up to 30% performance improvement (higher throughput or lower
+latency) over the best-performing alternative.
+PVLDB Reference Format:
+Jiale Lao, Yibo Wang, Yufei Li, Jianping Wang, Yunjia Zhang, Zhiyuan
+Cheng, Wanghu Chen, Mingjie Tang, and Jianguo Wang. GPTuner: A
+Manual-Reading Database Tuning System via GPT-Guided Bayesian
+Optimization. PVLDB, 17(8): 1939 - 1952, 2024.
+Jianguo Wang
+Purdue University
+csjgwang@purdue.edu
+doi:10.14778/3659437.3659449
+PVLDB Artifact Availability:
+The source code, data, and/or other artifacts have been made available at
+https://github.com/SolidLao/GPTuner.
+1 INTRODUCTION
+Modern Database Management Systems (DBMS) expose hundreds
+of configurable parameters (i.e., knobs) to control their runtime be-
+haviours [37]. The selection of appropriate values for these knobs is
+crucial to improve DBMS performance, constituting a long-standing
+challenge within the database community [54]. Given the high di-
+mensionality of the configuration space (e.g., PostgreSQL v14.9 has
+346 knobs), and the inherent heterogeneity of these knobs (due to
+their continuous and categorical domains), database administrators
+(DBAs) encounter substantial difficulties in identifying promising
+configurations tailored to specific query workloads. The magni-
+tude of this challenge becomes even more pronounced in the cloud
+environment, where the underlying physical configurations can
+significantly vary among distinct DBMS instances [38].
+To reduce the manual tuning efforts of DBAs, state-of-the-art
+approaches automate the knob tuning via Machine Learning (ML)
+techniques, including Bayesian Optimization [8, 14, 23, 53, 63, 64]
+and Reinforcement Learning [6, 26, 50, 61]. These ML-based tuning
+systems follow the main concept of “trial and error” to explore the
+configuration space iteratively, balancing between the exploration
+of unseen regions and the exploitation of known space.
+While these methods do possess the potential to reach well-
+performing knob configurations eventually, they still incur signifi-
+cant tuning costs [22, 23]. Previous studies [6, 62, 63] have revealed
+that state-of-the-art systems still require hundreds to thousands
+iterations to reach an ideal configuration, with each iteration taking
+minutes or more to execute the target workload. Such high tuning
+This work is licensed under the Creative Commons BY-NC-ND 4.0 International
+License. Visit https://creativecommons.org/licenses/by-nc-nd/4.0/ to view a copy of
+this license. For any use beyond those covered by this license, obtain permission by
+emailing info@vldb.org. Copyright is held by the owner/author(s). Publication rights
+licensed to the VLDB Endowment.
+Proceedings of the VLDB Endowment, Vol. 17, No. 8 ISSN 2150-8097.
+doi:10.14778/3659437.3659449
+∗The corresponding author.
+1939
+
+===== PDF PAGE 2 =====
+[Sparse text layer: inspect the original PDF]
+1940
+
+===== PDF PAGE 3 =====
+values in each dimension, we discard meaningless regions, high-
+light promising space and take special situations into consideration.
+Next, we develop a novel Coarse-to-Fine Bayesian Optimization
+Framework. At first, since it is non-trivial to reduce the size of
+search space while still retaining the potential for optimal results
+[16], we seek help from domain knowledge to carefully design two
+search spaces of different granularity. Next, the two spaces are
+explored sequentially by BO from coarse granularity to fine granu-
+larity, with a bootstrap technique to serve as a bridging mechanism.
+This framework balances between the efficiency of coarse-grained
+search and the thoroughness of fine-grained search.
+We are aware of only one work DB-BERT [50] that utilizes a pre-
+trained language model to read manuals and uses the mined hints
+to guide a reinforcement learning algorithm. It exhibits rapid con-
+vergence as it benefits from the information gained via text analysis.
+However, it only yields sub-optimal performance since it utilizes
+the domain knowledge narrowly and suffers from the inadequate
+exploration of search space. GPTuner tackles these limitations and
+thus achieves faster convergence and better performance improve-
+ment. As shown in Figure 1, GPTuner significantly outperforms
+DB-BERT on two representative benchmarks (TPC-H and TPC-C)
+with different optimization objectives (latency and throughput). It
+is important to note that GPTuner is a distinct approach compared
+to DB-BERT, and its efficacy does not stem from simply substituting
+the language model. We verify this by replacing the BERT model in
+DB-BERT with GPT-4 and compare it with GPTuner again. More
+details are provided in Section 2.3.
+We compare GPTuner against DB-BERT and other state-of-the-
+art approaches that do not use text as input. We consider different
+benchmarks (TPC-C and TPC-H), metrics (throughput and latency),
+and DBMS (PostgreSQL and MySQL). GPTuner identifies better
+configurations in 16x less time on average, achieving up to 30%
+performance improvement over the best-performing alternative.
+In addition to performance comparison, we manually prepare and
+open-source two datasets1, and conduct experiments to evaluate
+GPTuner’s robustness and scalability. Moreover, we discuss and
+present the overheads introduced in GPTuner using different lan-
+guage models. In summary, we make the following contributions:
+•We propose GPTuner, a novel manual-reading database
+tuning system that leverages domain knowledge automati-
+cally and extensively to enhance the knob tuning process.
+•We develop an LLM-based pipeline to collect and refine do-
+main knowledge, and propose a prompt ensemble algorithm
+to unify a structured view of the refined knowledge.
+•We design a workload-aware and training-free knob selec-
+tion strategy, develop an optimization method for the value
+range of each knob, and propose a Coarse-to-Fine Bayesian
+Optimization framework to explore the optimized space.
+•We open-source the built domain knowledge for PostgreSQL
+and MySQL, two datasets for the evaluation of LLM, to en-
+able the further study within the database community.
+• We conduct experiments and costs analysis to evaluate the
+effectiveness, scalability and robustness of GPTuner.
+1https://drive.google.com/file/d/1Ss6EL-B3lhKkwVNBW5vPu-JQ-IeldaUJ
+2 BACKGROUND AND RELATED WORK
+2.1 Database Knob Tuning
+DBMS expose tens to hundreds of configurable knobs to control
+their runtime behaviours [54]. The DBMS knob tuning problem is
+to select an appropriate value for each knob to optimize the DBMS
+performance (e.g., throughput or latency) on a certain workload
+(e.g., a workload is a set of SQL statements). Formally, given a set of
+configurable knobs 𝜃1,...,𝜃𝑛 along with their domains Θ1,...,Θ𝑛,
+the configuration space is defined as 𝚯= Θ1 ×···×Θ𝑛. We want
+to find a configuration 𝜽∗∈𝚯 to maximize DBMS performance 𝑓:
+𝜽∗
+= arg max
+𝑓(𝜃) (1)
+𝜃 ∈𝚯
+Finding an optimal solution for this problem is challenging. Firstly,
+there are hundreds of knobs to tune in DBMS. Secondly, the knobs
+themselves vary widely – some have continuous numerical values,
+while others are categorical, making the problem even more compli-
+cated since it is hard to model heterogeneous space. Three kinds of
+approaches are proposed: heuristic-based, Bayesian Optimization
+(BO)-based [45] and Reinforcement Learning (RL)-based [18].
+•Heuristic-based. Rule-based methods rely on manually created
+rules to explore the space in a predefined way [10, 24]. Search-
+based methods explore the space according to several heuristics
+(e.g., avoid to revisit explored regions and explore nearby regions
+to improve the current optimum) [4, 69].
+•BO-based. BO-based methods [8, 14, 23, 53, 63, 64] follow the
+generic BO framework to search for an optimal configuration: (1)
+fitting a probabilistic surrogate model to map the relation between
+knob configuration and DBMS performance, (2) selecting the next
+configuration that maximizes acquisition function.
+•RL-based. RL-based methods explore search space with a trial-
+and-error strategy. The essence is to balance between exploring
+unexplored space and exploiting known regions, which is achieved
+by the interactions between an agent (e.g., neural network) and the
+target environment (e.g., DBMS) [6, 26, 52, 57, 61].
+Performance Comparison. According to [62], a BO-based method,
+Sequential Model-based Algorithm Configuration (SMAC) [28]
+yields the best performance since it is efficient in modeling the
+heterogeneous search space. We view it as the current state-of-the-
+art that does not take text as input and aim to improve it further.
+2.2 Language Models
+The field of Natural Language Processing (NLP) has seen great
+progress with the advent of LLM. Notably, ChatGPT [32] and GPT-
+4 [36] have demonstrated great prowess across a wide range of
+tasks. The impact of LLM extends beyond the scope of NLP to
+the database community, experiencing a surge in the adoption of
+LLM to enhance DBMS, including data profiling [34, 49, 65], code
+generation [9, 43, 51, 59], workload analysis [19, 47, 56] and table-
+based question answering [20, 58, 66]. When using LLM, there
+are three typical choices: (1) training a model from scratch, (2)
+fine-tuning an existing model, and (3) using a pre-trained model
+without parameter modifications. The first two options require a
+relatively large amount of resources, including hardware resources
+and training data. Given the impressive in-context learning ability
+1941
+
+===== PDF PAGE 4 =====
+[Sparse text layer: inspect the original PDF]
+1942
+
+===== PDF PAGE 5 =====
+[Sparse text layer: inspect the original PDF]
+1943
+
+===== PDF PAGE 6 =====
+optimal configurations. In the first stage, BO only explores a dis-
+crete subspace of the whole heterogeneous space. This subspace is
+small in size but promising to contain good configurations since
+we generate it based on the reliable domain knowledge. In the next
+stage, in order to avoid the overlooking problem of coarse-grained
+search (i.e., it is inevitable to lose some useful configurations for
+any space reduction technique), BO explores the heterogeneous
+space thoroughly with the optimizations in Section 7. After the
+two stages, the recommender outputs the best-performing knob
+configurations found within the budget limits specified by users.
+5 KNOWLEDGE HANDLER
+5.1 Knowledge Preparation
+The Knowledge Preparation task is to collect tuning knowledge
+from various resources (data ingestion), filter out noisy contents
+(data cleaning), summarize the legal parts (data integration) and
+make sure the summarization is factual consistent with source
+contents (data correction). We provide a running example in our
+technical report [1] and a demonstration [25] for ease of under-
+standing. The ultimate output is a Tuning Lake defined as follows:
+Definition 1 (Tuning Lake). Tuning Lake L= {𝑑1,𝑑2,...𝑑𝑛 }is a
+set of 𝑛texts, where 𝑛is the number of configurable knobs and 𝑑𝑖 is
+the natural language tuning knowledge for 𝑖-th knob. For example,
+“set shared_buffers to 25% of the RAM” (denoted as 𝑑𝑖 ) is the
+tuning knowledge for knob “shared_buffers” (the 𝑖-th knob).
+Step 1: Extracting knowledge from LLM. Except for the common
+tuning knowledge sources (e.g., manuals and web contents), we
+propose utilizing LLM as a knowledge source as well. Since GPT
+is trained on a vast corpus related to database [3], GPT itself is
+an informative manual and allows us to retrieve the knowledge
+through prompt. In practice, we surprisingly find that GPT can
+give reasonable suggestions that are not included in the manuals.
+Such suggestions come from web contents summarized by DBAs
+and were used as training data for GPT. Since it is impossible to
+provide all web contents to any system and GPT already knows
+much of it, it is reasonable to use GPT as a complementary source
+of knowledge. In case that GPT gives nonsense suggestions, we
+utilize LLM to handle such abnormal situation in the next step.
+Step 2: Filtering noisy knowledge. The tuning knowledge comes from
+various sources and its quality cannot be guaranteed. Thus we filter
+out noisy knowledge by modeling this process as a “binary classifi-
+cation problem” and utilize LLM to solve it. We provide LLM with
+the candidate tuning knowledge for a knob and an official system
+view for this knob (e.g., pg_settings from PostgreSQL and informa-
+tion_schema from MySQL). Moreover, we give a few examples in
+the prompt to utilize the in-context learning ability of LLM [11].
+LLM evaluates whether the tuning knowledge conflicts with the
+system view and we discard any knowledge that does conflict.
+Step 3: Summarizing knowledge from various resources. There can be
+multiple tuning knowledge for a knob. While such tuning guidance
+obeys the official system view (Step 2), they could conflict with each
+other (e.g., different manuals provide distinct recommended values
+for the same knob). We handle this by manually setting priority for
+each information source based on its reliability. For example, official
+manuals are authoritative and thus have the highest priority, while
+LLM has the lowest priority due to its hallucination problem. We
+summarize the non-contradictory guidance and delete the content
+with low priority for the contradictory parts.
+Step 4: Checking factual inconsistency. In the last step, the summary
+task is completed by LLM and the generated summaries may be
+factually inconsistent (i.e., the summary includes information that
+does not appear in the source contents or even contradicts it [55]).
+Since GPT outperforms previous methods as a factual inconsistency
+evaluator [32], we utilize GPT to check this inconsistency. For each
+knob, the summarization and the source contents are included in
+prompt for GPT to determine whether there is an inconsistency. If
+an inconsistency is detected, GPT is prompted to recreate the sum-
+marization. This newly generated summary, along with its source
+contents, are once again provided to GPT. This process is repeated
+until GPT identifies no errors, producing the final summarization.
+Robustness Study. It is important to note that the hallucination
+problem still remains a challenge in the NLP field, and thus we
+propose two error correction mechanisms (i.e., step 2 and 4 are
+designed to correct step 1 and 3, respectively) to minimize such im-
+pact as much as possible. To quantify their reliability, we manually
+prepare and open-source two datasets, and conduct experiments to
+measure the effectiveness of the two mechanisms. Moreover, we
+study the effect of domain knowledge quality (e.g., outdated and
+incorrect knowledge), and the LLM ability on GPTuner’s tuning
+performance. More details are provided in Section 8.4.
+5.2 Knowledge Transformation
+In this section, we build a structured view (namely Structured Knowl-
+edge) of the Tuning Lake such that it can be utilized by ML. Formally,
+Definition 2 (Structured Knowledge). Structured Knowledge S
+maintains a structured view 𝑠𝑖 for each tuning knowledge 𝑑𝑖 from
+Tuning Lake L, where 𝑠𝑖 is defined by a set of attributes 𝐴=
+{𝑎1,𝑎2,...,𝑎𝑛 }(e.g., 𝑎1 = 𝑠𝑢𝑔𝑔𝑒𝑠𝑡𝑒𝑑_
+𝑣𝑎𝑙𝑢𝑒𝑠) with corresponding
+values 𝑉= {𝑣1,𝑣2,...,𝑣𝑛 }(e.g., 𝑣1 = 4 𝐺𝐵).
+•Determining the Attributes. In the context of DBMS knob tun-
+ing, we primarily consider four types of attributes: suggested_values,
+min_value, max_value and special_value. Firstly, the most typical
+hint to consider is the recommended values for a knob since they
+performed well in the past practice and can serve as good starting
+points for new scenario. Secondly, we take into account the min-
+imum and maximum values suggested in the tuning knowledge.
+This is because the default value ranges provided by DBMS vendors
+are excessively broad, complicating the optimization process (e.g.,
+there will be a large number of values whose effect on the DBMS
+performance is unknown and this means ML models require much
+more iterations to converge to good configurations) and introduc-
+ing the risk of system crashes (e.g., set memory-related knobs to a
+value higher than the available RAM can crash the DBMS). Finally,
+there are knobs with “special values” and these values are hard to
+be modeled by ML methods since they lead to distinct behaviours of
+DBMS. Thus we use special_value to handle such special situations.
+The techniques to utilize these values are detailed in Section 6.2.
+•Determining the Attribute Values. Extracting specific knob
+values for certain attributes from given texts is challenging due to
+the brittle nature of LLM (i.e., small modifications to the prompt can
+1944
+
+===== PDF PAGE 7 =====
+cause large variations in the LLM outputs [27]). Since it is useful to
+acquire a more reliable result by aggregating multiple imperfect but
+effective results [5, 42], we develop a Prompt Ensemble Algorithm to
+determine the attribute values effectively. Specifically, it involves
+three steps: modeling the extracting task as a Natural Language
+Problem such that it can be answered by LLM, varying the prompts
+to prepare multiple results, and aggregating these results to produce
+the final result:
+Step 1: we model the transformation task as a series of infor-
+mation extraction problems. At first, we decompose the transfor-
+mation task into two subtasks of extracting (1) suggested_values,
+min_value, max_value and (2) special_value, respectively. We tackle
+special_value separately because special_value has its own context,
+which will be discussed in Section 6.2. Next, we prepare the prompt
+for each subtask. The {𝑡𝑎𝑟𝑔𝑒𝑡_
+𝑣𝑎𝑙𝑢𝑒𝑠}is a placeholder to be deter-
+mined by task type (e.g., it is replaced with the definition of special
+values if we want to extract special_value from the {𝑘𝑛𝑜𝑤𝑙𝑒𝑑𝑔𝑒}).
+We also include examples in the prompt to utilize the in-context
+learning of LLM.
+Step 2: we vary the prompts by changing the examples provided
+for few-shots learning. We manually prepare 𝐾 examples and store
+them in an Example Pool. Then we randomly sample 𝑛examples for
+each prompt (𝑛 ≤𝐾). Specifically, we manually prepare 10 examples
+(𝐾= 10) since 10 examples are empirically good enough to meet the
+diversity requirement of ensemble algorithms [2]. More examples
+can be added if domain experts are available. Regarding the 𝑛, more
+sampled examples might provide better results. However, this leads
+to a longer prompt with more tokens to be processed, subsequently
+resulting in longer processing time and higher monetary costs.
+Moreover, since too many examples might lead to long-context
+errors, we select 𝑛= 3 as suggested in [5].
+Step 3: we aggregate the results via a majority vote strategy. LLM
+generates a candidate JSON for each prompt and we aggregate the
+results by taking an Element-Wise Majority Vote strategy, where
+Element refers to our target attribute. For each attribute, we rank
+the values extracted based on occurrence frequency and choose the
+value of the highest frequency as the final result for that attribute.
+The resulting JSON is stored in the Structured Knowledge S.
+6 SEARCH SPACE OPTIMIZER
+6.1 Dimensionality Optimization
+In this section, we identify knobs that have a significant impact on
+the DBMS performance and only tune these important knobs.
+Motivation. While there are hundreds of knobs in DBMS (e.g.
+PostgreSQL v14.9 has 346 knobs), not all of them significantly im-
+pact DBMS performance, and it is infeasible to take all knobs into
+account due to the curse of dimensionality. Therefore, we only
+select important knobs to tune. Recent studies have shown that
+tuning a small number of knobs is enough to yield near-optimal
+performance while significantly reducing tuning costs [21, 54]. Ex-
+isting approaches rely on ML-based algorithms to select important
+knobs and this requires hundreds to thousands of evaluations on
+DBMS under different workloads and configurations [21, 53, 62].
+Differently, DBAs seek help from manuals to select which knobs
+are worth tuning and this yields better performance than ML-based
+algorithms [54]. However, it takes significant burden for DBAs to
+handle hundreds of knobs. Thus, we hope to remove the tedious
+burden by proposing a workload-aware and training-free approach
+via LLM. Specifically, we prompt LLM to simulate DBA’s empirical
+judgement in real-world scenarios by considering the four factors:
+(1) System-Level selects knobs based on the specific DBMS product.
+After years of tuning practice, it is empirically known which knobs
+are important for a certain DBMS product. For instance, it is widely
+discussed that we can gain substantial performance improvement by
+tuning “shared_buffers” and “max_wal_size” from PostgreSQL,
+“innodb_buffer_pool_size” and “innodb_log_file_size” from
+MySQL [54]. More importantly, we find such wisdom is included in
+the corpus of GPT-4 [36] and we can extract it by prompting GPT-4
+to recommend knobs to tune based on the DBMS product.
+(2) Workload-Level selects knobs based on the workload type. The
+workload type is informative for selecting important knobs since
+different workload types have distinct requirements on DBMS re-
+sources, which are regulated by knobs. For example, one typical
+scenario for OLTP workload is I/O-intensive, where write opera-
+tions compete for the limited disk I/O. Thus we should consider
+disk-related knobs like “effective_io_concurrency”. For analyt-
+ical queries from OLAP workload, we should tune planning-related
+and system resource-related knobs to handle their complex struc-
+ture and resource-intensive nature [67].
+(3) Query-Level selects knobs based on the bottleneck of queries.
+It is useful for DBAs to delve into the execution plan of the time-
+consuming and frequently executed queries, where an experienced
+DBA can diagnose performance bottlenecks and focus on related
+knobs. Equipped with the analysis ability of LLM [68], we can in-
+clude the execution plan in the prompt such that LLM can choose
+the bottleneck-aware knobs. For example, if LLM detects “Sequen-
+tial Scan” in the execution plan and the target table contains a large
+number of rows, LLM will recommend adjusting scan-related knobs
+like “random_page_cost” since it influences the PostgreSQL query
+planner’s bias towards index scans or sequential scans.
+(4) Knob-Level complements interdependent knobs to a given target
+knob set. One important reason why ML techniques outperform
+DBA is that they can handle the dependencies between knobs [54].
+However, if the given knob set contains the important knobs but
+excludes the interdependent knobs, such ability is wasted. Since
+many dependencies are explicitly mentioned in the manuals, we
+can leverage the text analysis ability of LLM to read the manu-
+als and capture such knobs. For example, the official PostgreSQL
+document suggests “Larger settings for ‘shared_buffers’ usually
+require a corresponding increase in ‘checkpoint_segments’ ” [40],
+indicating that we should consider the two knobs at the same time.
+Based on the above four factors, we develop the LLM-based
+Knob Selection as Algorithm 1. It aspires to utilize LLM Fto
+select important knobs Tfrom the Knob Set Kfor a DBMS D
+under a specific workload W. The algorithm starts by preparing
+a configurable knob set C, which excludes knobs related to de-
+bugging, security and path-setting (Line 1). Next, it selects knobs
+from four different levels: System Level, Workload Level, Query
+Level and Knob Level. In the System Level Selection, knobs hugely
+influencing the DBMS performance are identified, producing the
+set C𝑠 (Line 2). During the Workload Level Selection, we provide
+LLM with the type of the workload (e.g., OLTP or OLAP) and the
+optimization target (e.g., throughput or latency) to prepare knob
+1945
+
+===== PDF PAGE 8 =====
+Algorithm 1: LLM-based Knob Selection
+Input: Knob Set K; LLM F; DBMS D; Workload W;
+Tuning Lake L.
+Output: Target Knob Set T.
+1 Configurable Knob Set C←𝐹𝐼𝐿𝑇𝐸𝑅(K);
+// Filter out knobs that are related to
+debugging, security and path-setting
+System Level Selection:
+2 C𝑠 ←F(C,D);
+Workload Level Selection:
+3 C𝑤 ←F(C,W);
+Query Level Selection:
+4 C𝑞 ←∅;
+5 for query 𝑞𝑖 in Wdo
+6 E𝑖 ←𝐸𝑋𝐸𝐶𝑈𝑇𝐸(D,𝑞𝑖 );
+// Get execution plan for query 𝑞𝑖 from D
+7 C𝑞𝑖 ←F(C,E);
+8 C𝑞 ←C𝑞 ∪C𝑞𝑖 ;
+9 end
+Knob Level Selection:
+10 Target Knob Set T←F(L, C𝑠 ∪C𝑤 ∪C𝑞);
+11 return T;
+set C𝑤 (Line 3). The Query Level Selection delves into each query
+𝑞𝑖 within the workload (Line 4-9). Specifically, the execution plan
+E𝑖 of each query is retrieved, and LLM Fextracts influential knobs
+set C𝑞 by diagnosing the performance bottlenecks of each query
+and identifying knobs related to the bottleneck. Finally, we leverage
+LLM Fto replenish interdependent knobs to the union of C𝑠 , C𝑤
+and C𝑞, resulting in the final Target Knob Set T(Line 10).
+6.2 Range Optimization
+In this section, given each knob’s unique semantics and associated
+tuning knowledge, we optimize the value range for each knob.
+Region Discard. We utilize min_value and max_value to discard
+some regions for the following cases. (1) The regions are unlikely to
+result in promising performance. For knob “random_page_cost”,
+the value range regulated by DBMS is [0,1.79 ×10308]. Given the
+large value range, the algorithm is likely to sample very large values.
+This will lead to poor DBMS performance since it is suggested to
+set it to “1.𝑥” if the disk has a random access profile similar to that
+of SSDs [41]. Equipped with this prior knowledge, we release the
+burden for optimizers to trial vast but meaningless space. (2) The
+regions could seize too many system resources. For resource-related
+knobs like shared_buffers, a value close to the maximum system
+resource could be detrimental to other services that are running on
+the same machine. (3) The regions that can make the DBMS crash.
+For resource-related knobs, setting a value that exceeds the resource
+limits could prevent the DBMS from starting (e.g., we cannot set
+memory-related knobs to a value higher than the available RAM).
+Finally, the recommended range [𝑚𝑖𝑛
+_𝑣𝑎𝑙𝑢𝑒,𝑚𝑎𝑥_
+𝑣𝑎𝑙𝑢𝑒]is much
+more narrow than the range provided by DBMS vendors.
+Tiny Feasible Space. We use suggested_values from Structured
+Knowledge to define a discrete space for each knob. Such values
+are valuable since they performed well in the past and can serve
+as good starting points for new scenario. However, they may not
+be suitable for all cases, as the optimal knob setting depends on
+the specific environment, which can be diverse. Instead of relying
+on these values only, we can apply a set of multiplicators for each
+suggested value of all numerical knobs. The intuition behind is
+to deviate the suggested value in different directions (smaller or
+bigger) with different extents. Formally, given a set of multiplicators
+𝑀= {𝑚1,𝑚2,...,𝑚𝑛 }and a suggested value 𝑉 for a knob 𝑘, the
+search space Ω for this knob is defined as:
+Ω(𝑘)= {𝛼·𝑉|𝛼 ∈𝑀} (2)
+However, this heuristic approach ignores the value ranges of knobs
+and the multiplication results could be useless. For example, knob
+“checkpoint_timeout” has a value range from 30 to 86400 with
+90 as a recommended starting point [15]. Given the maximum
+factor used in DB-BERT (i.e., 4) [50], the maximum value to try is
+90 ×4 = 360 and this is much smaller than 86400, which means a
+lot of promising values are ignored. Thus we address this limitation
+by considering the value range and calculating the multiplicators
+dynamically. For knob 𝑘, we denote its maximum (minimum) value
+as 𝑈, the multiplicator is calculated by the following formula:
+𝛼 = 1 + 𝛽
+𝑉 (𝑈−𝑉), 𝛽 ∈{𝑟1,𝑟2,...,𝑟𝑛 |𝑟𝑖 ∈[0,1]} (3)
+where 𝛽 is a scaling coefficient with a value from 0 to 1, and the
+𝑛 candidate values 𝑟𝑖 are predefined by users. The choice of 𝑈
+determines the deviation direction (e.g., maximum makes value
+bigger while minimum makes it smaller) and 𝛽 controls the chang-
+ing extends. Specifically, 𝑉 remains the same or is extended to the
+maximum (minimum) when 𝛽 is set to 0 and 1, respectively. For 𝛽
+value between 0 and 1, suggested value 𝑉 moves proportionally to
+its maximum (minimum). In our experiments, 𝛽 ∈{0,0.25,0.5}. We
+conduct this deviation process for all numerical knobs and the re-
+sulting discrete space is our Tiny Feasible Space, where Tiny means
+the possible number of values for knobs is significantly reduced,
+and Feasible indicates the chosen values are promising.
+Virtual Knob Extension. This extension is to handle knobs that
+use special values to do something different from what the knobs
+normally do [22, 38]. For example, knob “lock_timeout”, with a
+value range from 0 to 2147483647, controls the maximum allowed
+duration of any wait for a lock. When it is set to zero, the timeout
+function is disabled, making “0” a special value. However, optimiz-
+ers may never trial this value (even though it could be optimal)
+since the likelihood of sampling it is extremely low [22] and the
+DBMS performance will be modeled to degrade as the knob value
+converges to zero [38]. Thus, we develop a Virtual Knob Extension
+technique as outlined in Algorithm 2. Firstly, we utilize Structured
+Knowledge to select which knobs have the special values (Line 1).
+Such information is explicitly provided in official documents [40]
+and thus can be understood and summarized by Knowledge Handler
+(Section 5.1). Secondly, we add “virtual knobs” (control_knob, nor-
+mal_knob and special_knob) for these knobs (Line 3). control_knob is
+a knob with a value of zero or one to determine which value range
+will be used (Line 6). normal_knob and special_knob represent the
+normal and the special value range of the original knob, respec-
+tively. Based on the value of control_knob, only one of normal_knob
+1946
+
+===== PDF PAGE 9 =====
+and special_knob will be activated (Line 7-11). Above technique
+makes the special values of knobs to be considered by optimizers.
+Algorithm 2: Virtual Knob Extension
+Input: Knob Set K; Skill Library S; Optimizer O.
+Virtual Knobs Generation:
+1 Use Sto identify special knobs R⊂K;
+2 for 𝑟 ∈Rdo
+3 Create virtual knobs
+{𝑐𝑜𝑛𝑡𝑟𝑜𝑙
+_𝑘𝑛𝑜𝑏,𝑛𝑜𝑟𝑚𝑎𝑙_𝑘𝑛𝑜𝑏,𝑠𝑝𝑒𝑐𝑖𝑎𝑙_
+𝑘𝑛𝑜𝑏}for 𝑟;
+4 end
+Virtual Knobs Utilization:
+5 for round = 1 to number of iterations do
+6 Ochooses a value from {0,1}for 𝑐𝑜𝑛𝑡𝑟𝑜𝑙
+_
+7 if control_knob is 0 then
+8 Activate normal_knob in O;
+9 else
+10 Activate special_knob in O;
+11 end
+12 end
+𝑘𝑛𝑜𝑏;
+7 CONFIGURATION RECOMMENDER
+In this section, we discuss how to search the optimized space.
+Basic Idea of Bayesian Optimization. Bayesian Optimization
+is a sequential model-based algorithm [45]. It consists of two core
+components: the surrogate model and the acquisition function. A
+surrogate model takes a configuration as input and predicts the
+DBMS performance. The acquisition function evaluates the utility
+of candidate configurations (e.g., Probability of Improvement (PI) or
+Expected Improvement (EI)), and we choose the next configuration
+with the maximum utility. After the surrogate model is initialized,
+BO works iteratively as follows: (1) selecting the next configuration
+by maximizing acquisition function, (2) evaluating the configura-
+tion on DBMS and updating the surrogate model with the new
+observation. This process is repeated until it runs out of resources.
+Limitation of Bayesian Optimization. The key to the success
+of BO-based methods is its surrogate model. Recent works utilize
+random forest as the surrogate model to leverage its efficiency
+in modeling high-dimensional and heterogeneous search space,
+achieving the state-of-the-art performance [48, 62]. However, the
+number of samples required to have sufficient confidence in pre-
+dictions could still be significant [22, 23]. Specifically, it requires
+hundreds of iterations to achieve satisfactory performance, which
+is resource-intensive and time-consuming. The key observation of
+this work is that such iteration cost could be significantly reduced if
+we integrate the domain knowledge into the optimization process,
+which motivates the following novel optimization framework.
+Coarse-to-Fine Bayesian Optimization Framework. The intu-
+ition behind is to take advantages of the efficiency of coarse-grained
+search (i.e., we aim to acquire non-optimal but effective solutions
+with low expenses) and the thoroughness of fine-grained search
+(i.e., we aim to find the possible optimal solutions by exploring
+the space thoroughly). Algorithm 3 describes the workflow and
+highlights the main differences from the basic BO algorithm.
+Coarse-grained Stage. In the first stage, we only explore part of
+the whole space. It is a widely adopted approach to discretize the
+value ranges of parameters evenly for coarse-grained search. How-
+ever, we will lose too many promising solutions because such space
+reduction technique is inherently imprecise and non-adaptive. We
+seek help from knowledge to reduce the space while still retain-
+ing the potential for optimal results. Specifically, we explore the
+Tiny Feasible Space (Line 1) defined in Section 6.2, which is small
+but reliable because it comes from manuals. Following previous
+works [14, 22, 62], we initialize the surrogate model with ten sam-
+ples (𝑛= 10) generated by Latin Hypercube Sampling (LHS) [33],
+which distributes samples evenly across the whole space. Instead
+of sampling points from the whole space P, we sample from the
+Tiny Feasible Space T(Line 2). After the samples are evaluated
+on D(Line 3) and the surrogate model is initialized (Line 4), we
+explore Twith the BO algorithm for Citerations (Line 5-8). After
+the coarse-grained stage, we try out 𝑛+Cconfigurations and this
+already yields non-optimal but promising results in practice, owing
+to the guidance of domain knowledge.
+Fine-grained Stage. Since it is inevitable to lose some impor-
+tant configurations for any space reduction technique, we explore
+the space thoroughly until we run out of resource limits or reach
+expected performance improvement (Line 13-17). However, this
+process could be exhausting, especially when there are hundreds of
+knobs to tune. Thus we make optimizations to enhance the search:
+(1) we bootstrap BO with the samples from the first stage (Line 10),
+Algorithm 3: Coarse-to-Fine BO Framework. Blue under-
+lined text highlights differences to original BO algorithm.
+Input: DBMS D; Surrogate Model M; Acquisition Function
+A; Workload W; Structured Knowledge S; Whole
+Space P; Coarse Threshold C; Initial Number 𝑛.
+Output: Knob Configuration X.
+1 Generate Tiny Feasible Space Tfrom S;
+2 Generate 𝑛samples 𝑝𝑖 ∈Twith space-filling design (LHS);
+3 Evaluate samples on Dto get performance 𝑦𝑖 ;
+4 Update Mwith observations {(𝑝𝑖,𝑦𝑖 )};
+Coarse Stage:
+5 for 𝑖 = 1 to Cdo
+6 𝑥𝑖 ←arg max𝑥 ∈TA(𝑥);
+7 Evaluate 𝑥𝑖 on Dto get performance 𝑦𝑖 ;
+8 Update Mwith (𝑥𝑖, 𝑦𝑖 );
+9 end
+Fine Stage:
+10 Reuse the surrogate model Mfrom Coarse Stage;
+11 Apply Region Discard on Pto get P′;
+12 Apply Virtual Knob Extension on P′to get P′′;
+13 while not stopping condition do
+14 𝑥𝑖 ←arg max𝑥 ∈P′′A(𝑥);
+15 Evaluate 𝑥𝑖 on Dto get performance 𝑦𝑖 ;
+16 Update Mwith (𝑥𝑖, 𝑦𝑖 );
+17 end
+18 X←arg max𝑥𝑖 𝑦𝑖 ;
+19 return X;
+1947
+
+===== PDF PAGE 10 =====
+[Sparse text layer: inspect the original PDF]
+1948
+
+===== PDF PAGE 11 =====
+[Sparse text layer: inspect the original PDF]
+1949
+
+===== PDF PAGE 12 =====
+Table 3: Initial Profiling Overheads Statistics
+Tuning Lake Structured Knowledge
+Complex. Knob #n
+Token (k) Money (USD) Time (s) Token (k) Money (USD) Time (s)
+3.5 4 4-turbo 3.5 4 4-turbo 3.5 4 4-turbo 3.5 4 4-turbo 3.5 4 4-turbo 3.5 4 4-turbo
+50 124.4 160.1 148.8 0.2 6.0 2.1 833.0 4155.0 3023.0 558.0 578.0 558.4 0.9 18.7 5.9 1183.0 4888.0 1805.0
+100 254.6 324.1 300.4 0.4 12.2 4.2 1679.0 7939.0 6021.0 1121.0 1162.7 1105.5 1.7 37.8 11.7 2371.0 9738.0 4985.0
+O (n)
+150 379.5 482.7 443.9 0.6 18.2 6.2 2450.0 11742.0 8626.0 1690.9 1738.4 1657.7 2.6 56.4 17.5 3574.0 13958.0 6729.0
+average 2.5 3.2 3.0 0.003 0.1 0.04 16.3 78.3 57.5 11.3 11.6 11.1 0.02 0.4 0.1 23.8 93.1 44.9
+times and we present two representative results, which are denoted
+as “GPTuner-50-1” and “GPTuner-50-2”, respectively.
+As shown in Figure 7, the higher the knowledge quality, the better
+the tuning performance. Note that outdated knowledge only affects
+tuning performance slightly, while inaccurate knowledge impacts
+tuning performance with different degrees. This is related to our
+motivation in Section 6.1, highlighting that some knobs are crucial
+in determining DBMS performance and GPTuner benefits a lot if
+the knowledge about these important knobs is correct. On one hand,
+in production environment, we encourage users to double check
+such knowledge. On the other hand, given that GPTuner under
+the noisy knowledge inputs is still better than the best optimizer
+without knowledge input (i.e., SMAC, ), we believe GPTuner is
+robust enough to learn from mistakes in its BO stage and achieve
+satisfactory performance optimization ultimately.
+Effect of Different Language Models. We analyze the effect of
+LLM on tuning performance. Specifically, DB-BERT is upgraded
+to use GPT-4 (“DB-GPT-4”), and GPTuner is tested with “gpt-3.5-
+turbo” and “gpt-4” (“GPTuner-3.5” and “GPTuner-4”). As shown
+in Figure 9, DB-BERT does not benefit from the improvement of
+language model, implying its design is less dependent on the quality
+of language model. Both versions of GPTuner outperform DB-
+BERT methods, and GPTuner significantly benefits from GPT-4,
+demonstrating its ability to leverage more sophisticated LLM.
+functions of existing knobs). We present the number of tokens
+consumed, the monetary costs and the time required using three
+language models under three different number of target knobs. As
+presented in Table 3, the computational complexity is proportional
+to the number of target knobs (i.e., 𝑂(𝑛)where n is the number of
+target knobs), and the costs scale almost linearly with the increasing
+of 𝑛. Without parallelism optimization, it takes “gpt-4-turbo” about
+2101.6k tokens, 23.7 USD and 4 hours to finish the knowledge
+preparation and transformation for 150 knobs from PostgreSQL.
+Given that the built results are reusable, and the costs of GPTuner
+are much lower than previous approaches (e.g., it takes more than
+three months to initialize the knowledge base for OtterTune and
+this base requires rebuilding from scratch for changes in hardware
+components and software versions [8, 53]), we conclude that the
+costs introduced in GPTuner are feasible and practical.
+8.6 Ablation Study
+We conduct a comprehensive ablation study to reveal the benefits
+of each module in GPTuner. We omit this study due to space
+limitation, please refer to our technical report [1] for more details.
+8.5 Cost Analysis
+There are two kinds of overheads in the context of DBMS knob tun-
+ing: (1) Initial Profiling Overhead, and (2) Runtime Overhead. Initial
+Profiling Overhead is the time required to collect training samples
+or to pre-train models before the real tuning process (e.g., Otter-
+Tune [53] demands “over 30k trials per DBMS” to collect training
+samples). Runtime Overhead is the time taken by an optimizer to
+suggest the next configuration to evaluate. In practice, runtime over-
+head (e.g., < 1 second for SMAC [62]) is much less than the DBMS
+evaluation time (e.g., minutes to hours), and thus recent works fo-
+cus on sample efficiency (i.e., the number of DBMS evaluation times
+it takes to reach a given level of performance improvement) rather
+than the optimization time [22, 62]. Since GPTuner introduces no
+extra runtime overhead compared to the BO-based optimizer, we
+only discuss the Initial Profiling Overhead next.
+Given a specific DBMS product (e.g., PostgreSQL and MySQL),
+we only need to conduct domain knowledge-related stages for
+one time. We can use the built results repeatedly in the future
+until there are major version updates for that DBMS, introducing
+a large number of changes of knob features (e.g., DBMS vendors
+extensively add new knobs, delete old knobs or even change the
+9 CONCLUSION AND OUTLOOK
+This paper introduces GPTuner, a manual-reading database tuning
+system that leverages domain knowledge to enhance the knob tun-
+ing process. Extensive experiments are conducted to demonstrate
+the effectiveness, scalability and robustness of GPTuner.
+Online Tuning. We follow the tuning paradigm of most existing
+approaches by tuning a copy DBMS offline, and then deploy the
+satisfactory configuration on the DBMS in production environment.
+However, it takes considerable resources to make a copy DBMS for
+offline tuning. The lack of a practical online tuning paradigm comes
+from the fact that a configuration sampled from the large configu-
+ration space could make the system crash, and such insecurity is
+disastrous to online services. In the future, we will explore how to
+use domain knowledge to eliminate dangerous configurations.
+Optimizing other Data Processing Systems. The idea of using
+domain knowledge to enhance black-box optimization algorithms
+is generic, and can be utilized to enhance other data processing
+systems like Spark [60] and Flink [7]. In the future, we will identify
+and solve the unique challenges when targeting at other systems.
+ACKNOWLEDGEMENTS
+Jianguo Wang acknowledges the support of the National Science
+Foundation under Grant Number 2337806.
+1950
+
+===== PDF PAGE 13 =====
+REFERENCES
+[1] 2024. GPTuner: full version. https://github.com/SolidLao/GPTuner/blob/main/
+gptuner-technical-report.pdf
+[2] Toufique Ahmed and Premkumar Devanbu. 2023. Few-shot training LLMs
+for project-specific code-summarization. In Proceedings of the 37th IEEE/ACM
+International Conference on Automated Software Engineering (ASE ’22). Asso-
+ciation for Computing Machinery, New York, NY, USA, Article 177, 5 pages.
+https://doi.org/10.1145/3551349.3559555
+[3] Sihem Amer-Yahia, Angela Bonifati, Lei Chen, Guoliang Li, Kyuseok Shim, Jian-
+liang Xu, and Xiaochun Yang. 2023. From Large Language Models to Databases
+and Back: A discussion on research and education. arXiv:2306.01388 [cs.DB]
+[4] Jason Ansel, Shoaib Kamil, Kalyan Veeramachaneni, Jonathan Ragan-Kelley,
+Jeffrey Bosboom, Una-May O’Reilly, and Saman Amarasinghe. 2014. OpenTuner:
+An Extensible Framework for Program Autotuning. In Proceedings of the 23rd
+International Conference on Parallel Architectures and Compilation (Edmonton,
+AB, Canada) (PACT ’14). Association for Computing Machinery, New York, NY,
+USA, 303–316. https://doi.org/10.1145/2628071.2628092
+[5] Simran Arora, Avanika Narayan, Mayee F. Chen, Laurel Orr, Neel Guha, Kush
+Bhatia, Ines Chami, Frederic Sala, and Christopher Ré. 2022. Ask Me Anything:
+A simple strategy for prompting language models. arXiv:2210.02441 [cs.CL]
+[6] Baoqing Cai, Yu Liu, Ce Zhang, Guangyu Zhang, Ke Zhou, Li Liu, Chunhua
+Li, Bin Cheng, Jie Yang, and Jiashu Xing. 2022. HUNTER: An Online Cloud
+Database Hybrid Tuning System for Personalized Requirements. In Proceedings
+of the 2022 International Conference on Management of Data (Philadelphia, PA,
+USA) (SIGMOD ’22). Association for Computing Machinery, New York, NY, USA,
+646–659. https://doi.org/10.1145/3514221.3517882
+[7] Paris Carbone, Asterios Katsifodimos, Stephan Ewen, Volker Markl, Seif Haridi,
+and Kostas Tzoumas. 2015. Apache flink: Stream and batch processing in a single
+engine. The Bulletin of the Technical Committee on Data Engineering 38, 4 (2015).
+[8] Stefano Cereda, Stefano Valladares, Paolo Cremonesi, and Stefano Doni. 2021.
+CGPTuner: A Contextual Gaussian Process Bandit Approach for the Automatic
+Tuning of IT Configurations under Varying Workload Conditions. Proc. VLDB
+Endow. 14, 8 (apr 2021), 1401–1413. https://doi.org/10.14778/3457390.3457404
+[9] Zhoujun Cheng, Tianbao Xie, Peng Shi, Chengzu Li, Rahul Nadkarni, Yushi Hu,
+Caiming Xiong, Dragomir Radev, Mari Ostendorf, Luke Zettlemoyer, Noah A.
+Smith, and Tao Yu. 2023. Binding Language Models in Symbolic Languages.
+arXiv:2210.02875 [cs.CL]
+[10] Benoît Dageville and Mohamed Zait. 2002. SQL Memory Management in Oracle9i.
+In Proceedings of the 28th International Conference on Very Large Data Bases (Hong
+Kong, China) (VLDB ’02). VLDB Endowment, 962–973.
+[11] Damai Dai, Yutao Sun, Li Dong, Yaru Hao, Shuming Ma, Zhifang Sui, and Furu
+Wei. 2023. Why Can GPT Learn In-Context? Language Models Secretly Perform
+Gradient Descent as Meta-Optimizers. In Findings of the Association for Computa-
+tional Linguistics: ACL 2023. Association for Computational Linguistics, Toronto,
+Canada, 4005–4019. https://doi.org/10.18653/v1/2023.findings-acl.247
+[12] Xiang Deng, Prashant Shiralkar, Colin Lockard, Binxuan Huang, and Huan Sun.
+2022. Dom-lm: Learning generalizable representations for html documents. arXiv
+preprint arXiv:2201.10608 (2022).
+[13] Djellel Eddine Difallah, Andrew Pavlo, Carlo Curino, and Philippe Cudré-
+Mauroux. 2013. OLTP-Bench: An Extensible Testbed for Benchmarking Re-
+lational Databases. PVLDB 7, 4 (2013), 277–288. http://www.vldb.org/pvldb/
+vol7/p277-difallah.pdf
+[14] Songyun Duan, Vamsidhar Thummala, and Shivnath Babu. 2009. Tuning Data-
+base Configuration Parameters with ITuned. Proc. VLDB Endow. 2, 1 (aug 2009),
+1246–1257. https://doi.org/10.14778/1687627.1687767
+[15] EDB. 2023. https://www.enterprisedb.com/blog/tuning-maxwalsize-postgresql
+[16] Matthias Feurer and Frank Hutter. 2019. Hyperparameter optimization. Auto-
+mated machine learning: Methods, systems, challenges (2019), 3–33.
+[17] HackerNews. 2023. https://news.ycombinator.com/item?id=28869509
+[18] Peter Henderson, Riashat Islam, Philip Bachman, Joelle Pineau, Doina Precup,
+and David Meger. 2018. Deep reinforcement learning that matters. In Proceedings
+of the AAAI conference on artificial intelligence, Vol. 32.
+[19] Shrainik Jain, Bill Howe, Jiaqi Yan, and Thierry Cruanes. 2018. Query2Vec:
+An Evaluation of NLP Techniques for Generalized Workload Analytics.
+arXiv:1801.05613 [cs.DB]
+[20] Zhengbao Jiang, Yi Mao, Pengcheng He, Graham Neubig, and Weizhu Chen. 2022.
+OmniTab: Pretraining with Natural and Synthetic Data for Few-shot Table-based
+Question Answering. arXiv:2207.03637 [cs.CL]
+[21] Konstantinos Kanellis, Ramnatthan Alagappan, and Shivaram Venkataraman.
+2020. Too Many Knobs to Tune? Towards Faster Database Tuning by Pre-
+Selecting Important Knobs. In Proceedings of the 12th USENIX Conference on Hot
+Topics in Storage and File Systems (HotStorage’20). USENIX Association, USA,
+Article 16, 1 pages.
+[22] Konstantinos Kanellis, Cong Ding, Brian Kroth, Andreas Müller, Carlo Curino,
+and Shivaram Venkataraman. 2022. LlamaTune: Sample-Efficient DBMS Con-
+figuration Tuning. Proc. VLDB Endow. 15, 11 (jul 2022), 2953–2965. https:
+//doi.org/10.14778/3551793.3551844
+[23] Mayuresh Kunjir and Shivnath Babu. 2020. Black or White? How to Develop an
+AutoTuner for Memory-Based Analytics. In Proceedings of the 2020 ACM SIGMOD
+International Conference on Management of Data (Portland, OR, USA) (SIGMOD
+’20). Association for Computing Machinery, New York, NY, USA, 1667–1683.
+https://doi.org/10.1145/3318464.3380591
+[24] Eva Kwan. 2002. Automatic Configuration for IBM ® DB 2 Universal Database TM
+Compressing years of performance tuning experience into seconds of execution.
+https://api.semanticscholar.org/CorpusID:15267980
+[25] Jiale Lao, Yibo Wang, Yufei Li, Jianping Wang, Yunjia Zhang, Zhiyuan Cheng,
+Wanghu Chen, Yuanchun Zhou, Mingjie Tang, and Jianguo Wang. 2024. A
+Demonstration of GPTuner: A GPT-Based Manual-Reading Database Tuning
+System. In Companion of the 2024 International Conference on Management of
+Data (Santiago, Chile) (SIGMOD ’24). Association for Computing Machinery,
+New York, NY, USA, 4. https://doi.org/10.1145/3626246.3654739
+[26] Guoliang Li, Xuanhe Zhou, Shifu Li, and Bo Gao. 2019. QTune: A Query-Aware
+Database Tuning System with Deep Reinforcement Learning. Proc. VLDB Endow.
+12, 12 (aug 2019), 2118–2130. https://doi.org/10.14778/3352063.3352129
+[27] Yifei Li, Zeqi Lin, Shizhuo Zhang, Qiang Fu, Bei Chen, Jian-Guang Lou, and
+Weizhu Chen. 2022. On the advance of making language models better reasoners.
+arXiv preprint arXiv:2206.02336 (2022).
+[28] Marius Lindauer, Katharina Eggensperger, Matthias Feurer, André Biedenkapp,
+Difan Deng, Carolin Benjamins, Tim Ruhkopf, René Sass, and Frank Hutter.
+2022. SMAC3: A Versatile Bayesian Optimization Package for Hyperparameter
+Optimization. Journal of Machine Learning Research 23, 54 (2022), 1–9. http:
+//jmlr.org/papers/v23/21-0888.html
+[29] Marius Lindauer, Katharina Eggensperger, Matthias Feurer, André Biedenkapp,
+Difan Deng, Carolin Benjamins, Tim Ruhkopf, René Sass, and Frank Hutter.
+2022. SMAC3: A Versatile Bayesian Optimization Package for Hyperparameter
+Optimization. Journal of Machine Learning Research 23, 54 (2022), 1–9. http:
+//jmlr.org/papers/v23/21-0888.html
+[30] Colin Lockard, Prashant Shiralkar, and Xin Luna Dong. 2019. Openceres: When
+open information extraction meets the semi-structured web. In Proceedings of
+the 2019 Conference of the North American Chapter of the Association for Com-
+putational Linguistics: Human Language Technologies, Volume 1 (Long and Short
+Papers). 3047–3056.
+[31] Colin Lockard, Prashant Shiralkar, Xin Luna Dong, and Hannaneh Hajishirzi.
+2020. Zeroshotceres: Zero-shot relation extraction from semi-structured web-
+pages. arXiv preprint arXiv:2005.07105 (2020).
+[32] Zheheng Luo, Qianqian Xie, and Sophia Ananiadou. 2023. ChatGPT as a Factual
+Inconsistency Evaluator for Text Summarization. arXiv:2303.15621 [cs.CL]
+[33] Michael D. McKay. 1992. Latin Hypercube Sampling as a Tool in Uncertainty
+Analysis of Computer Models. In Proceedings of the 24th Conference on Winter
+Simulation (Arlington, Virginia, USA) (WSC ’92). Association for Computing
+Machinery, New York, NY, USA, 557–564. https://doi.org/10.1145/167293.167637
+[34] Avanika Narayan, Ines Chami, Laurel Orr, Simran Arora, and Christopher Ré.
+2022. Can Foundation Models Wrangle Your Data? arXiv:2205.09911 [cs.LG]
+[35] Fatemeh Nargesian, Erkang Zhu, Renée J Miller, Ken Q Pu, and Patricia C Arocena.
+2019. Data lake management: challenges and opportunities. Proceedings of the
+VLDB Endowment 12, 12 (2019), 1986–1989.
+[36] OpenAI. 2023. GPT-4 Technical Report. arXiv:2303.08774 [cs.CL]
+[37] Andrew Pavlo, Gustavo Angulo, Joy Arulraj, Haibin Lin, Jiexi Lin, Lin Ma,
+Prashanth Menon, Todd C Mowry, Matthew Perron, Ian Quah, et al. 2017. Self-
+Driving Database Management Systems.. In CIDR, Vol. 4. 1.
+[38] Andrew Pavlo, Matthew Butrovich, Lin Ma, Prashanth Menon, Wan Shen Lim,
+Dana Van Aken, and William Zhang. 2021. Make Your Database System Dream
+of Electric Sheep: Towards Self-Driving Operation. Proc. VLDB Endow. 14, 12 (jul
+2021), 3211–3221. https://doi.org/10.14778/3476311.3476411
+[39] PostgreSQL. 2023. https://www.postgresql.org/docs/current/runtime-config-
+resource.html
+[40] PostgreSQL. 2023. https://www.postgresql.org/docs/current/index.html
+[41] PostgresqlCO.NF. 2023. https://postgresqlco.nf/
+[42] Omer Sagi and Lior Rokach. 2018. Ensemble learning: A survey. Wiley Interdis-
+ciplinary Reviews: Data Mining and Knowledge Discovery 8, 4 (2018), e1249.
+[43] Torsten Scholak, Nathan Schucher, and Dzmitry Bahdanau. 2021. PICARD:
+Parsing Incrementally for Constrained Auto-Regressive Decoding from Language
+Models. arXiv:2109.05093 [cs.CL]
+[44] Jaeho Shin, Sen Wu, Feiran Wang, Christopher De Sa, Ce Zhang, and Christo-
+pher Ré. 2015. Incremental knowledge base construction using deepdive. In
+Proceedings of the VLDB Endowment International Conference on Very Large Data
+Bases, Vol. 8. NIH Public Access, 1310.
+[45] Jasper Snoek, Hugo Larochelle, and Ryan P Adams. 2012. Practical bayesian
+optimization of machine learning algorithms. Advances in neural information
+processing systems 25 (2012).
+[46] David G. Sullivan, Margo I. Seltzer, and Avi Pfeffer. 2004. Using Probabilistic
+Reasoning to Automate Software Tuning. In Proceedings of the Joint International
+Conference on Measurement and Modeling of Computer Systems (New York, NY,
+USA) (SIGMETRICS ’04/Performance ’04). Association for Computing Machinery,
+New York, NY, USA, 404–405. https://doi.org/10.1145/1005686.1005739
+1951
+
+===== PDF PAGE 14 =====
+[47] Xiu Tang, Sai Wu, Mingli Song, Shanshan Ying, Feifei Li, and Gang Chen. 2022.
+PreQR: Pre-training Representation for SQL Understanding. In Proceedings of
+the 2022 International Conference on Management of Data (Philadelphia, PA,
+USA) (SIGMOD ’22). Association for Computing Machinery, New York, NY, USA,
+204–216. https://doi.org/10.1145/3514221.3517878
+[48] Chris Thornton, Frank Hutter, Holger H. Hoos, and Kevin Leyton-Brown. 2013.
+Auto-WEKA: Combined Selection and Hyperparameter Optimization of Clas-
+sification Algorithms. In Proceedings of the 19th ACM SIGKDD International
+Conference on Knowledge Discovery and Data Mining (Chicago, Illinois, USA)
+(KDD ’13). Association for Computing Machinery, New York, NY, USA, 847–855.
+https://doi.org/10.1145/2487575.2487629
+[49] Immanuel Trummer. 2021. Can deep neural networks predict data correlations
+from column names? arXiv preprint arXiv:2107.04553 (2021).
+[50] Immanuel Trummer. 2022. DB-BERT: A Database Tuning Tool That "Reads the
+Manual". In Proceedings of the 2022 International Conference on Management of
+Data (Philadelphia, PA, USA) (SIGMOD ’22). Association for Computing Machin-
+ery, New York, NY, USA, 190–203. https://doi.org/10.1145/3514221.3517843
+[51] Immanuel Trummer. 2023. Demonstrating GPT-DB: Generating Query-Specific
+and Customizable Code for SQL Processing with GPT-4. Proceedings of the VLDB
+Endowment 16, 12 (2023), 4098–4101.
+[52] Immanuel Trummer, Junxiong Wang, Ziyun Wei, Deepak Maram, Samuel Mose-
+ley, Saehan Jo, Joseph Antonakakis, and Ankush Rayabhari. 2021. SkinnerDB:
+Regret-bounded Query Evaluation via Reinforcement Learning. ACM Trans. Data-
+base Syst. 46, 3, Article 9 (sep 2021), 45 pages. https://doi.org/10.1145/3464389
+[53] Dana Van Aken, Andrew Pavlo, Geoffrey J. Gordon, and Bohan Zhang. 2017.
+Automatic Database Management System Tuning Through Large-Scale Machine
+Learning. In Proceedings of the 2017 ACM International Conference on Management
+of Data (Chicago, Illinois, USA) (SIGMOD ’17). Association for Computing Machin-
+ery, New York, NY, USA, 1009–1024. https://doi.org/10.1145/3035918.3064029
+[54] Dana Van Aken, Dongsheng Yang, Sebastien Brillard, Ari Fiorino, Bohan Zhang,
+Christian Bilien, and Andrew Pavlo. 2021. An Inquiry into Machine Learning-
+Based Automatic Configuration Tuning Services on Real-World Database Man-
+agement Systems. Proc. VLDB Endow. 14, 7 (mar 2021), 1241–1253. https:
+//doi.org/10.14778/3450980.3450992
+[55] Cunxiang Wang, Xiaoze Liu, Yuanhao Yue, Xiangru Tang, Tianhang Zhang,
+Cheng Jiayang, Yunzhi Yao, Wenyang Gao, Xuming Hu, Zehan Qi, Yidong Wang,
+Linyi Yang, Jindong Wang, Xing Xie, Zheng Zhang, and Yue Zhang. 2023. Survey
+on Factuality in Large Language Models: Knowledge, Retrieval and Domain-
+Specificity. arXiv:2310.07521 [cs.CL]
+[56] Jiaqi Wang, Tianyi Li, Anni Wang, Xiaoze Liu, Lu Chen, Jie Chen, Jianye Liu,
+Junyang Wu, Feifei Li, and Yunjun Gao. 2023. Real-time Workload Pattern
+Analysis for Large-scale Cloud Databases. arXiv preprint arXiv:2307.02626 (2023).
+[57] Junxiong Wang, Immanuel Trummer, and Debabrota Basu. 2021. UDO: universal
+database optimization using reinforcement learning. Proceedings of the VLDB
+Endowment 14, 13 (2021), 3402–3414.
+[58] Yunhu Ye, Binyuan Hui, Min Yang, Binhua Li, Fei Huang, and Yongbin Li. 2023.
+Large Language Models are Versatile Decomposers: Decompose Evidence and
+Questions for Table-based Reasoning. arXiv:2301.13808 [cs.CL]
+[59] Tao Yu, Rui Zhang, Kai Yang, Michihiro Yasunaga, Dongxu Wang, Zifan Li,
+James Ma, Irene Li, Qingning Yao, Shanelle Roman, Zilin Zhang, and Dragomir
+Radev. 2019. Spider: A Large-Scale Human-Labeled Dataset for Complex and
+Cross-Domain Semantic Parsing and Text-to-SQL Task. arXiv:1809.08887 [cs.CL]
+[60] Matei Zaharia, Reynold S. Xin, Patrick Wendell, Tathagata Das, Michael Armbrust,
+Ankur Dave, Xiangrui Meng, Josh Rosen, Shivaram Venkataraman, Michael J.
+Franklin, Ali Ghodsi, Joseph Gonzalez, Scott Shenker, and Ion Stoica. 2016.
+Apache Spark: a unified engine for big data processing. Commun. ACM 59,
+11 (oct 2016), 56–65. https://doi.org/10.1145/2934664
+[61] Ji Zhang, Yu Liu, Ke Zhou, Guoliang Li, Zhili Xiao, Bin Cheng, Jiashu Xing,
+Yangtao Wang, Tianheng Cheng, Li Liu, Minwei Ran, and Zekang Li. 2019. An
+End-to-End Automatic Cloud Database Tuning System Using Deep Reinforce-
+ment Learning. In Proceedings of the 2019 International Conference on Management
+of Data (Amsterdam, Netherlands) (SIGMOD ’19). Association for Computing Ma-
+chinery, New York, NY, USA, 415–432. https://doi.org/10.1145/3299869.3300085
+[62] Xinyi Zhang, Zhuo Chang, Yang Li, Hong Wu, Jian Tan, Feifei Li, and Bin Cui.
+2022. Facilitating Database Tuning with Hyper-Parameter Optimization: A
+Comprehensive Experimental Evaluation. Proc. VLDB Endow. 15, 9 (may 2022),
+1808–1821. https://doi.org/10.14778/3538598.3538604
+[63] Xinyi Zhang, Hong Wu, Zhuo Chang, Shuowei Jin, Jian Tan, Feifei Li, Tieying
+Zhang, and Bin Cui. 2021. ResTune: Resource Oriented Tuning Boosted by Meta-
+Learning for Cloud Databases. In Proceedings of the 2021 International Conference
+on Management of Data (Virtual Event, China) (SIGMOD ’21). Association for
+Computing Machinery, New York, NY, USA, 2102–2114. https://doi.org/10.1145/
+3448016.3457291
+[64] Xinyi Zhang, Hong Wu, Yang Li, Jian Tan, Feifei Li, and Bin Cui. 2022. Towards
+Dynamic and Safe Configuration Tuning for Cloud Databases. In Proceedings
+of the 2022 International Conference on Management of Data (Philadelphia, PA,
+USA) (SIGMOD ’22). Association for Computing Machinery, New York, NY, USA,
+631–645. https://doi.org/10.1145/3514221.3526176
+[65] Yunjia Zhang, Avrilia Floratou, Joyce Cahoon, Subru Krishnan, Andreas C Müller,
+Dalitso Banda, Fotis Psallidas, and Jignesh M Patel. 2023. Schema Matching using
+Pre-Trained Language Models. In 2023 IEEE 39th International Conference on Data
+Engineering (ICDE). IEEE, 1558–1571.
+[66] Yunjia Zhang, Jordan Henkel, Avrilia Floratou, Joyce Cahoon, Shaleen Deep,
+and Jignesh M. Patel. 2023. ReAcTable: Enhancing ReAct for Table Question
+Answering. arXiv:2310.00815 [cs.DB]
+[67] Xinyang Zhao, Xuanhe Zhou, and Guoliang Li. 2023. Automatic Database Knob
+Tuning: A Survey. IEEE Transactions on Knowledge and Data Engineering (2023),
+1–20. https://doi.org/10.1109/TKDE.2023.3266893
+[68] Xuanhe Zhou, Guoliang Li, and Zhiyuan Liu. 2023. LLM As DBA.
+arXiv:2308.05481 [cs.DB]
+[69] Yuqing Zhu, Jianxun Liu, Mengying Guo, Yungang Bao, Wenlong Ma, Zhuoyue
+Liu, Kunpeng Song, and Yingchun Yang. 2017. BestConfig: Tapping the Per-
+formance Potential of Systems via Automatic Configuration Tuning. In Pro-
+ceedings of the 2017 Symposium on Cloud Computing (Santa Clara, California)
+(SoCC ’17). Association for Computing Machinery, New York, NY, USA, 338–350.
+https://doi.org/10.1145/3127479.3128605
+1952

@@ -1,0 +1,274 @@
+{
+  "checked_at": "2026-10-30",
+  "method": "Primary conference programs/proceedings, author PDFs, and source code. Statements here paraphrase verification findings; they are not verbatim quotations. Local artifact validation is separate.",
+  "papers": [
+    {
+      "id": "01",
+      "title": "SCOOT: SLO-Oriented Performance Tuning for LLM Inference Engines",
+      "venue": "WWW 2025",
+      "identity_sources": [
+        "https://doi.org/10.1145/3696410.3714930",
+        "https://arxiv.org/abs/2408.04323"
+      ],
+      "mechanism_source": "https://arxiv.org/pdf/2408.04323v2",
+      "supports": "Conference identity via accepted author version and DOI; multi-knob inference tuning, constrained BO/MOBO, independent candidate evaluations."
+    },
+    {
+      "id": "02",
+      "title": "TuxBot: Semantic-Aware Online OS Tuning with LLMs",
+      "venue": "SOSP 2026",
+      "identity_sources": [
+        "https://sigops.org/s/conferences/sosp/2026/schedule.html",
+        "https://doi.org/10.1145/3830418.3843885",
+        "https://arxiv.org/abs/2605.15026"
+      ],
+      "mechanism_source": "https://arxiv.org/pdf/2605.15026v2",
+      "supports": "SOSP official schedule and DOI; PDF sections 4.2 and 4.5 already cover semantic trimming, numeric optimizer integration, and application-knob extension."
+    },
+    {
+      "id": "03",
+      "title": "LaTune: Lightweight and Adaptive Configuration Tuning for LLM Inference on Edge Devices",
+      "venue": "WWW 2026",
+      "identity_sources": [
+        "https://doi.org/10.1145/3774904.3792382",
+        "https://www2026.thewebconf.org/accepted/research-tracks.html"
+      ],
+      "mechanism_source": "User-provided local file; publisher DOI printed in PDF",
+      "supports": "WWW official research-track list plus user-provided publisher PDF; sections 4.4 and 5.3 distinguish Pareto-set selection overhead from engine reconfiguration."
+    },
+    {
+      "id": "04",
+      "title": "Towards Dynamic and Safe Configuration Tuning for Cloud Databases",
+      "venue": "SIGMOD 2022",
+      "identity_sources": [
+        "https://doi.org/10.1145/3514221.3526176",
+        "https://arxiv.org/abs/2203.14473"
+      ],
+      "mechanism_source": "https://arxiv.org/pdf/2203.14473",
+      "supports": "SIGMOD DOI and downloaded author copy; context modeling and safe online configuration exploration."
+    },
+    {
+      "id": "05",
+      "title": "GPTuner: A Manual-Reading Database Tuning System via GPT-Guided Bayesian Optimization",
+      "venue": "PVLDB 17(8), VLDB 2024",
+      "identity_sources": [
+        "https://doi.org/10.14778/3659437.3659449",
+        "https://www.vldb.org/pvldb/vol17/p1939-tang.pdf"
+      ],
+      "mechanism_source": "https://www.vldb.org/pvldb/vol17/p1939-tang.pdf",
+      "supports": "PVLDB official PDF, volume/number and DOI printed on page 1; knowledge-guided knob selection and coarse-to-fine BO."
+    },
+    {
+      "id": "06",
+      "title": "λ-Tune: Harnessing Large Language Models for Automated Database System Tuning",
+      "venue": "PACMMOD 3(1), SIGMOD 2025",
+      "identity_sources": [
+        "https://doi.org/10.1145/3709652",
+        "https://arxiv.org/abs/2411.03500"
+      ],
+      "mechanism_source": "https://arxiv.org/pdf/2411.03500",
+      "supports": "PACMMOD DOI and author version; LLM configuration generation with evaluation/reconfiguration costs."
+    },
+    {
+      "id": "07",
+      "title": "MorphServe: Efficient and Workload-Aware LLM Serving via Runtime Quantized Layer Swapping and KV Cache Resizing",
+      "venue": "MLSys 2026",
+      "identity_sources": [
+        "https://proceedings.mlsys.org/paper_files/paper/2026/hash/8144a9d62e506af0fcdeac0e456b2710-Abstract-Conference.html",
+        "https://arxiv.org/abs/2506.02006v2"
+      ],
+      "mechanism_source": "https://arxiv.org/pdf/2506.02006v2",
+      "supports": "MLSys official proceedings page and PDF; compared with downloaded arXiv v2 for state-preserving layer swaps and elastic KV resizing. Page numbering differs."
+    },
+    {
+      "id": "08",
+      "title": "Llumnix: Dynamic Scheduling for Large Language Model Serving",
+      "venue": "OSDI 2024",
+      "identity_sources": [
+        "https://www.usenix.org/conference/osdi24/presentation/sun-biao"
+      ],
+      "mechanism_source": "https://www.usenix.org/system/files/osdi24-sun-biao.pdf",
+      "supports": "USENIX conference page and official PDF; live request migration and dynamic scheduling."
+    },
+    {
+      "id": "09",
+      "title": "Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve",
+      "venue": "OSDI 2024",
+      "identity_sources": [
+        "https://www.usenix.org/conference/osdi24/presentation/agrawal"
+      ],
+      "mechanism_source": "https://www.usenix.org/system/files/osdi24-agrawal.pdf",
+      "supports": "USENIX conference page and official PDF; chunked prefill and stall-free batching."
+    },
+    {
+      "id": "10",
+      "title": "DistServe: Disaggregating Prefill and Decoding for Goodput-optimized Large Language Model Serving",
+      "venue": "OSDI 2024",
+      "identity_sources": [
+        "https://www.usenix.org/conference/osdi24/presentation/zhong-yinmin"
+      ],
+      "mechanism_source": "https://www.usenix.org/system/files/osdi24-zhong-yinmin.pdf",
+      "supports": "USENIX conference page and official PDF; prefill/decode disaggregation and goodput-oriented planning."
+    },
+    {
+      "id": "11",
+      "title": "FlashInfer: Efficient and Customizable Attention Engine for LLM Inference Serving",
+      "venue": "MLSys 2025",
+      "identity_sources": [
+        "https://proceedings.mlsys.org/paper_files/paper/2025/hash/dbf02b21d77409a2db30e56866a8ab3a-Abstract-Conference.html"
+      ],
+      "mechanism_source": "https://proceedings.mlsys.org/paper_files/paper/2025/file/dbf02b21d77409a2db30e56866a8ab3a-Paper-Conference.pdf",
+      "supports": "MLSys official proceedings; KV representations and dynamism-aware attention execution."
+    },
+    {
+      "id": "12",
+      "title": "AdaServe: Accelerating Multi-SLO LLM Serving with SLO-Customized Speculative Decoding",
+      "venue": "EuroSys 2026",
+      "identity_sources": [
+        "https://2026.eurosys.org/papers.html"
+      ],
+      "mechanism_source": "https://www.pdl.cmu.edu/PDL-FTP/BigLearning/AdaServe_EuroSys_26.pdf",
+      "supports": "EuroSys 2026 accepted list and author-hosted PDF; multi-SLO speculative decoding."
+    },
+    {
+      "id": "13",
+      "title": "METIS: Fast Quality-Aware RAG Systems with Configuration Adaptation",
+      "venue": "SOSP 2025",
+      "identity_sources": [
+        "https://doi.org/10.1145/3731569.3764855"
+      ],
+      "mechanism_source": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/sosp25-final547.pdf",
+      "supports": "SOSP DOI and author-hosted final-layout PDF; joint RAG configuration and scheduling."
+    },
+    {
+      "id": "14",
+      "title": "Ave: Guiding Agentic GPU Optimization Using Data-Flow Invariants",
+      "venue": "SOSP 2026",
+      "identity_sources": [
+        "https://sigops.org/s/conferences/sosp/2026/schedule.html",
+        "https://doi.org/10.1145/3830418.3843902",
+        "https://arxiv.org/abs/2604.18616"
+      ],
+      "mechanism_source": "https://arxiv.org/pdf/2604.18616v2",
+      "supports": "SOSP official schedule/accepted list and DOI; author v2 describes data-flow invariants for agentic code optimization."
+    },
+    {
+      "id": "15",
+      "title": "OPPerTune: Post-Deployment Configuration Tuning of Services Made Easy",
+      "venue": "NSDI 2024",
+      "identity_sources": [
+        "https://www.usenix.org/conference/nsdi24/presentation/somashekar"
+      ],
+      "mechanism_source": "https://www.usenix.org/system/files/nsdi24-somashekar.pdf",
+      "supports": "USENIX NSDI conference page and official PDF; HybridBandits and AutoScope."
+    },
+    {
+      "id": "16",
+      "title": "TUNA: Tuning Unstable and Noisy Cloud Applications",
+      "venue": "EuroSys 2025",
+      "identity_sources": [
+        "https://www.microsoft.com/en-us/research/publication/tuna-tuning-unstable-and-noisy-cloud-applications/"
+      ],
+      "mechanism_source": "https://www.microsoft.com/en-us/research/uploads/prod/2025/02/TUNA.pdf",
+      "supports": "Author institution publication page identifies EuroSys 2025; PDF explains noise and unstable-configuration handling."
+    },
+    {
+      "id": "17",
+      "title": "QoServe: Breaking the Silos of LLM Inference Serving",
+      "venue": "ASPLOS 2026",
+      "identity_sources": [
+        "https://www.asplos-conference.org/asplos2026/program/",
+        "https://doi.org/10.1145/3779212.3790206",
+        "https://www.microsoft.com/en-us/research/publication/niyama-breaking-the-silos-of-llm-inference-serving/"
+      ],
+      "mechanism_source": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/QoServe_CC_final_v2.pdf",
+      "supports": "ASPLOS official program and DOI printed in author-hosted final PDF; dynamic chunking and load-adaptive priority. Niyama is an earlier name."
+    }
+  ],
+  "code_checks": [
+    {
+      "url": "https://raw.githubusercontent.com/pkuaiweb/LaTune/main/llama_executor.py",
+      "observation": "Measurement path creates server subprocess and finally terminates it; this alone does not establish live in-flight reconfiguration.",
+      "accessed_at": "2026-10-30"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/pkuaiweb/LaTune/main/04_adaptation_runtime.py",
+      "observation": "Resource-level evaluation entry; interpreted together with the publisher PDF, not used as evidence of all possible implementations.",
+      "accessed_at": "2026-10-30"
+    },
+    {
+      "url": "https://zenodo.org/records/18218177",
+      "observation": "Authors identify the ASPLOS artifact as the niyama_asplos2026 branch of microsoft/sarathi-serve.",
+      "accessed_at": "2026-10-30"
+    }
+  ],
+  "interpretation_limits": [
+    "Conference identity is distinct from local author-version identity.",
+    "No claim that absence from this search proves novelty.",
+    "LaTune came from user after publisher endpoint returned HTTP 403.",
+    "No GPU experiments, online controller or hot-switch implementation were run."
+  ],
+  "workload_traces": {
+    "checked_at": "2026-11-02",
+    "method": "Repository READMEs/dataset pages and arXiv abstract pages fetched directly; Mooncake field names read from the first records of the released JSONL. Paraphrased findings, not verbatim quotations.",
+    "traces": [
+      {
+        "name": "Azure LLM Inference Dataset 2023",
+        "sources": [
+          "https://github.com/Azure/AzurePublicDataset/blob/master/AzureLLMInferenceDataset2023.md"
+        ],
+        "fields": [
+          "TIMESTAMP",
+          "ContextTokens",
+          "GeneratedTokens"
+        ],
+        "supports": "Production Azure LLM inference traces collected on 2023-11-11; separate code and conversation CSVs; associated paper Splitwise (ISCA 2024)."
+      },
+      {
+        "name": "Azure LLM Inference Dataset 2024",
+        "sources": [
+          "https://github.com/Azure/AzurePublicDataset/blob/master/AzureLLMInferenceDataset2024.md"
+        ],
+        "fields": [
+          "TIMESTAMP",
+          "ContextTokens",
+          "GeneratedTokens"
+        ],
+        "supports": "Collected 2024-05-10 to 2024-05-19 from multiple Azure LLM inference services; code and conversation CSVs; CC-BY; associated paper DynamoLLM (HPCA 2025)."
+      },
+      {
+        "name": "BurstGPT",
+        "sources": [
+          "https://github.com/HPMLL/BurstGPT",
+          "https://arxiv.org/abs/2401.17644"
+        ],
+        "fields": [
+          "Timestamp",
+          "Session ID",
+          "Elapsed time",
+          "Model",
+          "Request tokens",
+          "Response tokens",
+          "Total tokens",
+          "Log Type"
+        ],
+        "supports": "Azure OpenAI GPT (ChatGPT/GPT-4) service traces; arXiv abstract states 10.31M traces over 213 days."
+      },
+      {
+        "name": "Mooncake trace",
+        "sources": [
+          "https://github.com/kvcache-ai/Mooncake/tree/main/FAST25-release/traces",
+          "https://www.usenix.org/conference/fast25/presentation/qin"
+        ],
+        "fields": [
+          "timestamp",
+          "input_length",
+          "output_length",
+          "hash_ids"
+        ],
+        "supports": "Files conversation_trace.jsonl, synthetic_trace.jsonl, toolagent_trace.jsonl released in the repository; hash_ids are remapped KV block hashes usable for prefix-reuse analysis. Associated paper Mooncake (FAST 2025) confirmed on the USENIX page."
+      }
+    ],
+    "interpretation_limits": "These traces establish that public production workloads record arrival times and length distributions (and, for Mooncake, block-level reuse). Phase-shift magnitude and its effect on optimal policy were not measured."
+  }
+}

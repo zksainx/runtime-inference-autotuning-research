@@ -1,0 +1,396 @@
+[
+  {
+    "id": "01",
+    "title": "SCOOT: SLO-Oriented Performance Tuning for LLM Inference Engines",
+    "venue": "WWW 2025",
+    "venue_url": "https://doi.org/10.1145/3696410.3714930",
+    "pdf_url": "https://arxiv.org/pdf/2408.04323v2",
+    "additional_url": "https://arxiv.org/abs/2408.04323",
+    "code_url": "https://github.com/Ketonmi/SCOOT",
+    "file": "01_SCOOT_WWW2025.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "bytes": 2202638,
+    "sha256": "2251434bea5333fa138f49c7417f543e7fe24ef4971ee0780ea3d53911b35769",
+    "downloaded_from": "https://arxiv.org/pdf/2408.04323v2",
+    "version_note": "Author arXiv v2, accepted at WWW 2025."
+  },
+  {
+    "id": "02",
+    "title": "TuxBot: Semantic-Aware Online OS Tuning with LLMs",
+    "venue": "SOSP 2026",
+    "venue_url": "https://sigops.org/s/conferences/sosp/2026/schedule.html",
+    "pdf_url": "https://arxiv.org/pdf/2605.15026v2",
+    "additional_url": "https://arxiv.org/abs/2605.15026",
+    "code_url": "https://github.com/Columbia-DAP-Lab/TuxBot",
+    "file": "02_TuxBot_SOSP2026_arxiv_v2.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "final_doi": "https://doi.org/10.1145/3830418.3843885",
+    "bytes": 760576,
+    "sha256": "543bd4fcc48785e2762de4a098f3feb2dd72f7732b21f514d178de2233a90760",
+    "downloaded_from": "https://arxiv.org/pdf/2605.15026v2",
+    "version_note": "Author arXiv v2, 2026-07-14; final SOSP identity separately verified. Experimental numbers differ from IBM publication page."
+  },
+  {
+    "id": "03",
+    "title": "LaTune: Lightweight and Adaptive Configuration Tuning for LLM Inference on Edge Devices",
+    "venue": "WWW 2026",
+    "venue_url": "https://doi.org/10.1145/3774904.3792382",
+    "pdf_url": "https://dl.acm.org/doi/pdf/10.1145/3774904.3792382",
+    "additional_url": "https://www2026.thewebconf.org/accepted/research-tracks.html",
+    "code_url": "https://github.com/pkuaiweb/LaTune",
+    "file": "03_LaTune_WWW2026.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "download_attempts": [
+      {
+        "url": "https://dl.acm.org/doi/pdf/10.1145/3774904.3792382",
+        "exit_code": 56,
+        "error": "curl: (56) The requested URL returned error: 403"
+      }
+    ],
+    "source_type": "user_provided_publisher_pdf",
+    "provided_from": "/Users/kxzhang/Documents/LaTune.pdf",
+    "downloaded_from": "User-provided local file; publisher DOI printed in PDF",
+    "bytes": 1644292,
+    "sha256": "235530edbc9f4010c356a5404a4a92b5098ed77802d8d8a3df932246d38375c2",
+    "version_note": "WWW 2026 publisher layout; supplied by user on 2026-10-30"
+  },
+  {
+    "id": "04",
+    "title": "Towards Dynamic and Safe Configuration Tuning for Cloud Databases",
+    "venue": "SIGMOD 2022",
+    "venue_url": "https://doi.org/10.1145/3514221.3526176",
+    "pdf_url": "https://users.cs.utah.edu/~lifeifei/papers/sigmod22-onlinetune.pdf",
+    "additional_url": "https://arxiv.org/abs/2203.14473",
+    "code_url": "https://github.com/DBoptimizer/OnlineTune",
+    "file": "04_OnlineTune_SIGMOD2022.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "fallback_pdf_urls": [
+      "https://arxiv.org/pdf/2203.14473"
+    ],
+    "downloaded_from": "https://arxiv.org/pdf/2203.14473",
+    "bytes": 1534774,
+    "sha256": "d396262b7a7cc5dc10a844435d7cee6b65abf7253c6aa661f9eeec181463dc80",
+    "download_attempts": [
+      {
+        "url": "https://users.cs.utah.edu/~lifeifei/papers/sigmod22-onlinetune.pdf",
+        "exit_code": 22,
+        "error": "curl: (22) The requested URL returned error: 403"
+      },
+      {
+        "url": "https://arxiv.org/pdf/2203.14473",
+        "exit_code": 0,
+        "error": ""
+      }
+    ],
+    "version_note": "Author-hosted PDF returned 403; downloaded arXiv copy with SIGMOD 2022 layout and appendix."
+  },
+  {
+    "id": "05",
+    "title": "GPTuner: A Manual-Reading Database Tuning System via GPT-Guided Bayesian Optimization",
+    "venue": "PVLDB 17(8), VLDB 2024",
+    "venue_url": "https://doi.org/10.14778/3659437.3659449",
+    "pdf_url": "https://www.vldb.org/pvldb/vol17/p1939-tang.pdf",
+    "additional_url": "https://www.vldb.org/pvldb/vol17/p1939-tang.pdf",
+    "code_url": "https://github.com/SolidLao/GPTuner",
+    "file": "05_GPTuner_VLDB2024.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "download_attempts": [
+      {
+        "url": "https://www.vldb.org/pvldb/vol17/p1939-tang.pdf",
+        "exit_code": 28,
+        "error": "curl: (28) Operation timed out after 240006 milliseconds with 2879996 out of 6659309 bytes received\ncurl: (28) Operation timed out after 240005 milliseconds with 3719996 out of 6659309 bytes received"
+      },
+      {
+        "url": "https://www.vldb.org/pvldb/vol17/p1939-tang.pdf",
+        "exit_code": 0,
+        "error": ""
+      }
+    ],
+    "downloaded_from": "https://www.vldb.org/pvldb/vol17/p1939-tang.pdf",
+    "bytes": 6659309,
+    "sha256": "70780db58a95d03d5eea2b295999b5e12599b2d05958f80527aabb3c4bcbabf5"
+  },
+  {
+    "id": "06",
+    "title": "λ-Tune: Harnessing Large Language Models for Automated Database System Tuning",
+    "venue": "PACMMOD 3(1), SIGMOD 2025",
+    "venue_url": "https://doi.org/10.1145/3709652",
+    "pdf_url": "https://arxiv.org/pdf/2411.03500",
+    "additional_url": "https://arxiv.org/abs/2411.03500",
+    "code_url": "",
+    "file": "06_LambdaTune_SIGMOD2025_arxiv.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "downloaded_from": "https://arxiv.org/pdf/2411.03500",
+    "bytes": 2151277,
+    "sha256": "e31a8170e3cc0dc8aa6160b3cc070eade6dbfc2f151fdcae65f6cc30640cc928",
+    "download_attempts": [
+      {
+        "url": "https://arxiv.org/pdf/2411.03500",
+        "exit_code": 0,
+        "error": ""
+      }
+    ]
+  },
+  {
+    "id": "07",
+    "title": "MorphServe: Efficient and Workload-Aware LLM Serving via Runtime Quantized Layer Swapping and KV Cache Resizing",
+    "venue": "MLSys 2026",
+    "venue_url": "https://proceedings.mlsys.org/paper_files/paper/2026/hash/8144a9d62e506af0fcdeac0e456b2710-Abstract-Conference.html",
+    "pdf_url": "https://proceedings.mlsys.org/paper_files/paper/2026/file/8144a9d62e506af0fcdeac0e456b2710-Paper-Conference.pdf",
+    "additional_url": "https://arxiv.org/abs/2506.02006v2",
+    "code_url": "",
+    "file": "07_MorphServe_MLSys2026_arxiv_v2.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "download_attempts": [
+      {
+        "url": "https://proceedings.mlsys.org/paper_files/paper/2026/file/8144a9d62e506af0fcdeac0e456b2710-Paper-Conference.pdf",
+        "exit_code": 28,
+        "error": "curl: (28) Operation timed out after 240002 milliseconds with 3023617 out of 8808917 bytes received\ncurl: (28) Operation timed out after 240004 milliseconds with 3189441 out of 8808917 bytes received"
+      },
+      {
+        "url": "https://proceedings.mlsys.org/paper_files/paper/2026/file/8144a9d62e506af0fcdeac0e456b2710-Paper-Conference.pdf",
+        "exit_code": 33,
+        "error": "curl: (33) HTTP server doesn't seem to support byte ranges. Cannot resume."
+      },
+      {
+        "url": "https://arxiv.org/pdf/2506.02006v2",
+        "exit_code": 0,
+        "method": "Parallel byte ranges; verified Content-Range and exact length for every part"
+      }
+    ],
+    "downloaded_from": "https://arxiv.org/pdf/2506.02006v2",
+    "fallback_pdf_urls": [
+      "https://arxiv.org/pdf/2506.02006v2"
+    ],
+    "bytes": 8886322,
+    "sha256": "e2c0f12fcbc5188a04078a31a732acaa95e93e9662aff4b766a0b9d6a73fbe30",
+    "version_note": "Author arXiv v2 dated 2026-01-07, 19 pages; official MLSys 2026 proceedings has 20 pages. Mechanisms checked against proceedings; page numbers are not interchangeable."
+  },
+  {
+    "id": "08",
+    "title": "Llumnix: Dynamic Scheduling for Large Language Model Serving",
+    "venue": "OSDI 2024",
+    "venue_url": "https://www.usenix.org/conference/osdi24/presentation/sun-biao",
+    "pdf_url": "https://www.usenix.org/system/files/osdi24-sun-biao.pdf",
+    "additional_url": "",
+    "code_url": "https://github.com/AlibabaPAI/llumnix",
+    "file": "08_Llumnix_OSDI2024.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "downloaded_from": "https://www.usenix.org/system/files/osdi24-sun-biao.pdf",
+    "bytes": 1940597,
+    "sha256": "2e99cfc54473cd0a0aeabbb9bf16706b23300a7717e5b370ee256cf75801a9d6",
+    "download_attempts": [
+      {
+        "url": "https://www.usenix.org/system/files/osdi24-sun-biao.pdf",
+        "exit_code": 0,
+        "error": "curl: (28) SSL connection timeout"
+      }
+    ]
+  },
+  {
+    "id": "09",
+    "title": "Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve",
+    "venue": "OSDI 2024",
+    "venue_url": "https://www.usenix.org/conference/osdi24/presentation/agrawal",
+    "pdf_url": "https://www.usenix.org/system/files/osdi24-agrawal.pdf",
+    "additional_url": "",
+    "code_url": "https://github.com/microsoft/sarathi-serve",
+    "file": "09_SarathiServe_OSDI2024.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "downloaded_from": "https://www.usenix.org/system/files/osdi24-agrawal.pdf",
+    "bytes": 2137282,
+    "sha256": "2416e51f584230107739783e5995d3dea3efad93f189e2c3119434d62a31412c",
+    "download_attempts": [
+      {
+        "url": "https://www.usenix.org/system/files/osdi24-agrawal.pdf",
+        "exit_code": 0,
+        "error": ""
+      }
+    ]
+  },
+  {
+    "id": "10",
+    "title": "DistServe: Disaggregating Prefill and Decoding for Goodput-optimized Large Language Model Serving",
+    "venue": "OSDI 2024",
+    "venue_url": "https://www.usenix.org/conference/osdi24/presentation/zhong-yinmin",
+    "pdf_url": "https://www.usenix.org/system/files/osdi24-zhong-yinmin.pdf",
+    "additional_url": "",
+    "code_url": "",
+    "file": "10_DistServe_OSDI2024.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "downloaded_from": "https://www.usenix.org/system/files/osdi24-zhong-yinmin.pdf",
+    "bytes": 832045,
+    "sha256": "bb03e59d6ec6550015901f3f78d7e68f5a07cad8ccacb12f72835a8b667341c1",
+    "download_attempts": [
+      {
+        "url": "https://www.usenix.org/system/files/osdi24-zhong-yinmin.pdf",
+        "exit_code": 0,
+        "error": ""
+      }
+    ]
+  },
+  {
+    "id": "11",
+    "title": "FlashInfer: Efficient and Customizable Attention Engine for LLM Inference Serving",
+    "venue": "MLSys 2025",
+    "venue_url": "https://proceedings.mlsys.org/paper_files/paper/2025/hash/dbf02b21d77409a2db30e56866a8ab3a-Abstract-Conference.html",
+    "pdf_url": "https://proceedings.mlsys.org/paper_files/paper/2025/file/dbf02b21d77409a2db30e56866a8ab3a-Paper-Conference.pdf",
+    "additional_url": "",
+    "code_url": "https://github.com/flashinfer-ai/flashinfer",
+    "file": "11_FlashInfer_MLSys2025.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "downloaded_from": "https://proceedings.mlsys.org/paper_files/paper/2025/file/dbf02b21d77409a2db30e56866a8ab3a-Paper-Conference.pdf",
+    "bytes": 1693865,
+    "sha256": "37beb3967fcae981febb3e93d7ae40c59d4b0c6debf12a1529ed803922eeada4",
+    "download_attempts": [
+      {
+        "url": "https://proceedings.mlsys.org/paper_files/paper/2025/file/dbf02b21d77409a2db30e56866a8ab3a-Paper-Conference.pdf",
+        "exit_code": 0,
+        "error": ""
+      }
+    ]
+  },
+  {
+    "id": "12",
+    "title": "AdaServe: Accelerating Multi-SLO LLM Serving with SLO-Customized Speculative Decoding",
+    "venue": "EuroSys 2026",
+    "venue_url": "https://2026.eurosys.org/papers.html",
+    "pdf_url": "https://www.pdl.cmu.edu/PDL-FTP/BigLearning/AdaServe_EuroSys_26.pdf",
+    "additional_url": "",
+    "code_url": "",
+    "file": "12_AdaServe_EuroSys2026.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "downloaded_from": "https://www.pdl.cmu.edu/PDL-FTP/BigLearning/AdaServe_EuroSys_26.pdf",
+    "bytes": 937263,
+    "sha256": "244970598a4fe9d0ece32be534129fd6be16a566016bff305151bba16c2cb012",
+    "download_attempts": [
+      {
+        "url": "https://www.pdl.cmu.edu/PDL-FTP/BigLearning/AdaServe_EuroSys_26.pdf",
+        "exit_code": 0,
+        "error": ""
+      }
+    ]
+  },
+  {
+    "id": "13",
+    "title": "METIS: Fast Quality-Aware RAG Systems with Configuration Adaptation",
+    "venue": "SOSP 2025",
+    "venue_url": "https://doi.org/10.1145/3731569.3764855",
+    "pdf_url": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/sosp25-final547.pdf",
+    "additional_url": "",
+    "code_url": "",
+    "file": "13_METIS_SOSP2025.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "downloaded_from": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/sosp25-final547.pdf",
+    "bytes": 1174975,
+    "sha256": "5e94cb3131e3830d04239f43b6956133c1cf728fe5d9a34ab674895560d4c037",
+    "download_attempts": [
+      {
+        "url": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/sosp25-final547.pdf",
+        "exit_code": 0,
+        "error": ""
+      }
+    ]
+  },
+  {
+    "id": "14",
+    "title": "Ave: Guiding Agentic GPU Optimization Using Data-Flow Invariants",
+    "venue": "SOSP 2026",
+    "venue_url": "https://sigops.org/s/conferences/sosp/2026/schedule.html",
+    "pdf_url": "https://arxiv.org/pdf/2604.18616v2",
+    "additional_url": "https://arxiv.org/abs/2604.18616",
+    "code_url": "",
+    "file": "14_Ave_SOSP2026_arxiv_v2.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "downloaded_from": "https://arxiv.org/pdf/2604.18616v2",
+    "bytes": 720378,
+    "sha256": "3cb2ff1ad49cb9631cf9a36f1123b4edaf33b5baa5e2ea2c3aa84388828a75d3",
+    "download_attempts": [
+      {
+        "url": "https://arxiv.org/pdf/2604.18616v2",
+        "exit_code": 0,
+        "error": ""
+      }
+    ],
+    "final_doi": "https://doi.org/10.1145/3830418.3843902",
+    "version_note": "Author arXiv v2; SOSP 2026 identity separately verified on official schedule."
+  },
+  {
+    "id": "15",
+    "title": "OPPerTune: Post-Deployment Configuration Tuning of Services Made Easy",
+    "venue": "NSDI 2024",
+    "venue_url": "https://www.usenix.org/conference/nsdi24/presentation/somashekar",
+    "pdf_url": "https://www.usenix.org/system/files/nsdi24-somashekar.pdf",
+    "code_url": "https://github.com/microsoft/OPPerTune",
+    "file": "15_OPPerTune_NSDI2024.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "downloaded_from": "https://www.usenix.org/system/files/nsdi24-somashekar.pdf",
+    "bytes": 2472736,
+    "sha256": "a6dbd02129a4e0e71b178947ad744f65f12125083b2f2af5dcb1fc11fcb0c8fe",
+    "download_attempts": [
+      {
+        "url": "https://www.usenix.org/system/files/nsdi24-somashekar.pdf",
+        "exit_code": 0,
+        "error": ""
+      }
+    ]
+  },
+  {
+    "id": "16",
+    "title": "TUNA: Tuning Unstable and Noisy Cloud Applications",
+    "venue": "EuroSys 2025",
+    "venue_url": "https://www.microsoft.com/en-us/research/publication/tuna-tuning-unstable-and-noisy-cloud-applications/",
+    "pdf_url": "https://www.microsoft.com/en-us/research/uploads/prod/2025/02/TUNA.pdf",
+    "file": "16_TUNA_EuroSys2025.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "bytes": 1052283,
+    "sha256": "e6a23b4e47481df135ea670bca040974a01956440c719db292d168c6413912d5",
+    "downloaded_from": "https://www.microsoft.com/en-us/research/uploads/prod/2025/02/TUNA.pdf"
+  },
+  {
+    "id": "17",
+    "title": "QoServe: Breaking the Silos of LLM Inference Serving",
+    "venue": "ASPLOS 2026",
+    "venue_url": "https://www.asplos-conference.org/asplos2026/program/",
+    "final_doi": "https://doi.org/10.1145/3779212.3790206",
+    "pdf_url": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/QoServe_CC_final_v2.pdf",
+    "additional_url": "https://www.microsoft.com/en-us/research/publication/niyama-breaking-the-silos-of-llm-inference-serving/",
+    "code_url": "https://github.com/microsoft/sarathi-serve/tree/niyama_asplos2026",
+    "artifact_url": "https://zenodo.org/records/18218177",
+    "file": "17_QoServe_ASPLOS2026.pdf",
+    "status": "downloaded",
+    "access_date": "2026-10-30",
+    "version_note": "Author-hosted final-layout PDF, 16 pages; older arXiv/artifact name Niyama is the same work, not a separate paper.",
+    "download_attempts": [
+      {
+        "url": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/QoServe_CC_final_v2.pdf",
+        "exit_code": 56,
+        "error": "curl: (56) Recv failure: Connection reset by peer"
+      },
+      {
+        "url": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/QoServe_CC_final_v2.pdf",
+        "exit_code": 0,
+        "method": "curl retry after connection reset"
+      }
+    ],
+    "downloaded_from": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/QoServe_CC_final_v2.pdf",
+    "bytes": 2618094,
+    "sha256": "6985bb3a55566a3d59ff1434834dfeeb98dc09abb93ad4ed013661e71721298d"
+  }
+]

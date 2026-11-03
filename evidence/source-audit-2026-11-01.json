@@ -1,0 +1,382 @@
+{
+  "checked_at": "2026-11-01",
+  "scope": "Read-only native source audit and research design. No source modifications, inference, GPU benchmarks or hot-update validation.",
+  "mutability_note": "Native config/consumer is not an existing supported live setter. First-version actions in the research proposal remain unimplemented.",
+  "repositories": [
+    {
+      "name": "vllm",
+      "local_path": "/Users/kxzhang/vllm",
+      "head": "3897f95cf17619137536d2a7d325d9c2f39dc38f",
+      "branch": "main",
+      "origin": "https://github.com/vllm-project/vllm.git",
+      "working_tree_clean": true,
+      "pull_attempt": {
+        "authorized_by_user": true,
+        "operation": "git pull --ff-only",
+        "success": false,
+        "reason": "Failed to connect to github.com port 443 after approximately 81 seconds; both repositories unchanged.",
+        "head_unchanged": true
+      },
+      "observations": [
+        {
+          "path": "vllm/config/scheduler.py",
+          "line": 55,
+          "anchor": "max_num_scheduled_tokens:",
+          "matching_line_count": 1,
+          "sha256": "61485c7a1ef1c7c65339767f4b223f55de76d2ca152eb19df915c88f526be9de",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/config/scheduler.py#L55",
+          "excerpt_start_line": 53,
+          "excerpt": "    \"\"\"\n\n    max_num_scheduled_tokens: int | None = Field(default=None, ge=1)\n    \"\"\"Maximum number of tokens that the scheduler may issue in a single iteration.\n    \n    This is usually equal to max_num_batched_tokens, but can be smaller in cases\n    when the model might append tokens into the batch (such as speculative decoding).\n    Defaults to max_num_batched_tokens.\"\"\"",
+          "interpretation": "Separate scheduling budget from runner capacity; online setter proposed, not native API."
+        },
+        {
+          "path": "vllm/config/scheduler.py",
+          "line": 69,
+          "anchor": "max_num_active_seqs:",
+          "matching_line_count": 1,
+          "sha256": "61485c7a1ef1c7c65339767f4b223f55de76d2ca152eb19df915c88f526be9de",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/config/scheduler.py#L69",
+          "excerpt_start_line": 67,
+          "excerpt": "    \"\"\"\n\n    max_num_active_seqs: int | None = Field(default=None, ge=1)\n    \"\"\"Maximum number of requests the scheduler admits into RUNNING.\n\n    ``max_num_seqs`` sizes the model runner (per-request buffers and CUDA\n    graph capture) and is also the default admission limit. Setting this\n    lowers only the number of requests that may occupy RUNNING, so decode",
+          "interpretation": "Native soft admission cap; separate from physical max_num_seqs."
+        },
+        {
+          "path": "vllm/config/scheduler.py",
+          "line": 79,
+          "anchor": "long_prefill_token_threshold:",
+          "matching_line_count": 1,
+          "sha256": "61485c7a1ef1c7c65339767f4b223f55de76d2ca152eb19df915c88f526be9de",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/config/scheduler.py#L79",
+          "excerpt_start_line": 77,
+          "excerpt": "    \"\"\"\n\n    long_prefill_token_threshold: int = Field(default=0, ge=0)\n    \"\"\"For chunked prefill, a request is considered long if the prompt is\n    longer than this number of tokens. 0 disables the cap (default).\n\n    The cap is not applied when the request is the only one in the batch,\n    since there is no other request for it to starve.\"\"\"",
+          "interpretation": "Keep zero/sole-request/adaptive semantics when proposing a live setter."
+        },
+        {
+          "path": "vllm/config/scheduler.py",
+          "line": 190,
+          "anchor": "scheduler_reserve_full_isl:",
+          "matching_line_count": 1,
+          "sha256": "61485c7a1ef1c7c65339767f4b223f55de76d2ca152eb19df915c88f526be9de",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/config/scheduler.py#L190",
+          "excerpt_start_line": 188,
+          "excerpt": "    \"\"\"\n\n    scheduler_reserve_full_isl: bool = True\n    \"\"\"If True, the scheduler checks whether the full input sequence length\n    fits in the KV cache before admitting a new request, rather than only\n    checking the first chunk. Prevents over-admission and KV cache thrashing\n    with chunked prefill.\"\"\"\n",
+          "interpretation": "Full input fit at admission; not maximum-output reservation."
+        },
+        {
+          "path": "vllm/config/scheduler.py",
+          "line": 203,
+          "anchor": "prefill_schedule_interval:",
+          "matching_line_count": 1,
+          "sha256": "61485c7a1ef1c7c65339767f4b223f55de76d2ca152eb19df915c88f526be9de",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/config/scheduler.py#L203",
+          "excerpt_start_line": 201,
+          "excerpt": "    (the default) disables the watermark.\"\"\"\n\n    prefill_schedule_interval: int = Field(default=1, ge=1)\n    \"\"\"Only admit prefill once every N engine steps, leaving the steps in\n    between to decode alone. 1 (the default) admits prefill on every step.\n\n    A deferred step carries no prefill at all, including chunks of an\n    already-admitted prompt, so a long prompt can take up to N times as many",
+          "interpretation": "Native cadence; live update must handle cached state and DP constraints."
+        },
+        {
+          "path": "vllm/v1/core/sched/scheduler.py",
+          "line": 641,
+          "anchor": "token_budget = self.max_num_scheduled_tokens",
+          "matching_line_count": 1,
+          "sha256": "ac2bd3f58cfb8f7b2e8ccb1c60b4d186a0445c10d11d8236962fb87c3ca1e323",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/core/sched/scheduler.py#L641",
+          "excerpt_start_line": 639,
+          "excerpt": "        req_to_new_blocks: dict[str, KVCacheBlocks] = {}\n        num_scheduled_tokens: dict[str, int] = {}\n        token_budget = self.max_num_scheduled_tokens\n        spec = self.vllm_config.speculative_config\n        draft_slots = spec.max_num_new_slots_for_drafting if spec is not None else 0\n        input_budget = self.scheduler_config.max_num_batched_tokens\n        if self._pause_state == PauseState.PAUSED_ALL:\n            # Do not schedule any requests when paused.",
+          "interpretation": "Budget consumer; bounds alone do not establish request fairness/progress."
+        },
+        {
+          "path": "vllm/v1/core/sched/scheduler.py",
+          "line": 978,
+          "anchor": "num_running >= self.max_num_active_reqs",
+          "matching_line_count": 1,
+          "sha256": "ac2bd3f58cfb8f7b2e8ccb1c60b4d186a0445c10d11d8236962fb87c3ca1e323",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/core/sched/scheduler.py#L978",
+          "excerpt_start_line": 976,
+          "excerpt": "                # in `running` but still hold a model-runner request slot.\n                num_running = len(self.running) + self.num_waiting_for_streaming_input\n                if num_running >= self.max_num_active_reqs:\n                    break\n\n                request = request_queue.peek_request()\n                request_id = request.request_id\n",
+          "interpretation": "Admission cap consumer; lower cap need not immediately drain RUNNING."
+        },
+        {
+          "path": "vllm/v1/core/sched/scheduler.py",
+          "line": 143,
+          "anchor": "long_prefill_token_threshold_adaptive",
+          "matching_line_count": 1,
+          "sha256": "ac2bd3f58cfb8f7b2e8ccb1c60b4d186a0445c10d11d8236962fb87c3ca1e323",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/core/sched/scheduler.py#L143",
+          "excerpt_start_line": 141,
+          "excerpt": "        )\n        self.adaptive_long_prefill_threshold = (\n            self.scheduler_config.long_prefill_token_threshold_adaptive\n        )\n        self.max_model_len = vllm_config.model_config.max_model_len\n        self.enable_kv_cache_events = (\n            self.kv_events_config is not None\n            and self.kv_events_config.enable_kv_cache_events",
+          "interpretation": "Adaptive state is cached; changing original config alone is insufficient."
+        },
+        {
+          "path": "vllm/v1/core/kv_cache_manager.py",
+          "line": 208,
+          "anchor": "self.watermark_blocks =",
+          "matching_line_count": 1,
+          "sha256": "cdd0185bd11f301631856336818987baa3520084134de65ab4abb9ecbf714623",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/core/kv_cache_manager.py#L208",
+          "excerpt_start_line": 206,
+          "excerpt": "        # admitting waiting/preempted requests, to avoid frequent preemptions.\n        assert watermark >= 0.0, \"watermark must be non-negative\"\n        self.watermark_blocks = int(watermark * kv_cache_config.num_blocks)\n        self.kv_cache_event_metadata = tuple(\n            (\n                get_kv_cache_spec_kind(group.kv_cache_spec).value,\n                get_kv_cache_spec_sliding_window(group.kv_cache_spec),\n            )",
+          "interpretation": "Initialization-derived count; proposed live update must recompute."
+        },
+        {
+          "path": "vllm/v1/core/kv_cache_manager.py",
+          "line": 512,
+          "anchor": "if has_scheduled_reqs and request.status in (",
+          "matching_line_count": 1,
+          "sha256": "cdd0185bd11f301631856336818987baa3520084134de65ab4abb9ecbf714623",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/core/kv_cache_manager.py#L512",
+          "excerpt_start_line": 510,
+          "excerpt": "        # The watermark is applied to waiting/preempted requests only, and only\n        # when there's at least one request already scheduled.\n        if has_scheduled_reqs and request.status in (\n            RequestStatus.WAITING,\n            RequestStatus.PREEMPTED,\n        ):\n            watermark_blocks = self.watermark_blocks\n",
+          "interpretation": "Watermark applies to waiting/preempted admissions while other work exists."
+        },
+        {
+          "path": "vllm/v1/engine/core.py",
+          "line": 1729,
+          "anchor": "request_type == EngineCoreRequestType.UTILITY",
+          "matching_line_count": 2,
+          "sha256": "9d38f615eb8ede57a1250f5962ff9a5693f74adece8cea5e4ec6f46b616b075e",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/engine/core.py#L1729",
+          "excerpt_start_line": 1727,
+          "excerpt": "        elif request_type == EngineCoreRequestType.ABORT:\n            self.abort_requests(request)\n        elif request_type == EngineCoreRequestType.UTILITY:\n            client_idx, call_id, method_name, args = request\n            if self._reject_utility_in_shutdown(client_idx, call_id, method_name):\n                return\n            output = UtilityOutput(call_id)\n            # Lazily look-up utility method so that failure will be handled/returned.",
+          "interpretation": "Existing utility transport can carry a new typed policy method."
+        },
+        {
+          "path": "vllm/v1/engine/core_client.py",
+          "line": 1047,
+          "anchor": "def call_utility(self,",
+          "matching_line_count": 1,
+          "sha256": "cfccb7f26262454317d223204d888295b9d5f6cbd4deb44ffed97a49ecefc129",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/engine/core_client.py#L1047",
+          "excerpt_start_line": 1045,
+          "excerpt": "        self.input_socket.send_multipart(msg, copy=False)\n\n    def call_utility(self, method: str, *args) -> Any:\n        call_id = uuid.uuid1().int >> 64\n        future: Future[Any] = Future()\n        self.utility_results[call_id] = future\n        self._send_input(EngineCoreRequestType.UTILITY, (0, call_id, method, args))\n",
+          "interpretation": "Existing utility caller; no new transport required for first version."
+        },
+        {
+          "path": "vllm/v1/worker/gpu_model_runner.py",
+          "line": 516,
+          "anchor": "self.max_num_reqs =",
+          "matching_line_count": 1,
+          "sha256": "9228cbd1d8b2a03527af7edd5e89764bbd3506efa9f6b3db24c4921162823141",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/worker/gpu_model_runner.py#L516",
+          "excerpt_start_line": 514,
+          "excerpt": "        self.dcp_rank = 0 if self.dcp_world_size <= 1 else get_dcp_group().rank_in_group\n        self.max_num_tokens = scheduler_config.max_num_batched_tokens\n        self.max_num_reqs = scheduler_config.max_num_seqs\n\n        # Broadcast PP output for external_launcher (torchrun)\n        # to make sure we are synced across pp ranks\n        # TODO: Support overlapping micro-batches\n        # https://github.com/vllm-project/vllm/issues/18019",
+          "interpretation": "Physical request capacity is prepared separately from admission policy."
+        },
+        {
+          "path": "vllm/v1/attention/backends/composite.py",
+          "line": 87,
+          "anchor": "class MMPrefixAttentionRouting",
+          "matching_line_count": 1,
+          "sha256": "9de6fa8f882442cfd51bc5cea46046630cb826a79af88914eed0909de66337f9",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/attention/backends/composite.py#L87",
+          "excerpt_start_line": 85,
+          "excerpt": "\n\nclass MMPrefixAttentionRouting(CompositeAttentionRouting):\n    \"\"\"Route image masks to variant zero and causal queries to variant one.\"\"\"\n\n    def __init__(self, layer_names: list[str], vllm_config: VllmConfig) -> None:\n        layers = vllm_config.compilation_config.static_forward_context\n        self.unclamped_window = _has_unclamped_window(",
+          "interpretation": "Native image-mask/causal routing; not a performance tuning policy."
+        },
+        {
+          "path": "vllm/v1/attention/backends/composite.py",
+          "line": 65,
+          "anchor": "capture_variant: ClassVar[int]",
+          "matching_line_count": 2,
+          "sha256": "9de6fa8f882442cfd51bc5cea46046630cb826a79af88914eed0909de66337f9",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/attention/backends/composite.py#L65",
+          "excerpt_start_line": 63,
+          "excerpt": "    \"\"\"Select a child backend and declare routing constraints for composition.\"\"\"\n\n    capture_variant: ClassVar[int]\n    \"\"\"Child used during graph capture; replay must select the same child.\"\"\"\n\n    def __init__(self, layer_names: list[str], vllm_config: VllmConfig) -> None: ...\n\n    def select(self, metadata: CommonAttentionMetadata) -> int:",
+          "interpretation": "Graph replay must select capture child; arbitrary backend switching not established."
+        },
+        {
+          "path": "vllm/v1/attention/backends/triton_flashinfer.py",
+          "line": 12,
+          "anchor": "create_composite_attention_backend(",
+          "matching_line_count": 1,
+          "sha256": "48d5f967e388d4e8d6bbec8d827b44d855346bc2fada28adf65768bf6623527b",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/attention/backends/triton_flashinfer.py#L12",
+          "excerpt_start_line": 10,
+          "excerpt": "from vllm.v1.attention.backends.triton_attn import TritonAttentionBackend\n\nTritonFlashInferBackend = create_composite_attention_backend(\n    TritonAttentionBackend,\n    FlashInferBackend,\n    name=\"TritonFlashInferBackend\",\n    backend_name=\"TRITON_FLASHINFER\",\n    module=__name__,",
+          "interpretation": "Concrete constrained composite; compatibility is not universal."
+        }
+      ]
+    },
+    {
+      "name": "sglang",
+      "local_path": "/Users/kxzhang/sglang",
+      "head": "4b83f215f498bc0371587bfae4a9470f24e77737",
+      "branch": "main",
+      "origin": "https://github.com/sgl-project/sglang.git",
+      "working_tree_clean": true,
+      "pull_attempt": {
+        "authorized_by_user": true,
+        "operation": "git pull --ff-only",
+        "success": false,
+        "reason": "Failed to connect to github.com port 443 after approximately 81 seconds; both repositories unchanged.",
+        "head_unchanged": true
+      },
+      "observations": [
+        {
+          "path": "python/sglang/srt/arg_groups/fields/schedule.py",
+          "line": 19,
+          "anchor": "class Schedule(",
+          "matching_line_count": 1,
+          "sha256": "ef79adbae0883fecc3c04d691840e652ec4daa6854f5aa0f2f81b17a87436386",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/arg_groups/fields/schedule.py#L19",
+          "excerpt_start_line": 17,
+          "excerpt": "\n\nclass Schedule(msgspec.Struct):\n    \"\"\"Namespace ``schedule``.\"\"\"\n\n    _NS_PATH = \"schedule\"\n\n    # -------------------------------------------------------------------------",
+          "interpretation": "Configuration namespace includes non-hot and structural fields."
+        },
+        {
+          "path": "python/sglang/srt/entrypoints/http_server.py",
+          "line": 890,
+          "anchor": "/set_internal_state",
+          "matching_line_count": 2,
+          "sha256": "3eb653b19dd3328b48f4766134cb130d919d39124a5a0450fa80a4f930da6cc8",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/entrypoints/http_server.py#L890",
+          "excerpt_start_line": 888,
+          "excerpt": "\n# example usage:\n# curl -s -X POST http://localhost:30000/set_internal_state -H \"Content-Type: application/json\" -d '{\"server_args\": {\"pp_max_micro_batch_size\": 8}}'\n@app.api_route(\"/set_internal_state\", methods=[\"POST\", \"PUT\"])\n@auth_level(AuthLevel.ADMIN_OPTIONAL)\nasync def set_internal_state(\n    obj: Annotated[SetInternalStateReq, Body()], request: Request\n):",
+          "interpretation": "Existing online endpoint; not a generic server_args setter."
+        },
+        {
+          "path": "python/sglang/srt/managers/scheduler_components/internal_state.py",
+          "line": 146,
+          "anchor": "def set_internal_state(",
+          "matching_line_count": 1,
+          "sha256": "3879413625ca0991e3a64ca6a969a67afd1209aeb5c5760c4ab4ba7f46e98184",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/managers/scheduler_components/internal_state.py#L146",
+          "excerpt_start_line": 144,
+          "excerpt": "    # ------------------------------------------------------------------ update\n\n    def set_internal_state(self, recv_req: SetInternalStateReq):\n        handlers = self._update_handlers()\n        requested = recv_req.server_args\n        try:\n            for key, value in requested.items():\n                handler = handlers.get(key)",
+          "interpretation": "Native validation/update path; distributed transaction/rollback not established."
+        },
+        {
+          "path": "python/sglang/srt/managers/scheduler_components/internal_state.py",
+          "line": 168,
+          "anchor": "def _update_handlers(",
+          "matching_line_count": 1,
+          "sha256": "3879413625ca0991e3a64ca6a969a67afd1209aeb5c5760c4ab4ba7f46e98184",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/managers/scheduler_components/internal_state.py#L168",
+          "excerpt_start_line": 166,
+          "excerpt": "        return SetInternalStateReqOutput(updated=True)\n\n    def _update_handlers(self) -> Dict[str, _UpdateHandler]:\n        return {\n            \"pp_max_micro_batch_size\": _UpdateHandler(\n                self._validate_pp_micro_batch_size, _override\n            ),\n            \"speculative_accept_threshold_single\": _UpdateHandler(",
+          "interpretation": "Finite allowlist: PP micro-batch, acceptance, DSpark budget, diagnostic clearing."
+        },
+        {
+          "path": "python/sglang/srt/managers/scheduler_components/internal_state.py",
+          "line": 196,
+          "anchor": "A relaxed threshold stops acceptance",
+          "matching_line_count": 1,
+          "sha256": "3879413625ca0991e3a64ca6a969a67afd1209aeb5c5760c4ab4ba7f46e98184",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/managers/scheduler_components/internal_state.py#L196",
+          "excerpt_start_line": 194,
+          "excerpt": "\n    def _validate_accept_threshold(self, key: str, value: Any) -> None:\n        # A relaxed threshold stops acceptance from sampling exactly from the\n        # target policy, which is what a captured sampling mask describes.\n        if not self.scheduler.spec_algorithm.is_dflash() or float(value) == 1.0:\n            return\n        if self._has_active_sampling_mask_request():\n            raise UpdateRejected(",
+          "interpretation": "Relaxed acceptance can change target policy; excluded from primary actions."
+        },
+        {
+          "path": "python/sglang/srt/managers/scheduler.py",
+          "line": 1334,
+          "anchor": "def init_chunked_prefill(self):",
+          "matching_line_count": 1,
+          "sha256": "fc96ed4b680fdf55621a5397f844cfd4cbd30213f44eec8a888b7cce75cafe60",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/managers/scheduler.py#L1334",
+          "excerpt_start_line": 1332,
+          "excerpt": "        self._deferred_input_requests: List = []\n\n    def init_chunked_prefill(self):\n        self.chunked_prefill_size = get_schedule().chunked_prefill_size\n        self.prefill_decode_interval = get_schedule().prefill_decode_interval or 0\n        self._prefill_decode_interval_remaining = 0\n        uses_transformers_backend = (\n            get_resolved_model_impl(self.model_config) == ModelImpl.TRANSFORMERS",
+          "interpretation": "Copies chunk size/interval; hot control must change actual scheduler state."
+        },
+        {
+          "path": "python/sglang/srt/managers/scheduler.py",
+          "line": 3966,
+          "anchor": "def get_num_allocatable_reqs(",
+          "matching_line_count": 1,
+          "sha256": "fc96ed4b680fdf55621a5397f844cfd4cbd30213f44eec8a888b7cce75cafe60",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/managers/scheduler.py#L3966",
+          "excerpt_start_line": 3964,
+          "excerpt": "        return NextBatchPlan(batch_to_run=ret, running_batch=running_batch)\n\n    def get_num_allocatable_reqs(\n        self,\n        running_bs: int,\n        beam_width: Optional[int] = None,\n        running_batch: Optional[ScheduleBatch] = None,\n        num_held_rows: int = 0,",
+          "interpretation": "Admission capacity path; new soft cap must preserve physical request slots."
+        },
+        {
+          "path": "python/sglang/srt/managers/scheduler.py",
+          "line": 4108,
+          "anchor": "prefill_max_requests=get_schedule().prefill_max_requests",
+          "matching_line_count": 1,
+          "sha256": "fc96ed4b680fdf55621a5397f844cfd4cbd30213f44eec8a888b7cce75cafe60",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/managers/scheduler.py#L4108",
+          "excerpt_start_line": 4106,
+          "excerpt": "            max_prefill_bs=int(self.max_prefill_bs),\n            max_running_requests=self.max_running_requests,\n            prefill_max_requests=get_schedule().prefill_max_requests,\n            prefill_delayer_single_pass=prefill_delayer_single_pass,\n            dllm_config=self.dllm_config,\n            waiting_queue_len=len(self.waiting_queue),\n            prefill_tile_block_m=prefill_tile_block_m,\n        )",
+          "interpretation": "Native per-batch config read; supported hot setter is still proposed."
+        },
+        {
+          "path": "python/sglang/srt/managers/scheduler.py",
+          "line": 4081,
+          "anchor": "chunked_prefill_size = self.chunked_prefill_size",
+          "matching_line_count": 1,
+          "sha256": "fc96ed4b680fdf55621a5397f844cfd4cbd30213f44eec8a888b7cce75cafe60",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/managers/scheduler.py#L4081",
+          "excerpt_start_line": 4079,
+          "excerpt": "\n        # Determine chunked_prefill_size for this batch\n        chunked_prefill_size = self.chunked_prefill_size\n        if self.chunked_req is not None and self.dynamic_chunk_sizer is not None:\n            history_len = self.chunked_req.prefix_len\n            dynamic_size = self.dynamic_chunk_sizer.predict(history_len)\n            if dynamic_size is not None:\n                chunked_prefill_size = dynamic_size",
+          "interpretation": "Continuation may use PP dynamic chunk sizing; avoid competing control."
+        },
+        {
+          "path": "python/sglang/srt/managers/schedule_policy.py",
+          "line": 583,
+          "anchor": "class PrefillAdder:",
+          "matching_line_count": 1,
+          "sha256": "28f57c7a6ef21f386d9083f24cbc4077280dd31e7abbc94667c904f9365aec68",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/managers/schedule_policy.py#L583",
+          "excerpt_start_line": 581,
+          "excerpt": "\n\nclass PrefillAdder:\n    def __init__(\n        self,\n        page_size: int,\n        tree_cache: BasePrefixCache,\n        token_to_kv_pool_allocator: BaseTokenToKVPoolAllocator,",
+          "interpretation": "Distinct input/chunk, mixed-decode, memory and request-count constraints."
+        },
+        {
+          "path": "python/sglang/srt/managers/schedule_policy.py",
+          "line": 610,
+          "anchor": "self.rem_chunk_tokens = rem_chunk_tokens",
+          "matching_line_count": 1,
+          "sha256": "28f57c7a6ef21f386d9083f24cbc4077280dd31e7abbc94667c904f9365aec68",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/managers/schedule_policy.py#L610",
+          "excerpt_start_line": 608,
+          "excerpt": "        self.new_token_ratio = new_token_ratio\n        self.rem_input_tokens = rem_input_tokens - num_mixed_decode_tokens\n        self.rem_chunk_tokens = rem_chunk_tokens\n        self.chunked_req_limit: Optional[int] = None\n        self.dllm_config = dllm_config\n        # Mamba checkpoints only land on page-aligned chunk ends.\n        self.exact_chunk_fill = (\n            _use_exact_chunk_fill()",
+          "interpretation": "Batch chunk budget differs from vLLM per-request long-prefill threshold."
+        },
+        {
+          "path": "python/sglang/srt/managers/scheduler_components/new_token_ratio_tracker.py",
+          "line": 14,
+          "anchor": "class NewTokenRatioTracker:",
+          "matching_line_count": 1,
+          "sha256": "d6ad7ede11e9262318649cc5427ee44fb14973d22f8ada26b6d5383a1e77a271",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/managers/scheduler_components/new_token_ratio_tracker.py#L14",
+          "excerpt_start_line": 12,
+          "excerpt": "\n@dataclass(slots=True, kw_only=True)\nclass NewTokenRatioTracker:\n    init: float\n    min: float\n    decay: float\n    current: float\n",
+          "interpretation": "Native adaptive tracker; updating conservativeness requires defined tracker state transition."
+        },
+        {
+          "path": "python/sglang/srt/mem_cache/evict_policy.py",
+          "line": 16,
+          "anchor": "class LRUStrategy",
+          "matching_line_count": 1,
+          "sha256": "fff4330dd8e0c04670642ba721f0a1d64e17ff6f3137521d5ca80cc699bf9573",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/mem_cache/evict_policy.py#L16",
+          "excerpt_start_line": 14,
+          "excerpt": "\n\nclass LRUStrategy(EvictionStrategy):\n    def get_priority(self, node: TreeNode) -> float:\n        return node.last_access_time\n\n\nclass LFUStrategy(EvictionStrategy):",
+          "interpretation": "Classic eviction strategy exists; not evidence of runtime algorithm switching."
+        },
+        {
+          "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+          "line": 1039,
+          "anchor": "def inc_lock_ref(",
+          "matching_line_count": 1,
+          "sha256": "d9193bcb9e69073ba2dc337b2e8bdae7f9c94ca68d16a09d67ce0e2bf18822bd",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/mem_cache/unified_radix_cache.py#L1039",
+          "excerpt_start_line": 1037,
+          "excerpt": "        )\n\n    def inc_lock_ref(\n        self, node_id: NodeId, skip_lock_components: Sequence[ComponentType] = ()\n    ) -> IncLockRefResult:\n        if self.disable:\n            return IncLockRefResult()\n        return self.tree_core.inc_lock_ref(node_id, skip_lock_components)",
+          "interpretation": "Unified cache has references/lifecycle constraints distinct from classic strategy API."
+        },
+        {
+          "path": "python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py",
+          "line": 69,
+          "anchor": "def build_attention_backends(",
+          "matching_line_count": 1,
+          "sha256": "dc319885d1cd318ba152e8c59f87c976e67a62505fccd98dcdc0707b2a4bf6ea",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py#L69",
+          "excerpt_start_line": 67,
+          "excerpt": "\n\ndef build_attention_backends(*, model_runner: ModelRunner) -> AttentionBackends:\n    \"\"\"Init attention kernel backend.\"\"\"\n    from sglang.srt.configs.model_config import AttentionArch\n\n    # TODO: Refactor device-specific init branches into platform interface (separate PR).\n    # Must run before the SSM early-return below; Mamba mixers still issue GEMMs.",
+          "interpretation": "Initial construction of execution paths; performance hot routing requires more work."
+        }
+      ]
+    }
+  ]
+}

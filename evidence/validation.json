@@ -1,0 +1,360 @@
+{
+  "checked_at_utc": "2026-11-02T03:47:19.533975+00:00",
+  "scope": "Offline artifact checks; no network, inference, GPU or controller evaluation",
+  "paper_count": 17,
+  "valid_pdf_count": 17,
+  "bibtex_entry_count": 17,
+  "relative_markdown_links_checked": 35,
+  "broken_relative_links": [],
+  "text_limitations": "PDFKit text may omit figures, equations or text in images. Sparse pages are reported; the original PDF is authoritative.",
+  "papers": [
+    {
+      "id": "01",
+      "file": "papers/01_SCOOT_WWW2025.pdf",
+      "bytes": 2202638,
+      "sha256": "2251434bea5333fa138f49c7417f543e7fe24ef4971ee0780ea3d53911b35769",
+      "parsed_pdf_pages": 11,
+      "text_file": "paper-text/01_SCOOT_WWW2025.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "02",
+      "file": "papers/02_TuxBot_SOSP2026_arxiv_v2.pdf",
+      "bytes": 760576,
+      "sha256": "543bd4fcc48785e2762de4a098f3feb2dd72f7732b21f514d178de2233a90760",
+      "parsed_pdf_pages": 18,
+      "text_file": "paper-text/02_TuxBot_SOSP2026_arxiv_v2.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "03",
+      "file": "papers/03_LaTune_WWW2026.pdf",
+      "bytes": 1644292,
+      "sha256": "235530edbc9f4010c356a5404a4a92b5098ed77802d8d8a3df932246d38375c2",
+      "parsed_pdf_pages": 11,
+      "text_file": "paper-text/03_LaTune_WWW2026.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "04",
+      "file": "papers/04_OnlineTune_SIGMOD2022.pdf",
+      "bytes": 1534774,
+      "sha256": "d396262b7a7cc5dc10a844435d7cee6b65abf7253c6aa661f9eeec181463dc80",
+      "parsed_pdf_pages": 17,
+      "text_file": "paper-text/04_OnlineTune_SIGMOD2022.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "05",
+      "file": "papers/05_GPTuner_VLDB2024.pdf",
+      "bytes": 6659309,
+      "sha256": "70780db58a95d03d5eea2b295999b5e12599b2d05958f80527aabb3c4bcbabf5",
+      "parsed_pdf_pages": 14,
+      "text_file": "paper-text/05_GPTuner_VLDB2024.txt",
+      "sparse_text_pages": [
+        2,
+        4,
+        5,
+        10,
+        11
+      ],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "06",
+      "file": "papers/06_LambdaTune_SIGMOD2025_arxiv.pdf",
+      "bytes": 2151277,
+      "sha256": "e31a8170e3cc0dc8aa6160b3cc070eade6dbfc2f151fdcae65f6cc30640cc928",
+      "parsed_pdf_pages": 14,
+      "text_file": "paper-text/06_LambdaTune_SIGMOD2025_arxiv.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "07",
+      "file": "papers/07_MorphServe_MLSys2026_arxiv_v2.pdf",
+      "bytes": 8886322,
+      "sha256": "e2c0f12fcbc5188a04078a31a732acaa95e93e9662aff4b766a0b9d6a73fbe30",
+      "parsed_pdf_pages": 19,
+      "text_file": "paper-text/07_MorphServe_MLSys2026_arxiv_v2.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "08",
+      "file": "papers/08_Llumnix_OSDI2024.pdf",
+      "bytes": 1940597,
+      "sha256": "2e99cfc54473cd0a0aeabbb9bf16706b23300a7717e5b370ee256cf75801a9d6",
+      "parsed_pdf_pages": 20,
+      "text_file": "paper-text/08_Llumnix_OSDI2024.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "09",
+      "file": "papers/09_SarathiServe_OSDI2024.pdf",
+      "bytes": 2137282,
+      "sha256": "2416e51f584230107739783e5995d3dea3efad93f189e2c3119434d62a31412c",
+      "parsed_pdf_pages": 19,
+      "text_file": "paper-text/09_SarathiServe_OSDI2024.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "10",
+      "file": "papers/10_DistServe_OSDI2024.pdf",
+      "bytes": 832045,
+      "sha256": "bb03e59d6ec6550015901f3f78d7e68f5a07cad8ccacb12f72835a8b667341c1",
+      "parsed_pdf_pages": 19,
+      "text_file": "paper-text/10_DistServe_OSDI2024.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "11",
+      "file": "papers/11_FlashInfer_MLSys2025.pdf",
+      "bytes": 1693865,
+      "sha256": "37beb3967fcae981febb3e93d7ae40c59d4b0c6debf12a1529ed803922eeada4",
+      "parsed_pdf_pages": 17,
+      "text_file": "paper-text/11_FlashInfer_MLSys2025.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "12",
+      "file": "papers/12_AdaServe_EuroSys2026.pdf",
+      "bytes": 937263,
+      "sha256": "244970598a4fe9d0ece32be534129fd6be16a566016bff305151bba16c2cb012",
+      "parsed_pdf_pages": 20,
+      "text_file": "paper-text/12_AdaServe_EuroSys2026.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "13",
+      "file": "papers/13_METIS_SOSP2025.pdf",
+      "bytes": 1174975,
+      "sha256": "5e94cb3131e3830d04239f43b6956133c1cf728fe5d9a34ab674895560d4c037",
+      "parsed_pdf_pages": 17,
+      "text_file": "paper-text/13_METIS_SOSP2025.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "14",
+      "file": "papers/14_Ave_SOSP2026_arxiv_v2.pdf",
+      "bytes": 720378,
+      "sha256": "3cb2ff1ad49cb9631cf9a36f1123b4edaf33b5baa5e2ea2c3aa84388828a75d3",
+      "parsed_pdf_pages": 15,
+      "text_file": "paper-text/14_Ave_SOSP2026_arxiv_v2.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "15",
+      "file": "papers/15_OPPerTune_NSDI2024.pdf",
+      "bytes": 2472736,
+      "sha256": "a6dbd02129a4e0e71b178947ad744f65f12125083b2f2af5dcb1fc11fcb0c8fe",
+      "parsed_pdf_pages": 21,
+      "text_file": "paper-text/15_OPPerTune_NSDI2024.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "16",
+      "file": "papers/16_TUNA_EuroSys2025.pdf",
+      "bytes": 1052283,
+      "sha256": "e6a23b4e47481df135ea670bca040974a01956440c719db292d168c6413912d5",
+      "parsed_pdf_pages": 19,
+      "text_file": "paper-text/16_TUNA_EuroSys2025.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    },
+    {
+      "id": "17",
+      "file": "papers/17_QoServe_ASPLOS2026.pdf",
+      "bytes": 2618094,
+      "sha256": "6985bb3a55566a3d59ff1434834dfeeb98dc09abb93ad4ed013661e71721298d",
+      "parsed_pdf_pages": 16,
+      "text_file": "paper-text/17_QoServe_ASPLOS2026.txt",
+      "sparse_text_pages": [],
+      "checks": {
+        "status_complete": true,
+        "pdf_header": true,
+        "pdf_eof": true,
+        "bytes_match_manifest": true,
+        "sha256_match_manifest": true,
+        "parsed_page_count_positive": true,
+        "page_markers_match_count": true,
+        "text_present": true
+      },
+      "valid": true
+    }
+  ],
+  "errors": [],
+  "all_checks_pass": true
+}

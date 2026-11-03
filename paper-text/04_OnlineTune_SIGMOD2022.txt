@@ -1,0 +1,2030 @@
+Source: 04_OnlineTune_SIGMOD2022.pdf
+Pages: 17
+
+===== PDF PAGE 1 =====
+arXiv:2203.14473v1 [cs.DB] 28 Mar 2022
+Towards Dynamic and Safe Configuration Tuning for Cloud
+Databases
+Xinyi Zhang∗†‡
+Peking University & Alibaba Group
+zhang_xinyi@pku.edu.cn
+Jian Tan†
+Alibaba Group
+j.tan@alibaba-inc.com
+ABSTRACT
+Configuration knobs of database systems are essential to achieve
+high throughput and low latency. Recently, automatic tuning sys-
+tems using machine learning methods (ML) have shown to find
+better configurations compared to experienced database adminis-
+trators (DBAs). However, there are still gaps to apply the existing
+systems in production environments, especially in the cloud. First,
+they conduct tuning for a given workload within a limited time
+window and ignore the dynamicity of workloads and data. Second,
+they rely on a copied instance and do not consider the availability
+of the database when sampling configurations, making the tun-
+ing expensive, delayed, and unsafe. To fill these gaps, we propose
+OnlineTune, which tunes the online databases safely in changing
+cloud environments. To accommodate the dynamicity, OnlineTune
+embeds the environmental factors as context feature and adopts
+contextual Bayesian Optimization with context space partition to
+optimize the database adaptively and scalably. To pursue safety dur-
+ing tuning, we leverage the black-box and the white-box knowledge
+to evaluate the safety of configurations and propose a safe explo-
+ration strategy via subspace adaptation.We conduct evaluations on
+dynamic workloads from benchmarks and real-world workloads.
+Compared with the state-of-the-art methods, OnlineTune achieves
+14.4%~165.3% improvement on cumulative performance while re-
+ducing 91.0%~99.5% unsafe configuration recommendations.
+CCS CONCEPTS
+• Information systems →Autonomous database administra-
+tion; • Computing methodologies →Machine learning.
+∗School of CS & Key Laboratory of High Confidence Software Technologies, Peking
+University
+†Database and Storage Laboratory, Damo Academy, Alibaba Group
+‡Center for Data Science, Peking University & National Engineering Laboratory for
+Big Data Analysis and Applications
+§Institute of Computational Social Science, Peking University (Qingdao)
+Permission to make digital or hard copies of all or part of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. Copyrights for components of this work owned by others than ACM
+must be honored. Abstracting with credit is permitted. To copy otherwise, or republish,
+to post on servers or to redistribute to lists, requires prior specific permission and/or a
+fee. Request permissions from permissions@acm.org.
+SIGMOD ’22, June 12–17, 2022, Philadelphia, PA, USA
+© 2022 Association for Computing Machinery.
+ACM ISBN 978-1-4503-9249-5/22/06...$15.00
+https://doi.org/10.1145/3514221.3526176
+Hong Wu†
+Alibaba Group
+hong.wu@alibaba-inc.com
+Yang Li∗
+Peking University
+liyang.cs@pku.edu.cn
+Feifei Li†
+Alibaba Group
+lifeifei@alibaba-inc.com
+Bin Cui∗‡§
+Peking University
+bin.cui@pku.edu.cn
+KEYWORDS
+online tuning; cloud database; availability
+ACM Reference Format:
+Xinyi Zhang, Hong Wu, Yang Li, Jian Tan, Feifei Li, and Bin Cui. 2022.
+Towards Dynamic and Safe Configuration Tuning for Cloud Databases. In
+Proceedings of the 2022 International Conference on Management of Data
+(SIGMOD ’22), June 12–17, 2022, Philadelphia, PA, USA. ACM, New York, NY,
+USA, 17 pages. https://doi.org/10.1145/3514221.3526176
+1 INTRODUCTION
+Modern database management systems (DBMS) have dozens of
+configurable knobs that control the runtime behaviors [15] and
+impact database performance such as throughput and latency. Find-
+ing an optimal configuration for a given workload is proven to be
+an NP-hard problem [57] and it is impossible to enumerate and
+evaluate all the combinations. To find promising configurations,
+database administrators (DBAs) put considerable effort into tuning
+the configurations based on their experience. In addition, the work-
+loads from real-world applications are dynamic, which means the
+properties of the workloads vary over time. Figure 1 (a) shows a
+dynamic workload trace from a real-world application. Similarly,
+the underlying data size and distribution constantly change due
+to the data modification operations. In Figure 1 (b), the size of un-
+derlying data increases almost three times after running TPC-C
+workload for 33 hours. The dynamicity of the environment makes
+configuration tuning more difficult.
+Many recent studies focus on automatic configuration tuning
+for DBMSs using Machine Learning (ML) techniques, including
+Gaussian Process Regression from OtterTune[6], and Deep Deter-
+ministic Policy Gradient from CDBTune [73] and QTune [41]. These
+ML-based tuning systems can efficiently sample more promising
+configurations than DBAs; that is, they could find near-to-optimal
+configurations with fewer trials. They utilize ML models to suggest
+promising configurations and update the models by evaluating the
+configurations iteratively. To achieve this, they first need to copy
+the target DBMS instance to either replay or forward the workload.
+In each iteration, the tuner suggests a configuration and applies it
+to the copied DBMS. Then, the workload is executed to evaluate the
+performance metrics of the suggested configuration, and the model
+is updated based on the evaluation. This process repeats until the
+models converge or stop conditions are met (e.g., budget limits).
+Unfortunately, there are several major problems when deploying
+these systems in production, especially in the cloud. All the existing
+
+===== PDF PAGE 2 =====
+#Query per Second
+10000
+8000
+6000
+4000
+2000
+0
+select
+insert
+update
+delete
+Data Size (MB)
+80000
+70000
+60000
+50000
+40000
+30000
+800
+Throughput (txn/sec)
+600
+400
+200
+0
+19:00 04:00 14:00 00:00 09:00
+0 500 1000 1500
+Timestamp
+Time (minute)
+(a) Dynamic Workload (b) Changing Data
+OtterTune CDBTune DBA Default
+Improvement Against DBA Default
+10%
+0%
+-10%
+0 50 100 150 200
+Iteration
+0 25 50 75 100 125
+Time (minute)
+(c) Exploration of Auto-tuners (d) Performance of Fixed Config.
+Figure 1: Motivating Examples: Figures (a) and (b) show the
+dynamic environment in the cloud. Figures (c) and (d) show
+the performance of existing auto-tuners. In (c), the tuners
+tune a static workload with numerous unsafe trials. In (d),
+we apply the best configurations found in (c) to a dynamic
+workload and observe decreasing improvement.
+systems fall into offline tuning systems since the tuning process runs
+in a copied instance using a workload trace within a certain period.
+On the one hand, they only consider part of the workload, assum-
+ing the workload pattern never shifts too far. The tuning process
+usually takes hours or days to find near-to-optimal configurations.
+Consequently, the offline methods can not adapt to the dynamic
+workload from real-world applications. On the other hand, these
+systems rely on a copied instance and require the infrastructure to
+replay the workloads [69]. For the consideration of data privacy,
+the copied instance should be launched in the users’ environment
+(e.g., Virtual Private Cloud). Every time end-users want to tune the
+configurations, they should purchase a copied instance and prepare
+the workload and data based on a snapshot. This cloning process is
+time-consuming makes the tuning task expensive and delayed. The
+Total Cost of Ownership (TCO) is increased for end-users, which is
+an important factor in the cloud.
+To fill the above gaps, it is desirable to design a configuration
+tuning system coordinating with the online database to adapt to
+the workload changes directly and conveniently. Tuning config-
+uration knobs for an online database does not need to copy the
+instance, so the TCO issue is directly solved. However, the online
+tuning system should address the following challenges. First, high
+availability is essential to online databases, and it is not allowed to
+sample bad configurations during tuning, causing the performance
+downgrade. However, it is inevitable for existing approaches to sam-
+ple bad configurations. Figure 1 (c) shows the process of existing
+automatic configuration tuning systems tuning the TPCC workload
+in a MySQL instance. OtterTune utilizes Bayesian Optimization to
+suggest promising configurations by balancing exploration and ex-
+ploitation, and CDBTune adopts reinforcement learning to learn the
+tuning policy via trials-and-error. They could find near-to-optimal
+configurations. However, 50%~70% of their recommended configura-
+tions are worse than the default. The tuning even causes two system
+hangings by configuring the total memory (e.g., buffer pool, insert
+buffer, sort buffer, etc.) larger than the machine’s physical capacity.
+Such harmful recommendations would expose enormous risks to
+online databases. Second, the dynamic environment in the cloud
+should be considered, and we can not directly leverage the offline
+tuning approaches. Figure 1 (d) shows the performance of applying
+the best configurations obtained from the tuning processes in Fig-
+ure 1 (c) to a dynamic workload (changing the transaction weight
+gradually from the original TPC-C workload). We observe that the
+applied configurations have better performance at the beginning.
+However, the configurations recommended by the offline tuning
+systems mismatch the dynamic workload afterward. They become
+worse than the default after 75 minutes. From these perspectives,
+the online database tuning should fulfill the following desiderata:
+Dynamicity: The tuner is capable of responding to the dynamic
+environment (e.g., workload and its underlying data) adaptively.
+Safety: The tuner should recommend configurations that do not
+downgrade the database performance during the tuning process.
+In this paper, we propose OnlineTune, an online tuning system
+that tunes the databases safely and adaptively in the constantly
+changing cloud environment. For dynamicity, we formulate the
+online tuning problem into a contextual bandit problem. Online-
+Tune featurizes the context and optimizes the database performance
+over a context-configuration joint space. We propose a clustering
+and model section strategy to scale up OnlineTune with accu-
+mulated observations. OnlineTune clusters the observations, fit
+multiple models, and selects the appreciate one for a given context.
+For safety, OnlineTune safely explores the configuration space.
+It evaluates the safety of configurations by leveraging both the
+black-box knowledge (i.e., posterior estimate from the model) and
+white-box knowledge (i.e., heuristics-based rules from the domain
+experience). Since satisfying the safety constraint in the continuous
+and high-dimension space is non-trivial [34], we transform the
+high-dimension optimization problem into a sequence of subspace
+problems that can be solved efficiently. Each model maintains a con-
+figuration subspace centered around the best configuration found
+so far. OnlineTune starts from configurations similar to those
+known to be safe and expands the subspace to facilitate further
+explorations. Specifically, we make the following contributions:
+•To address the challenges in real DBMS scenarios with the dy-
+namic workload, we define the online tuning problem and solve
+it as a contextual bandit problem with safety constraints. To
+the best of our knowledge, OnlineTune is the first online con-
+figuration tuning system for DBMS with safety consideration.
+•We propose a context featurization model that extracts features of
+workloads and underlying data. Using this, OnlineTune adopts
+the contextual Bayesian optimization technique to optimize the
+database adaptively with constantly changing environments.
+•To enhance the scalability of OnlineTune with extensive data in
+the cloud, we propose a clustering and model selection strategy
+that significantly decreases the computation complexity.
+
+===== PDF PAGE 3 =====
+•To solve the safety issue, we combine the black-box and the
+white-box knowledge to evaluate the safety of configurations
+and propose a safe exploration strategy via subspace adaptation,
+largely reducing the risks of applying harmful configurations.
+•We implement the proposed method and evaluate on dynamic
+workloads from benchmarks and the real-world application. Com-
+pared with the state-of-the-art techniques, OnlineTune achieves
+14.4%~165.3% improvement on cumulative improvement while
+decreasing 91.0%~99.5% unsafe recommendations.
+The remainder of the paper is organized as follows. We review
+the related works in Section 2 and formally define the online tuning
+problem in Section 3. A system overview of OnlineTune is pre-
+sented in Section 4, followed by a description of our techniques for
+contextual performance modeling in Section 5, safe configuration
+recommendation in Section 6. Section 7 presents our experimental
+evaluation. Finally, we conclude in Section 8.
+2 RELATED WORK
+Configuration Tuning. There has been an active area of research
+on tuning configurations of DBMS, which can be summarized as:
+•Rule-based. Rule-based methods recommend configurations us-
+ing heuristic rules. Database vendors develop tuning tools to
+provide DBA with knobs recommendations through identifying
+database’s bottlenecks due to misconfigurations [12] or asking
+the DBA questions about their application [67]. Wei et al. propose
+to generate fuzzy rules for database tuning [66]. BestConfig [75]
+searches configurations based on several heuristics. Rule-based
+methods strongly depend on the assumptions of their heuristics
+and fail to utilize knowledge gained from previous tuning efforts.
+•Learning-based. iTuned [15], Ottertune [6] and ResTune [74]
+use Bayesian Optimization (BO) based method, modeling the tun-
+ing as a black-box optimization problem. Reinforcement Learning
+(RL) is adopted in [41, 73] to tune DBMS by learning a neural net-
+work between the internal metrics and the configurations. In the
+field of data analytic systems, ReIM [37] studies the problem of
+tuning the memory allocation and develops an empirically-driven
+algorithm. And Tuneful [18, 19] combines incremental Sensitiv-
+ity Analysis and BO to prone configuration space. Although RL
+methods can adapt to workloads by fine-tuning its neural net-
+work, additional time and evaluation samples are needed. All the
+above methods train a machine learning model to learn the of-
+fline tuning policy and cannot promptly respond to the dynamic
+environment. Besides, they do not consider the safety constraints
+when interacting with the database, which restricts them from
+being deployed in production.
+Query Featurizing. Query featurizing aims at translating plain
+SQLs into their vectorized representations. We summarize it into
+SQL text parsing and logical plan parsing based on the input. SQL
+text parsing directly processes the query texts. TF-IDF is used to
+represent a query as a collection of the weighted frequencies of its
+individual word tokens [45, 74]. However, its unbounded vocabulary
+makes generalization across workloads difficult. Therefore ResTune
+restricts its calculation to reserved SQL keywords [74]. To support
+larger vocabulary, [30, 76] resort to representation learning which
+is frequently used in NLP. Representation learning produces dense
+vectors capturing nuanced relationships of unstructured data. They
+use deep models, e.g., LSTM or CNN, to learn the distributional
+embeddings. Logical plan parsing parses a query plan to aggregate
+key features, including the cost or categories of operators, scanned
+tables, and predicates. It has been adopted by many state-of-the-art
+works in the field of query-performance prediction or cardinality
+estimation [4, 5, 23, 33, 38, 47, 51, 58]. QTune encodes query type,
+involved tables, query operators and the corresponding costs to
+predict the internal metrics of a database [41].
+Bayesian Optimization. Our algorithm falls under the general
+umbrella of Bayesian optimization (BO). It learns and optimizes a
+black-box function over configuration space [54]. BO works iter-
+atively: (1) updating the surrogate model that describes the rela-
+tionship between configurations and their performances and (2)
+choosing the next configuration to evaluate by computing the ac-
+quisition function value. The acquisition function measures the
+utility of candidate points for the next evaluation by trading off the
+exploration of uncertain areas and exploiting promising regions.
+BO has been extensively used in many scenarios, including hyper-
+parameter tuning [9, 14, 31, 42, 68], experimental design [22] and
+controller tuning [11, 20, 21, 46]. Contextual BO considers the envi-
+ronmental conditions by augmenting the GP kernel with extra con-
+text variables and uses 𝐶𝐺𝑃−𝑈𝐶𝐵to select promising action [35].
+DBA Bandit [52] chooses a set of indices from finite and discrete
+configuration space based on the context of indexed columns and
+derived statistics from database optimizer. It achieves an˜
+𝑂(√𝑛)
+regret bound after playing 𝑛rounds as a safety guarantee, imply-
+ing that the per-step average cumulative regret approaches zero
+after sufficiently many steps. However, guaranteeing the safety
+of every step is still challenging but vital for mission-critical ap-
+plications. Recently, Constrained BO is proposed to optimize a
+black-box function with unknown constraint [24, 25, 40]. But the
+constraint is not considered safety-critical, and the algorithm is
+allowed to evaluate unsafe parameters. The main instance of safe
+optimization is SAFEOPT algorithm [56]. However, its formula-
+tion relies on a discretization of configuration space, which hinders
+high-dimensional applications. Meanwhile, scaling up BO with high
+dimensions is another active area. Recent works propose local mod-
+eling [16, 34, 64, 64] and space partitioning [49, 65], which achieve
+strong empirical results in high dimensional problems. Motivated
+by the advances, OnlineTune refines a configuration subspace that
+can be discretized efficiently.
+3 PROBLEM STATEMENT
+Consider a database system with a continuous configuration space
+Θ= Θ1 ×Θ2 ×...×Θ𝑚 and a context space 𝐶. The context 𝑐 ∈𝐶is
+uncontrollable environmental conditions, e.g., dynamic workloads.
+We denote the database performance metrics as 𝑓, which can be any
+chosen metric to be optimized, such as throughput, 99%th percentile
+latency, etc. Given a configuration 𝜃 and context 𝑐, the correspond-
+ing performance 𝑓(𝜃,𝑐)can be observed only after evaluation.
+As we discussed, the online tuner should satisfy two require-
+ments: dynamicity and safety. The dynamicity requirement
+means the tuner should consider changing environmental condi-
+tions (context) when recommending the configurations. We formal-
+ize it as a contextual bandit problem [35], where at each iteration
+𝑡, the tuner receives context 𝑐𝑡 and outputs a configuration 𝜃𝑡 to
+
+===== PDF PAGE 4 =====
+① Context Featurization
+ online SQL
+Capture
+underlying data
+② Model Selection
+M3
+M2
+context updated
+M5
+M4
+M1
+model
+subspace
+③ Subspace Adaptation
+selected
+model
+④ Safety Assessment
+black box white box
+⑦ Model Update
+<context, configuration, performance>
+observation
+⑥ Apply & Evaluation
+Contextual Performance Modeling
+Safe Configuration Recommendation
+adapted
+subspace
+configuration
+⑤ Candidate Selection
+safety set exploration exploitation
+model that predicts the performance of given configurations in
+dynamic environments. The surrogate is a contextual Gaussian
+Process (GP) model fitted on historical observations (or the initial
+safety set, if no historical observations exist). ① OnlineTune first
+captures the dynamic factors (e.g., workload and its underlying data)
+through context featurization, obtaining a context (see Section 5.1
+for details). ② It then selects a contextual GP model fitted on the
+observations from the cluster with similar contexts. The clusters
+are periodically re-clustered in an offline manner (Section 5.3). ⑦
+The construction of contextual GP is introduced in Section 5.2.
+Safe configuration recommendation aims at selecting a safe and
+Figure 2: OnlineTune Workflow.
+maximize the payoff (i.e., database performance 𝑓). The safety re-
+quirement indicates that we additionally need to ensure that, for
+each tuning iteration 𝑡, 𝑓𝑡 ≥𝜏holds, where 𝑓𝑡 = 𝑓(𝜃𝑡,𝑐𝑡)and 𝜏 ∈R
+is a specific safety threshold. We define the configurations that sat-
+isfy the above condition to be safe. The safety threshold indicates
+the degree of risk end-users can tolerate when adopting the tuning
+approach. As the database is a mission-critical system, the service
+level agreement must be guaranteed by the cloud providers under
+the vendor default configuration [60, 62]. Intuitively, the safety
+threshold is set to the database performance under the default con-
+figuration (denoted as default performance). In case the default
+performance fluctuates with workload changes, we assume that
+the default performance for any given workload can be acquired.
+Note in practice, the default performance can be easily obtained
+or predicted when a historical knowledge base is available (such
+as in [6, 18, 74]). For example, the user could train a regression
+model that inputs the context and outputs the default performance.
+Even without any previous knowledge, we can take some time to
+observe the default performance. At the very beginning, without
+any assumptions about 𝑓, searching the safe configurations is a
+nonsensical task. Hence, we also assume that, before the optimiza-
+tion, we are given an initial safety set that contains at least one
+safe configuration. Assuming that the objective is a maximization
+problem, the online tuning problem to solve for 𝑐𝑡 ∈𝐶 is :
+analysis in our experiments. Within one iteration, the workflow of
+OnlineTune forms an iterative cycle, as presented by ①-⑦ in Fig-
+ure 2. The workflow consists of two stages: contextual performance
+modeling and safe configuration recommendation.
+Contextual performance modeling aims at obtaining a surrogate
+arg max
+𝑓(𝜃𝑡,𝑐𝑡),
+𝜃𝑡 ∈Θ
+subject to 𝑓(𝜃𝑡,𝑐𝑡)≥𝜏.
+(1)
+4 OVERVIEW OF ONLINETUNE
+Workflow. To conduct online tuning, OnlineTune first queries
+the default configuration and its performance to build an initial
+safety set. The safety threshold is set to the default performance,
+as discussed in Section 3. Then, OnlineTune functions iteratively.
+It adapts to the dynamic environment by featurizing the context,
+recommending a promising configuration 𝜃𝑡 at the beginning of
+an iteration, and evaluating its performance during the iteration to
+update the model. The interval size (i.e., time for one iteration) con-
+trols the granularity of OnlineTune’s adaptation to the dynamicity.
+Given a tuning time, OnlineTune can collect more observations
+and make more fine-grained suggestions with a small interval size.
+We use a three-minute interval by default and conduct sensitivity
+promising configuration from the configuration space. To avoid
+the aggressive exploration of BO, especially the over-exploration of
+boundaries, OnlineTune reduces the optimization over the whole
+configuration space into a sequence of subspace optimization. All
+operations in this stage are restricted in the subspace where the
+safe optimization problem can be discretized and solved efficiently.
+In essence, the subspace is centered around the best configuration
+estimated so far, gradually moving towards the optimal. This stage
+inputs the selected surrogate model and its corresponding subspace.
+③ For a newly fitted model, OnlineTune initializes a subspace
+centered around the best-estimated configuration. Otherwise, On-
+lineTune adapts the subspace according to the tuning history, e.g.,
+expands the subspace when making consecutive successes (Section
+6.1). ④ The adapted subspace is discretized to build a candidate
+set. OnlineTune assesses the safety of the candidates based on
+the model’s lower bound estimate, forming a safety set. It also
+consults the white box to dismiss unsafe configurations. In case
+the heuristic white box excludes the optimal configurations from
+the safety set, OnlineTune relaxes inappropriate rules (Section
+6.2.2). ⑤ OnlineTune then selects a configuration from the safety
+set by either maximizing the acquisition function or exploring the
+safe boundaries of subspace. ⑥ Finally, OnlineTune applies the
+configuration to the online database and evaluates its performance.
+Architecture. The main parts of OnlineTune are deployed in
+a backend tuning cluster (OnlineTune sever), while the context
+featurization module is deployed in the database instance for data
+
+===== PDF PAGE 5 =====
+f( ,c=0)
+2
+0
+2
+f( ,c=0.1)
+2
+0
+2
+f( ,c=0.5)
+2
+0
+2
+10.0 7.5 5.0 2.5 0.0 2.5 5.0 7.5 10.0
+10.0 7.5 5.0 2.5 0.0 2.5 5.0 7.5 10.0
+10.0 7.5 5.0 2.5 0.0 2.5 5.0 7.5 10.0
+Figure 3: Generalization over Contexts: OnlineTune has the three observations (blue points) under the context 𝑐 = 0 (left) and
+fits a posterior distribution with mean (blue line) and confidence bound (light blue area). By exploiting correlations between
+different contexts, OnlineTune can transfer knowledge of the objective function to a different context 𝑐 = 0.1 (middle), but
+little knowledge to the distant context (right). The red label shows the estimated safety set with zero as the safety threshold.
+privacy concerns. OnlineTune server maintains a data repository
+that stores the historical observations from the previous tuning
+iterations, which can be initially empty. OnlineTune server inter-
+acts with the database instance via a controller that monitors the
+tuning tasks’ states and transfers the data.
+5 CONTEXTUAL PERFORMANCE MODELING
+OnlineTune responds to dynamic environments when tuning on-
+line DBMSs. It augments the GP kernel with context variables to
+learn the relationship between ⟨context, configuration⟩, and data-
+base performance. We first discuss how to featurize context and
+construct a contextual GP model. Then, we present a clustering and
+model selection strategy to enhance the model’s scalability.
+5.1 Context Featurization
+Context featurization aims to capture uncontrollable dynamic fac-
+tors, which affects the relationship between configurations and
+database performances. When tuning the database, the workload
+and underlying data are constantly and continuously changing due
+to the upstream applications and the DML statements (e.g., insert,
+delete and update). OnlineTune featurizes the two factors to adapt
+to the dynamicity.
+5.1.1 Workload Featurization. We now illustrate how to featurize
+the changing workload. There are two dynamic aspects of work-
+loads [43]: (1) query arrival rate: the number of arriving queries
+per second can fluctuate. (2) query composition: the types of queries
+may change, and the ratio of queries composition may vary.
+Query arrival rate can be encoded by one dimension. For query
+composition, we need to translate the plain queries into vectorized
+representations. We adopt representation learning techniques [8]
+to extract informative encoding of queries and generalize across
+workloads. We choose LSTM, which have been used successfully for
+SQL query analysis [29, 30, 76]. We use a standard LSTM encoder-
+decoder network [59] to ease the burden of collecting labeling data.
+The final hidden state on the encoder network provides a dense
+encoding for the query. Lastly, we average the query encoding,
+obtaining the queries composition feature of a workload.
+5.1.2 Underlying Data Featurization. Learning the distribution of
+database data is a non-trivial task [26, 70, 71]. Based on the observa-
+tion that only the data changes affecting the workload queries are
+related to the tuning policy, we use the following features from the
+DBMS optimizer: (1) estimate of rows to be examined by queries,
+(2) the percentage of rows filtered by table conditions in queries,
+(3) whether an index is used. The first two features are queries’ car-
+dinality estimation, capturing the effective changes in data size and
+distribution. The last feature indicates the index building/dropping
+operation. We average the three features of queries, obtaining the
+underlying data feature of a workload.
+Finally, we concatenate the workload feature and underlying
+data feature to obtain the final context features. Although query
+plans can provide extra information about the query execution, e.g.,
+operators and costs, we do not encode them as contexts. This is be-
+cause the extra information is affected by OnlineTune’s previous
+configuration, which is unsuitable as a context for future tuning.
+In addition, modern DBMSs have hundreds of plan operators [44],
+encoding the plan operators could cause the “dimensionality issue”
+when augmenting the sparse and high-dimensional variables to GP
+kernel. Other dynamic factors could affect database performance,
+such as hardware configuration, data partition change, user-invoke
+configurations, etc. Their changes usually occur intermittently. On-
+lineTune can re-initialize a tuning task when the changes occur or
+encode these factors. For example, OnlineTune can encode hard-
+ware configuration (e.g., memory size, #CPU) to support hardware
+updates. Database anomalies (e.g., out of disk space and cybercrim-
+inal attack) are out of OnlineTune’s scope.
+5.2 Performance Modeling with Contexts
+A performance model estimates the performance metrics given
+context and potential configurations. We adopt the contextual GP
+as the performance model, which extends the GP to support dy-
+namic environments. GP is a popular surrogate model for objective
+modeling in Bayesian Optimization [28] due to its expressiveness
+and well-calibrated uncertainty estimates. GP provides confidence
+bounds on its predictions to model the objective function with lim-
+ited samples. In such a scenario, other data-intensive techniques,
+e.g., deep learning [41, 73] may struggle with low data efficiency
+and interpretability [18]. In this section, we focus on learning the
+performance model and leave the phase of safe tuning in Section 6.
+We aim to learn a performance model for different but corre-
+lated contexts. In the learning phase, we construct the probability
+distribution 𝑝(𝑓|𝜃,𝑐,𝐻𝑡)of the target function 𝑓= 𝑓 (𝜃,𝑐)given
+an unspecified input 𝜃, the observed context feature 𝑐 and the ob-
+servations 𝐻𝑡 = {𝑐𝑖,𝜃𝑖,𝑦𝑖}𝑡
+𝑖=1. The posterior distribution over 𝑓 is
+a contextual GP with mean 𝜇𝑡 (𝜃,𝑐)and variance 𝜎2
+𝑡 (𝜃,𝑐):
+𝜇𝑡(𝜃,𝑐)= 𝑘𝑇 𝐾+𝜎2𝐼
+−1
+𝑦1:𝑡,
+𝜎2
+𝑡 (𝜃)= 𝑘 (𝜃,𝑐),(𝜃,𝑐) −𝑘𝑇 𝐾+𝜎2𝐼
+−1
+(2)
+𝑘,
+
+===== PDF PAGE 6 =====
+Algorithm 1: Offline Clustering
+Input: 𝐻𝑡 = {𝑐𝑖,𝜃𝑖,𝑦𝑖}𝑡
+𝑖=1
+Output: Multiple contextual GPs and a decision boundary
+1 if Need_ReLearn() then
+2 Conduct DBSCAN on {𝑐𝑖}𝑡
+1 and get cluster labels {𝑙𝑖}𝑡
+1.
+3 Fit Contextual GP 𝑝(𝑓|𝑐,𝜃,𝐻𝑡)for each clustering.
+4 Fit SVM model on {𝑐𝑖,𝑙𝑖}𝑡
+1, obtaining decision boundary.
+where 𝑘= [𝑘((𝜃1,𝑐1),(𝜃,𝑐)),...,𝑘((𝜃𝑡,𝑐𝑡),(𝜃,𝑐))]𝑇 and K is a co-
+variance matrix whose (𝑖,𝑗)th entry is 𝐾𝑖,𝑗= 𝑘((𝜃𝑖,𝑐𝑖),(𝜃𝑗,𝑐𝑗)).
+The kernel 𝑘((𝜃,𝑐),(𝜃′
+,𝑐
+′))should model the distances between
+points of configuration and context. Concretely, we construct an
+additive kernel 𝑘Θ (𝜃,𝜃′)+𝑘𝐶(𝑐,𝑐
+′). We use a linear kernel 𝑘𝐶(𝑐,𝑐
+′)
+to model the dependence on contexts and a Martin kernel 𝑘Θ (𝜃,𝜃′)
+to model the nonlinear performance on configurations. Intuitively,
+such design could model overall trends according to the context,
+and the configuration-specific deviation from this trend [35].
+The composite kernel implies that function values are corre-
+lated when configurations and contexts are similar [10]. We expect
+the same configuration across correlated contexts to have similar
+performance predictions. The correlations between contexts can
+significantly speed up the tuning. Figure 3 shows a simple scenario
+with a one-dimension context feature and a one-dimension config-
+uration. Even though the algorithm has only explored the configu-
+ration space at the first context (z = 0, left figure), the correlation
+between the functions generalizes information to the unobserved
+context (z = 0.1, central figure). The knowledge transfer improves
+data efficiency and reduces the number of required evaluations.
+5.3 Clustering and Model Selection
+The contextual GP can model the database performance in dynamic
+environments. However, it has 𝑂(𝑛3)complexity with 𝑛observa-
+tions. The cubical computation complexity limits the applicability
+with increasing observations in the cloud. To tackle this problem,
+we propose a clustering and model selection strategy based on the
+similarity of context features. The observations are clustered, and
+the number of observations in each cluster can be bounded under
+a constant number 𝑃. OnlineTune fits multiple contextual GPs
+based on the clusters and learns a decision boundary for model
+selection. Therefore the complexity is bounded by 𝑂(𝑃3), which
+makes OnlineTune can scale with increasing observations.
+Algorithm 1 presents the procedure. We first perform the DB-
+SCAN clustering algorithm [17] based on context features {𝑐𝑖}𝑡
+1,
+obtaining a cluster label 𝑙𝑖 for each 𝑐𝑖 (Line 2), as shown in Figure 4
+(a). For each cluster, OnlineTune fits a contextual GP model using
+its observations (Line 3). To select a model for unseen contexts,
+OnlineTune uses SVM to learn a non-linear decision boundary
+(Line 4, as shown in Figure 4 (b)). We choose SVM for its simplicity,
+ease of training, and the need for fewer samples to generalize well
+in practices [63]. Besides improving scalability, such clustering ex-
+cludes the observations with distant contexts from the training set
+for the GP model, preventing the “negative transfer” [36].
+Augmented observations are classified into a cluster based on
+their context and the learned boundary. However, the distribution
+(a) Dbscan learns the clusters (b) SVM learns the space partition
+Figure 4: Clustering and Model Selection: Each point denotes
+a sample and the learned boundary splits the context space.
+of context features may shift as more observations are collected,
+and the previous clustering and boundary need to be re-learned
+periodically. OnlineTune maintains the existing clustering and
+a simulated new clustering to determine whether to re-learn or
+not (Line 1). The difference between the two kinds of clusterings
+indicates context shifts. We use a mutual information-based score
+(MI) to quantify the difference. MIs close to zero indicate two vastly
+dissimilar clusterings, while MIs close to one indicates the opposite.
+When the MI score is smaller than a threshold (we set 0.5 in the
+experiments), the re-clustering is triggered, and the boundary and
+models are updated based on the revised clusters (Line 2–4).
+6 SAFE CONFIGURATION
+RECOMMENDATION
+OnlineTune aims to optimize the database performance while
+ensuring safety throughout the tuning process. Instead of optimiz-
+ing the performance function over the global configuration space,
+OnlineTune restricts its optimization in a subspace and gradually
+expands it towards the optimum. The subspace restriction enables
+a fine discretization to generalize safety and mitigates the over-
+exploring nature of BO. This section introduces how OnlineTune
+adapts the subspace, forms a safety set within the subspace, and
+selects a safe and promising configuration.
+6.1 Subspace Adaptation
+To expand towards the global optimum, the configuration subspace
+is adjusted iteratively and alternated between hypercube and line
+regions, as shown in Algorithm 2.
+The hypercube region {𝜃 ∥𝜃−𝜃𝑏𝑒𝑠𝑡∥2 ≤𝑅𝑛}∩Θ is defined with
+a region center 𝜃𝑏𝑒𝑠𝑡 and a radius 𝑅𝑚. The region center 𝜃𝑏𝑒𝑠𝑡 is set
+to the best configuration observed so far. The radius 𝑅𝑛 controls the
+optimization space. If 𝑅𝑛 is large enough for the hypercube region
+to contain the whole configuration space, this will be equivalent to
+running standard global BO, while a small 𝑅𝑛 may slow down the
+exploration. At initialization, 𝑅𝑛is set to a base value (e.g., 5% ranges
+of each dimension). It is typical behavior to shrink 𝑅𝑛 after con-
+secutive “failures” and expand it after consecutive “successes” [50].
+We define a “success” as recommending a configuration better than
+the previous one and a “failure” as a recommendation that does not.
+The details about adjusting 𝑅𝑛 is illustrated in Line 4–7.
+The line region is a one-dimensional affine subspace {𝜃𝑏𝑒𝑠𝑡 +
+𝛼𝑑 : 𝛼 ∈R|}∩Θ, defined with the offset 𝜃𝑏𝑒𝑠𝑡 and a direction
+𝑑 ∈R𝑚. It is proved that the optimization with line regions can
+converge globally [34]. The direction of the line region determines
+the trace of optimization. We implement two strategies to generate
+the directions: random direction (increasing the exploration) and
+important direction (aligned with the important configuration knob,
+increasing exploitation). Appendix contains the details.
+
+===== PDF PAGE 7 =====
+Algorithm 2: Subspace Adaptation
+Input: Current subspace Θ𝑛, Current best config. 𝜃𝑏𝑒𝑠𝑡,
+Success counter Υ𝑠𝑢𝑐𝑐, Failure counter Υ𝑓𝑎𝑖𝑙
+Parameters :Consecutive success threshold 𝜂𝑠𝑢𝑐𝑐,
+Consecutive failure threshold 𝜂𝑓𝑎𝑖𝑙
+Output: Adapted configuration subspace
+1 if Θ𝑛 is None then
+2 Θ𝑛 = {𝜃 ∥𝜃−𝜃𝑏𝑒𝑠𝑡∥2 ≤𝑅𝑛}∩Θ.
+3 if Θ𝑛 is hypercube region then
+4 if Υ𝑠𝑢𝑐𝑐 > 𝜂𝑠𝑢𝑐𝑐 then
+5 𝑅𝑛 = 𝑚𝑖𝑛(𝑅𝑚𝑎𝑥,2𝑅𝑛), Υ𝑠𝑢𝑐𝑐 = 0, Υ𝑓𝑎𝑖𝑙= 0.
+6 if Υ𝑓𝑎𝑖𝑙 > 𝜂𝑓𝑎𝑖𝑙 then
+7 𝑅𝑛 = 𝑅𝑛/2, Υ𝑓𝑎𝑖𝑙= 0, Υ𝑠𝑢𝑐𝑐 = 0.
+8 if Switching_Rule() then
+9 𝑑= 𝑔𝑒𝑛𝑒𝑟𝑎𝑡𝑒_
+𝑑𝑖𝑟𝑒𝑐𝑡𝑖𝑜𝑛().
+10 Θ𝑛 = {𝜃𝑏𝑒𝑠𝑡 +𝛼𝑑 : 𝛼 ∈R|}∩Θ.
+11 if Θ𝑛 is line region then
+12 13 if Switching_Rule() then
+Θ𝑛 = {𝜃 ∥𝜃−𝜃𝑏𝑒𝑠𝑡∥2 ≤𝑅𝑛}∩Θ.
+14 return Θ𝑛.
+The subspace is first initialized as a hypercube region to restrict
+the optimization near the initial safety set (Lines 1–2). The hyper-
+cube region encourages optimization densely in the interior but
+may lead to an over-exploitation, even getting trapped in a local
+optimum [61]. OnlineTune switches to line region to control the
+trade-off between exploitation and safe exploration (Lines 3–13).
+The alternation is triggered by a switching rule (Lines 8 and 12):
+when no unevaluated safe configuration exits in Θ𝑚 or a certain
+number of consecutive failures to recommend better configurations,
+OnlineTune switches to another type of subspace. The update of
+𝜃𝑏𝑒𝑠𝑡 moves the subspace towards the optimum.
+6.2 Safety Assessment
+OnlineTune discretizes the adapted subspace to build a candidate
+set. Then the safety of each candidate is assessed based on the
+confidence bounds of the contextual GP (black-box knowledge) and
+the existing domain knowledge (white-box knowledge).
+6.2.1 Black-Box Knowledge. Given context 𝑐, OnlineTune utilizes
+the confidence bounds of the selected contextual GP model 𝑚𝑛 to
+access the safety of 𝜃:
+𝑙𝑛(𝜃,𝑐)= 𝜇𝑛(𝜃,𝑐)−𝛽𝜎𝑛(𝜃,𝑐),
+𝑢𝑛(𝜃,𝑐)= 𝜇𝑛(𝜃,𝑐)+𝛽𝜎𝑛(𝜃,𝑐),
+(3)
+where 𝑙𝑛 and 𝑢𝑛 are the lower and upper bound predictions, with
+𝜇𝑛 and 𝜎𝑛 from Equation 2. The parameter 𝛽 controls the tightness
+of the confidence bounds, and we set its value following the study
+of Srinivas et al. [55]. The true function value 𝑓 falls into the con-
+fidence interval [𝑙𝑛(𝜃,𝑐),𝑢𝑛(𝜃,𝑐)]with a high probability. We can
+determine safe configurations with 𝑙𝑛(𝜃,𝑐)> 𝜏; that is, configura-
+tions with worst-case performance still above the safety threshold
+𝜏. We restrict the performance modeling in a local subspace con-
+taining previously evaluated configurations, and the local modeling
+can be trusted more than global modeling. This is also the rationale
+behind the trust-region methods from stochastic optimization [72].
+6.2.2 White-Box Knowledge. Although the relationship between
+configurations and database performances is complex. Domain
+knowledge does exist to dismiss bad configurations. For example,
+the total buffer size can not exceed the physical memory capacity of
+the deployed machine. Experienced DBA tunes the databases based
+on domain knowledge, and some database tuning tools also use
+heuristics to give tuning suggestions [3, 12, 66, 67]. Such white-box
+tuning provides intuitive suggestions and could serve as a warm
+starting and space pruning component for ML-based tuning. When
+forming the final safety set, OnlineTune consults the white box
+and dismisses the unsafe or unpromising configurations deviated
+from the white box’s suggestions. We implement OnlineTune’s
+white-box assistant using MysqlTuner [3]. MysqlTuner examines
+the DBMS metrics and uses static heuristics to suggest setting
+ranges for configurations. The ranges are generated based on rules
+(e.g., setting key buffer size larger than the total MyISAM indexes
+size or increasing the join buffer size if #joins without indexes per
+day is larger than 250). OnlineTune removes the configurations
+not satisfying the white box’s suggestions from its safety set. If the
+white box suggests a specific configuration instead of the ranges,
+OnlineTune filters the configurations far away from the suggested
+one. Other white-box tuning tools or hand-crafted rules can coexist
+with OnlineTune if they provide suggestions for OnlineTune’s
+tuning knobs. Instead of directly applying, their suggestions can be
+used as white-box assistants for OnlineTune.
+However, the white box does not evolve according to the feed-
+back, causing the trap in local optimum. The rules could even be
+inappropriate, excluding the optimal configurations from 𝑆𝑛. This
+happens only when the white-box rule rejects a configuration while
+the black-box algorithm recommends this configuration (i.e., de-
+cision conflict). To prevent this, OnlineTune uses a relaxation
+strategy to relax inappropriate rules. OnlineTune maintains a con-
+flict counter and a conflict-safe counter for each rule. When the
+decision conflict happens several times, reaching a threshold, On-
+lineTune will ignore the rule and recommend the controversial
+configuration. Note that only one rule can be ignored in the rec-
+ommendation to control the interdependence between different
+rules. After evaluation, if the configuration is safe, the conflict-safe
+counter will increase by one. When a rule’s conflict-safe counter
+reaches a threshold, the rule will be relaxed (e.g., the configuration
+range given by the rule is enlarged). The thresholds for each white-
+box rule can be set differently according to its credibility. A larger
+threshold leads to more trust in the white-box rule.
+6.3 Candidate Selection
+After the safety set is generated, OnlineTune selects a configura-
+tion from the candidates in the safety set. Like all the black-box
+optimization, the selection should trade-off between two objectives:
+(1) exploitation, trying to localize the high-performance regions
+within the current safety set, (2) exploration, acquiring new knowl-
+edge, and trying to expand the current estimate of the safety set.
+We adopt Upper Confidence Bound (UCB) [55] constrained to the
+
+===== PDF PAGE 8 =====
+safety set as a sampling criterion, shown in Equation 4:
+𝜃𝑚𝑎𝑥 = arg max
+𝜇𝑛(𝜃,𝑐)+𝛽𝜎𝑛(𝜃,𝑐). (4)
+𝜃∈𝑆𝑛
+UCB selects the configuration at locations where the upper bound of
+its confidence interval is maximal. Repeatedly evaluating the system
+performance at configurations given by UCB improves the mean
+estimate of the underlying function and decreases the uncertainty
+at candidate configurations for the maximum. The global maximum
+is provably found eventually [55].
+To expand the safe subspace explicitly, OnlineTune also se-
+lects the safe configurations at the boundary of the safety set with
+the highest uncertainty since they are promising candidates for
+expanding the safety set. To unify the two sampling criteria, we
+adopt the epsilon-greedy policy [48], which selects the maximal
+UCB configuration with a probability of 1−𝜖 and the boundary
+point with a possibility of 𝜖.
+7 EVALUATION
+Outline: We first compare OnlineTune with the state-of-the-art
+database configuration tuning methods on dynamic environments
+in Section 7.1. The comparison is conducted under three settings:
+(1) dynamic queries composition, where the queries composition of
+the workload is constantly changing, (2) transactional-analytical,
+simulating a daily transactional-analytical workload cycle by al-
+ternating the execution of OLTP and OLAP workloads, and (3)
+real-world workload. In Section 7.1.4, we analyze the overhead of
+the compared methods. In Section 7.2, a case study is presented. In
+Section 7.3, we conduct ablation studies to evaluate the effective-
+ness of OnlineTune’s design, including the context space design
+and the safe exploration strategy. We also validate the robustness
+of OnlineTune on different initial safety sets and interval sizes. In
+addition, we evaluate the baselines under static workload setting to
+analyze the search efficiency in Section 7.4.
+Baselines: The baselines are explained below:
+•DBA Default is the configuration provided by experienced DBAs.
+•OnlineTune is our safe and contextual tuner. We implement
+OnlineTune’s prediction model using GPy library [1].
+•BO is a Bayesian Optimization approach, widely used in database
+configuration tuning [6, 7, 15, 32]. We use similar design with
+OtterTune [15]: Gaussian process as surrogate model and EI as
+acquisition function. We also implemented BO via GPy library.
+•DDPG is a reinforcement learning agent which is used to tune the
+database configuration [73]. The agent inputs internal metrics
+of the DBMS and outputs proper configurations. The DDPG
+algorithm is implemented using PyTorch library [2] with its
+neural network architecture borrowed from CDBTune [73].
+•QTune is a query-aware tuner that supports three tuning gran-
+ularities [41]. We adopt its workload-level tuning. It embeds
+workload features to predict internal metrics via a pre-trained
+model, while CDBTune uses the measured internal metrics.
+•ResTune adopts constrained Bayesian Optimization to minimize
+resource utilization with SLA constraints [74]. It uses an ensem-
+ble framework (i.e., RGPE) to transfer historical knowledge from
+observations of source workloads. We modify ResTune to maxi-
+mize database performance with the same safety constraints as
+OnlineTune. To adopt RGPE in online tuning, we cluster every
+25 observations as one source workload.
+•MysqlTuner is a MySQL tuning tool that examines DBMS metrics
+and uses static heuristics to suggest configurations [3]. It is also
+the white-box assistant that OnlineTune consults.
+Workloads: We use three workloads with different characteristics
+from well-known benchmarks and a real-world workload. The
+three workloads are TPC-C, Twitter from OLTP-Bench [13] and
+JOB [39]. TPC-C is a traditional OLTP benchmark characterized
+by write-heavy transactions with complex relations. Twitter is
+extracted from web-based applications, characterized by heavily
+skewed many-to-many relationships and non-uniform access. JOB
+is an analytical workload with 113 multi-join queries, characterized
+by realistic and complex joins [39]. We load about 29 GB data
+for Twitter, 18 GB for TPC-C, 9 GB for JOB and use unlimited
+arrival rates for OLTP workloads to fully evaluate the benefits from
+tuning, as [6, 15, 32, 41, 73] did. The real-world workload comes
+from a database monitoring service. In our experiments, we use
+the workload from 10:00 to 16:00 on September 2nd, 2021. And the
+read-write ratio per minute varies from 3:1 ~74:1 in this period.
+Setup: We use version 5.7 of RDS MySQL. We tune 40 dynamic con-
+figuration knobs without restarting the database since the restart is
+not acceptable for online databases. The 40 configuration knobs are
+chosen based on their importance by DBAs. The experiments run
+on a cloud instance with 8 vCPU and 16GB RAM. The interval size
+is set to 3 minutes. We use the DBA default configuration as the
+initial safety set and its performance as the safety threshold, which
+are also added to the training set of other baselines for fairness.
+Metrics: We evaluate the baselines from two perspectives: safety
+and cumulative performance during tuning. For safety, we count the
+number of unsafe configuration recommendations (#Unsafe) and
+the number of system failures (#Failure) within the tuning period.
+For the cumulative performance, it is measured by the number of
+transactions (#txn) processed by the database during tuning for
+OLTP workload and the sum of execution time for OLAP workload.
+7.1 Evaluation on Dynamic Workload
+We evaluate the baselines tuning online database with constructed
+dynamic workloads and real-workload workload with dynamic
+query arrival rates. We intend to answer two questions: (1) Can they
+recommend the configuration adaptively with the dynamic workload?
+(2) Can they reliably respect the safety requirement?
+7.1.1 Evaluation on workloads with dynamic query compositions.
+To simulate the dynamicity, we construct workload with dynamic
+query compositions. For TPC-C and Twitter, we vary transaction
+weights via OLTP-Bench [13]. The weights are sampled from a
+normal distribution with a sine function of iterations as mean and
+a 10% standard deviation. For JOB, we execute ten queries per
+iteration, and five out of them are re-sampled. If the execution time
+exceeds the interval size, we kill the queries. Since TPC-C is a write-
+heavy workload, its underlying data is also changing (e.g., its data
+size change from 18 GB to 48 GB during tuning).
+OnlineTune finds the workload-specific configuration. As
+shown in Figure 5, OnlineTune achieves 54.3% ~93.8% improve-
+ment on cumulative performance than the MySQL default, and
+
+===== PDF PAGE 9 =====
+391
+203
+145
+117
+14
+3
+1 2
+2
+3
+0
+0
+#Unsafe #Failure
+325
+259
+22
+199
+111
+2
+7
+8
+0
+0
+1
+0
+Cumulative
+Execution Time (sec)
+20000
+0
+296
+263
+195
+89
+34
+29
+8
+8
+3
+0
+0
+0
+20
+10
+0
+30
+20
+10
+0
+40
+20
+0
+OnlineTune
+BO
+1e8
+DDPG
+ResTune QTuneMysqlTuner Mysql DefaultDBA Default
+Cumulative
+Performance (#txn)
+1.0
+0.5
+0.0
+400
+Count
+200
+0
+0 200 400
+Iteration
+(a) TPC-C
+Cumulative
+Performance (#txn)
+2
+1
+0
+1e9
+300
+Count
+200
+100
+0
+0 200 400
+Iteration
+(b) Twitter
+300
+Count
+200
+100
+0
+0 200 400
+Iteration
+(c) JOB
+Figure 5: Cumulative performance (for TPC-C and Twitter,
+the higher is the better; for JOB, the lower is the better) and
+safety statistics when tuning dynamic workloads.
+#Unsafe #Failure
+#Unsafe #Failure
+16.2% ~21.9% improvement than the DBA default. The DBA de-
+fault is expected to have a relatively robust performance across
+workloads. OnlineTune applies better configuration, illustrating
+its adaptability in dynamic environments. In addition, OnlineTune
+achieves 14.4%~165.3% improvement on cumulative performance
+than existing offline approaches. The reasons are two-fold. First,
+the offline methods struggle to handle dynamic environments. BO
+uses observations {𝜃𝑖,𝑦𝑖}𝑡
+1 to fit the GP model, ignoring dynamic
+environmental factors. When workload drifts, BO fails to learn suit-
+able configurations. ResTune adopts an ensemble GP that assigns
+different weights to its base models but its base models still ignore
+the dynamic factors. DDPG and QTune fine-tune the models when
+environments change, but fine-tuning a neural network needs lots
+of training samples, which is inefficient for online tuning. Second,
+the offline methods over-explore configuration spaces. Evaluating
+unsafe configurations is a part of learning for offline methods. Al-
+though ResTune aims at finding the configurations satisfying the
+constraints, it still needs to evaluate and learn the unsafe area.
+Compared with the white-box method (MysqlTuner), OnlineTune
+achieves 10.1%~19.7% improvement. Although MysqlTuner does
+not have the over-exploration issue, it relies on heuristic rules and
+traps in local optimum.
+OnlineTune reliably respects the safety requirement when
+tuning the online database. Recommending safe configurations
+is non-trivial when tuning online databases since the workload
+changes may cause the shifting of safe configurations. As shown in
+Figure 5, none of the system failures occur when applying Online-
+Tune, while offline tuning methods cause several system failures.
+The offline methods have 22.2% ~97.8% unsafe configuration rec-
+ommendations within the 400 tuning intervals. Compared to them,
+OnlineTune reduces 91.0%~99.5% unsafe recommendations. This is
+contributed to the safe exploration strategy of OnlineTune, which
+we analyze in detail with an ablation study in Section 7.3.2.
+7.1.2 Evaluation on Transactional-Analytical Cycle. We simulate
+a daily transactional-analytical workload cycle by alternating dy-
+namic TPC-C and JOB workloads. We use 99% latency as the opti-
+mization objective. The workload characterization of TPC-C (OLTP,
+write-heavy) and JOB (OLAP, complex joins) are significantly differ-
+ent. Respecting safety constraints is rather tricky in such a scenario.
+Figure 6 (a) shows the performance of OnlineTune and the DBA
+default. The workload starts as TPC-C and repeatedly alternates
+with JOB every 100 iterations. OnlineTune gradually finds con-
+figurations better than the DBA default, as shown in the zoom-in
+plot. When switching to JOB, OnlineTune takes some iterations
+to explore the configuration space. Meanwhile, several unsafe con-
+figurations with latency slightly larger than the safety threshold
+occur. Then, OnlineTune finds suitable configuration adaptively
+(e.g., larger sort buffer size for JOB workload).When switching from
+TPC-C to JOB again, OnlineTune selects the surrogate model fitted
+with previous observations for JOB and recommends suitable con-
+figurations more quickly. OnlineTune achieves performance than
+the DBA default while respecting the safety requirement, while
+other approaches fail, as shown in Figure 7 (a).
+7.1.3 Evaluation on Real-World Workload. We evaluate on a work-
+load from the real-workload application. Figure 6 (b) shows the
+tuning process of OnlineTune and Figure 7 (b) presents the perfor-
+mances of all the baselines. We observe that OnlineTune achieves
+39.4% improvement on cumulative improvement compared to the
+DBA default and 25.5% ~64.2% improvement compared to offline
+methods. Although OnlineTune applies several unsafe configura-
+tions at the beginning, their performances are within 10% deviation
+of the default performance as shown in Figure 6 (b).
+7.1.4 Algorithm Overhead. Figure 8 shows the computation time
+when tuning JOB workload. For BO, DDPG and ResTune, the com-
+putation time consists of (1) statistics collection, (2) model fitting,
+and (3) model probe. For OnlineTune and QTune, the time also
+includes featurization. OnlineTune’s computation time is slightly
+larger than BO at the beginning. However, BO’s overhead increases
+exponentially over tuning iteration, as GP suffers from cubic com-
+plexity on sample number. Instead, OnlineTune’s computation
+time is within 3.79 seconds due to its clustering strategy.
+In addition to the computation time, we also analyze the impact
+of OnlineTune’s tuning overhead. OnlineTune’s featurization
+module is deployed in the database instance, while the other parts
+are deployed in the backend tuning severs whose overhead does not
+influence the database instance. Therefore, we focus on the impact
+of featurization. This module takes about 57.7 ms per iteration on av-
+erage. To measure its impact, we keep the configuration unchanged
+and compare the resource usages and database performance.We ob-
+serve that the average CPU usage with featurization is 77.28%, and
+the one without featurization is 77.27%. The increase is negligible
+since the featurization time only accounts for a slight proportion
+of a tuning interval (180 s). Its impact on database performance
+
+===== PDF PAGE 10 =====
+99th \%-tile (sec)
+100
+50
+0
+JOB
+TPC-C
+Default OnlineTune
+Throughput(txn/sec)
+8000
+6000
+4000
+2000
+0
+15 20 25
+TPC-C
+JOB
+0 50 100 150 200 250 300 350 400
+Iteration
+(a) Transactional-Analytical Cycle
+0 2500 5000 7500 10000 12500 15000 17500
+Time (second)
+(b) Real-Workload Workload
+Figure 6: Iterative Performance on OLTP-OLAP circle and real-world workload.
+Cumulative
+Execution Time(sec)
+15000
+10000
+5000
+0
+365
+296
+229
+7
+3
+2
+20
+1
+0
+0
+0
+83
+15
+10
+5
+0
+Cumulative
+Performance(txn)
+2
+1
+0
+76
+56
+17
+137
+102
+2
+0 1 2
+0 1 0
+10
+5
+0
+OnlineTune
+BO
+DDPG
+QTune
+ResTune
+MysqlTuner
+103
+Time (sec)
+100
+0 50 100 150 200 250 300 350 400
+Iteration
+Figure 8: Computation time of different approaches.
+can also be overlooked due to marginal resource consumption. For
+evaluation, we keep configurations unchanged to observe the im-
+pact. In practice, the database performance will be improved when
+running OnlineTune, as evaluated above.
+7.2 Case Study
+To further investigate OnlineTune’s tuning performance, we con-
+duct a case study tuning five knobs. We construct a workload trace
+using YCSB with different read/write transaction compositions, as
+shown in Figure 9. The joint context-configuration space is smaller
+than the other experiments in the paper. Therefore, we can use
+extensive evaluations to explore the space and obtain the best con-
+figurations (denoted as the Best) and the unsafe areas for each
+workload composition. As shown in Figure 10, we observe that
+there are interactions between knobs. And, regular patterns exist
+among workload compositions, e.g., when buffer pool size (k1) is
+large and heap table size (k2) is small, the throughput is relatively
+low. However, the overall effects of knobs are quite different among
+the workloads, e.g., distinct optimal positions. Thus, it is necessary
+to consider the workload dynamicity when tuning online.
+Figure 11 presents the tuning result, which aligns with the eval-
+uation in Section 7.1. As shown in the iterative plot, the distances
+OnlineTune BO DDPG ResTune QTune MysqlTuner DBA Default
+1e8
+400
+200
+Count
+200
+Count
+100
+0
+0
+0 200 400
+Iteration
+#Unsafe #Failure
+(a) Transactional-Analytical Cycle 0 100 200 300
+#Unsafe #Failure
+Time (minute)
+(b) Real-World Workload
+Figure 7: Cumulative performance and safety statistics on OLTP-OLAP circle and real-world workload.
+between OnlineTune and the Best gradually decrease as Online-
+Tune safely finds configurations near the optimum. The iterative
+performances of the offline baselines have large fluctuations due
+to their trials and errors. In Figure 12, we focus on the configu-
+ration values of the top-2 important knobs. The unsafe region is
+approximated by excluding the knob’s values from all the safe con-
+figurations. Note that if a configuration is assigned with a knob
+value in the unsafe region, the configuration is unsafe, but not vice
+versa. This is due to knobs interaction may cause unsafe. We ob-
+serve that the optimal configurations (the Best) are not portable
+across workloads. OnlineTune applies configurations adaptive to
+the dynamic workload, which safely proceeds towards the optimum.
+The other baselines explore the space aggressively in the first 50
+iterations and always have a chance to explore the unsafe region.
+Figure 13 visualizes the working process of OnlineTune’s mod-
+ules. From the left figure, we make two observations. First, Online-
+Tune can select the corresponding model for the observed context.
+Second, the subspace is initially centered around the default con-
+figuration and moves towards the optimum. The configuration
+subspaces maintained by each model gradually move far from the
+default, safely exploring the configuration space. From the right
+figure, we observe that the size of safety set is updated with the
+augmented observations. If OnlineTune evaluates unsafe config-
+uration, its safety estimation will be immediately tightened, and
+OnlineTune will recommend conservative configurations near the
+evaluated-best ones, avoiding successive regression.
+7.3 Analysis of OnlineTune
+We carefully design OnlineTune with contextual modeling and
+safe exploration strategy to explore configurations safely in dy-
+namic environments. We evaluate the corresponding designs via
+ablation study and validate the robustness of OnlineTune.
+
+===== PDF PAGE 11 =====
+Read Ratio
+100%
+80%
+60%
+40%
+25/75 read/write
+16320
+16300
+16280
+1.2 1.4
+k1 (1e10)
+0.0
+1.0
+0.5
+k2 (1e9)
+75/25 read/write
+Read-only
+TPS
+1.2 1.4
+k1 (1e10)
+25000
+TPS
+24950
+0.0
+1.0
+0.5
+k2 (1e9)
+1.2 1.4
+k1 (1e10)
+38550
+38500
+38450
+TPS
+0.0
+1.0
+0.5
+k2 (1e9)
+0 50 100 150 200 250 300 350
+Iteration
+Figure 9: Pattern of YCSB workload.
+Figure 10: Throughput as a function of configurations: k1 denotes
+sort_buffer_pool_size and k2 denotes max_heap_table_size.
+1e9
+Cumulative
+Performance (#txn)
+1.5
+1.0
+0.5
+0.0
+400
+300
+Count
+200
+100
+0
+Best OnlineTune BO DDPG ResTune QTune Default
+15
+10
+5
+0
+Throughput(txn/sec)
+40000
+30000
+20000
+10000
+0
+379
+278
+237
+182
+7
+3
+6
+2
+2
+0
+#Unsafe #Failure
+0 50 100 150 200 250 300 350 400
+Iteration
+0 200 400
+Iteration
+Figure 11: Results on YCSB workload: The left figure shows the cumulative result and the right shows the iterative performance.
+For clarity of presentation, we only show the iterative performances of the top 3 baselines (OnlineTune, ResTune and BO).
+Unsafe Region Best OnlineTune BO ResTune
+1e9
+innodb_spin_wait_delay
+1500
+1000
+500
+0
+max_heap_table_size
+1.0
+0.8
+0.6
+0.4
+0.2
+0 50 100 150 200 250 300 350 400
+0 50 100 150 200 250 300 350 400
+Iteration
+Iteration
+Figure 12: Configurations applied by OnlineTune, ResTune and BO on YCSB workload: We present the top 2 important knobs.
+Recluster1
+Recluster2
+P1M1
+P2M1
+P2M2
+P3M1
+P3M2
+P3M3
+Safety Set Size
+Improvement Unsafe Point
+40%
+30%
+20%
+10%
+0%
+Safety Set Size
+1500
+1000
+500
+0
+40%
+20%
+0%
+Improvement (%)
+Normalized distance from the default config.
+0 50 100 150 200 250 300 350 400
+0 50 100 150 200 250 300 350 400
+Iteration
+Iteration
+Figure 13: Visualization of OnlineTune. In the left figure, different colors denote different models selected over iterations.
+The lines denote the distance between the recommended configuration and the default, and the dash denotes the distance
+between subspace centers and the default. The right figure presents the size of safety set estimated by OnlineTune in its
+restricted subspace. For reference, we also plot the performance improvement over iterations.
+7.3.1 Ablation Study on Contextual Modeling. We remove certain
+components of contextual modeling (featurization of workload and
+data changes, clustering, and model selection) in OnlineTune to
+understand their contribution to the overall system. We compare
+(1) OnlineTune, (2) OnlineTune-w/o-workload, removing work-
+load feature from context, (3) OnlineTune-w/o-data, removing
+optimizer statistics (underlying data feature) from context, (4) On-
+lineTune-w/o-clustering, removing clustering and model selection
+
+===== PDF PAGE 12 =====
+Cumulative
+Improv. (#txn)
+5
+0
+Cumulative
+Improv. (sec)
+2
+0
+86
+2 3
+20
+0 0 0 0
+0 200 400
+Iteration
+#Unsafe #Failure
+OnlineTuneOnlineTune-w/o-workload OnlineTune-w/o-dataOnlineTune-w/o-partition
+1e6
+Count
+100
+50
+0
+(a) TPC-C
+100
+Count
+50
+0
+(b) JOB
+Figure 14: Ablation study on context space design.
+1e3
+64
+39
+8
+28
+0 0 0 11
+10
+5
+0
+20
+10
+0
+0 200 400
+Iteration
+#Unsafe #Failure
+OnlineTuneOnlineTune-w/o-whiteOnlineTune-w/o-black
+OnlineTune-w/o-subplaceOnlineTune-w/o-safe
+1e6
+Cumulative
+Improv. (sec)
+Cumulative
+Improv. (#txn)
+20
+0
+0
+10
+142
+81
+51
+2 16
+0 0 0 0
+0 200 400
+Iteration
+1e3
+200
+100
+0
+(a) Twitter
+200
+0
+0 200 400
+Iteration
+(b) JOB
+Figure 15: Ablation study on safe exploration.
+29
+0 5 10
+273
+82
+44
+41
+8
+11
+0 0 0 0
+20
+0
+20
+10
+0
+0 5 10
+design. The experiments are conducted in dynamic TPC-C and JOB
+with the same setting as in Section 7.1.1. Figure 14 shows the im-
+provement in cumulative performance against the DBA default and
+safety statistic of those baselines. In the following evaluation, in-
+stead of cumulative performance, we use cumulative improvement
+that shows the benefit of online tuning more clearly. For the read-
+only workload JOB where no data changes occur, OnlineTune-
+w/o-data exceeds OnlineTune slightly because the dimension of
+context feature decreases with no information loss, which means
+that modeling over contexts becomes easier. However, when data
+change occurs as in TPC-C workload, OnlineTune outperforms
+the other baselines since its context feature gives a comprehensive
+abstraction of the dynamic environment. Since the clustering and
+model selection strategy can prevent “negative transfer”, Online-
+Tune outperforms OnlineTune-w/o-clustering in all the cases.
+7.3.2 Ablation Study on Safe Exploration. To safely optimize the
+online database, OnlineTune utilizes contextual GP (black-box
+knowledge) and domain knowledge (white-box knowledge) and
+gradually expands the optimization subspace. To analyze their
+Cumulative
+Improv. (#txn)
+2.5
+0.0
+1e8 I-5S I-1M I-3M I-6M I-12M
+20
+Count
+10
+0
+16
+5
+2 1 3
+0 500 1000
+Time (Minute)
+Figure 16: Tuning Twitter with different interval sizes.
+I-5S I-1M I-3M I-6M I-12M
+Mysql Default DBA Default OnlineTune
+Throughput(txn/sec)
+40000
+30000
+20000
+10000
+0 50 100 150 200 250 300 350 400
+Iteration
+Figure 17: Starting from MySQL Default.
+functionality, we compare: (1) OnlineTune, (2) OnlineTune-w/o-
+white, removing white-box safety assessment (3) OnlineTune-
+w/o-black, removing black-box safety assessment, (4)OnlineTune-
+w/o-subspace, optimizing in the whole configuration space, (5)
+OnlineTune-w/o-safe, removing all the safety strategy, i.e., vanilla
+contextual BO. As shown in Figure 15, OnlineTune beats other
+baselines in both performance and safety degree. We make the fol-
+lowing observations: (1) The black-box knowledge largely reduces
+the unsafe recommendations. The limited domain rules only cover
+a small subset of unsafe cases and fail to capture the complex and
+high-dimension relationship between configuration, environment,
+and database performance. Therefore, OnlineTune-w/o-black’s
+unsafe recommendations are much more than OnlineTune-w/o-
+white’s. (2) The white-box knowledge assists in filtering the unsafe
+configurations. We find that the unsafe recommendation in Online-
+Tune-w/o-white is mainly caused by the knobs without intrinsic
+ordering, e.g., thread_concurrency. Thread_concurrency defines
+the maximum number of threads permitted inside InnoDB. But
+a value of 0 (the default value) is interpreted as infinite concur-
+rency (no limit). The GP model depends on the natural ordering
+property and smoothness of space. When OnlineTune-w/o-white
+expands the safe space, it is likely to try a value near zero, like
+one, casing performance downgrade due to the lack of comput-
+ing resources. OnlineTune has domain rules to filter the value of
+thread concurrency less than half of the number of virtual CPUs,
+preventing the unsafe case. (3) Optimizing over promising subspace
+instead of the whole configuration space can enhance safety and
+localize good configurations. OnlineTune-w/o-subspace recom-
+mends more unsafe configurations than OnlineTune. As discussed,
+it is hard to generalize the safety of configurations in the whole
+space, and the prediction of GP is more trustworthy in a small
+trust region. Besides, the global optimization approaches (i.e., On-
+lineTune-w/o-subspace, OnlineTune-w/o-safe) they over-explore
+boundaries of configuration spaces. (4) Without any safety designs,
+OnlineTune-w/o-safe has the worst performance.
+7.3.3 Varying Interval Sizes. We run OnlineTune under different
+interval sizes: 5 seconds, 1 minute, 3 minutes, 6 minutes, and 12
+
+===== PDF PAGE 13 =====
+Table 1: Statistics on static workloads: For each workload, bold face indicates the best value. Search Step denotes the iteration
+needed to find a configuration within 10% of the estimated optimum, \denotes such configuration is not found.
+OnlineTune BO DDPG ResTune QTune MysqlTuner
+Workload Max Improv. Search Step Max Improv. Search Step Max Improv. Search Step Max Improv. Search Step Max Improv. Search Step Max Improv. Search Step
+TPC-C Twitter JOB 17.03% 176 48.18% 129 11.67% 141 19.99% 74 43.43% 158 7.77% \ 16.66% 76 35.79% \ 7.60% \ 12.03% \ 46.95% 10 11.84% 155 12.02% \ 8.06% \ 11.24% 168 13.44% \
+13.07% \
+7.23% \
+Throughput(txn/sec)
+750
+500
+250
+0
+DBA Default OnlineTune BO DDPG ResTune QTune MysqlTuner
+Throughput(txn/sec)
+30000
+20000
+10000
+0
+99th \%-tile (sec)
+200
+100
+0 50 100 150 200
+Iteration
+(a) TPC-C
+0 50 100 150 200
+Iteration
+(b) Twitter
+0 50 100 150 200
+Iteration
+(c) JOB
+Figure 18: Iterative performance on static workloads: minimal throughput (0) and maximal latency (200) denote system failure.
+minutes, as shown in Figure 16. Within a certain range, a smaller
+interval leads to quicker adaptation. The reason is two-fold. First,
+OnlineTune could recommend fine-grained configurations suitable
+for dynamic workloads. Second, OnlineTune could collect more
+observations in a given time, leading to better tuning policies. How-
+ever, the interval size also determines the time for evaluating the
+database performance. It cannot be too small to avoid the instability
+caused by performance fluctuation [7]. As shown, tuning with a
+5-second interval performs worse than the 1-minute one with more
+unsafe recommendations. And we have observed significant per-
+formance variance for 5-second intervals on a fixed configuration.
+7.3.4 Varying Initial Safety Set and Safety Threshold. In the above
+evaluation, we use the DBA default as the initial safety set and its
+performance as a safety threshold. However, there exists a question:
+Can OnlineTune recommend suitable configurations with an inferior
+starting point? Therefore, we use the MySQL default configuration
+as the initial safety set and its performance as the safety threshold.
+As shown in Figure 17, the MySQL default’s performance is worse
+than the DBA default’s. One main difference is that the MySQL
+default sets the buffer pool size 128 MB while the DBA default sets
+the buffer pool size 13 GB. When starting from the MySQL default,
+OnlineTune applies safe configurations better than the MySQL
+default. And it achieves a comparable performance to tuning with
+the DBA default as the starting point after about 150 iterations.
+7.4 Evaluation on Static Workload
+The existing approaches work well to search for optimal configura-
+tions on static workloads. This evaluation aims to assess the search
+efficiency of OnlineTune with the safety constraints. Figure 18
+presents the performance with statistics shown in Table 1.
+OnlineTune reduces the unsafe recommendations signifi-
+cantly with search efficiency comparable to the state-of-the-
+art offline tuning methods. Offline methods are designed to
+search for the optimum without safety considerations. In terms
+of efficiency, OnlineTune is comparable to BO, ResTune, and bet-
+ter than DDPG, QTune in all the cases. OnlineTune is very unlikely
+to apply unsafe configurations, while the offline methods violate
+safety constraints considerably. Although OnlineTune’s safety
+consideration may make the exploration slower, adaptively restrict-
+ing the search space could localize good solutions, which improves
+the convergence, especially in JOB’s case.
+8 CONCLUSION
+We introduce OnlineTune, an online tuning system that is aware
+of the dynamic environments and optimizes the database safely.
+OnlineTune featurizes the dynamic environmental factors as con-
+text feature and leverages Contextual Bayesian Optimization to
+optimize the context-configuration joint space. We propose a safe
+exploration strategy, greatly enhancing the safety of online tuning.
+As future extensions, we plan to investigate combining Online-
+Tune with offline tuning. The offline process could explore more
+configurations on replicas of the target DBMS, replaying the histor-
+ical workloads to collect observations for online tuning. Therefore,
+OnlineTune could exploit the promising configuration space in the
+online phase, thus responding to the dynamic environment more
+quickly. In addition, OnlineTune could pause online configuring
+after applying suitable configurations. This could be achieved by a
+stopping and triggering mechanism. We could keep OnlineTune’s
+workflow at each iteration (including context featurization and ac-
+quisition value calculation for candidate points) but not change the
+database configurations until more promising candidates appear.
+For example, we can measure whether more promising candidates
+exist by calculating the Expected Improvement (EI) value against
+the applied configuration. The configuring is triggered when candi-
+dates with EI values larger than a threshold exist, indicating that
+the context changes lead to the need for re-configuring.
+ACKNOWLEDGMENTS
+This work is supported by National Natural Science Foundation
+of China (NSFC)(No. 61832001), Alibaba Group through Alibaba
+Innovative Research Program and National Key Research, and the
+Beijing Academy of Artificial Intelligence. Bin Cui is the corre-
+sponding author.
+
+===== PDF PAGE 14 =====
+REFERENCES
+[1] 2015. GPy Library. https://sheffieldml.github.io/GPy.
+[2] 2017. PyTorch Library. https://pytorch.org.
+[3] 2019. MySQL Tuning Primer Script. https://github.com/major/MySQLTuner-
+perl.
+[4] Mert Akdere, Ugur Çetintemel, Matteo Riondato, Eli Upfal, and Stanley B. Zdonik.
+2011. The Case for Predictive Database Systems: Opportunities and Challenges.
+In CIDR. www.cidrdb.org, 167–174.
+[5] Mert Akdere, Ugur Çetintemel, Matteo Riondato, Eli Upfal, and Stanley B. Zdonik.
+2012. Learning-based Query Performance Modeling and Prediction. In ICDE.
+IEEE Computer Society, 390–401.
+[6] Dana Van Aken, Andrew Pavlo, Geoffrey J. Gordon, and Bohan Zhang. 2017.
+Automatic Database Management System Tuning Through Large-scale Machine
+Learning. In SIGMOD Conference. ACM, 1009–1024.
+[7] Dana Van Aken, Dongsheng Yang, Sebastien Brillard, Ari Fiorino, Bohan Zhang,
+Christian Billian, and Andrew Pavlo. 2021. An Inquiry into Machine Learning-
+based Automatic Configuration Tuning Services on Real-World Database Man-
+agement Systems. Proc. VLDB Endow. 14, 7 (2021), 1241–1253.
+[8] Yoshua Bengio, Aaron C. Courville, and Pascal Vincent. 2013. Representation
+Learning: A Review and New Perspectives. IEEE Trans. Pattern Anal. Mach. Intell.
+35, 8 (2013), 1798–1828.
+[9] James Bergstra, Rémi Bardenet, Yoshua Bengio, and Balázs Kégl. 2011. Algorithms
+for Hyper-Parameter Optimization. In NIPS. 2546–2554.
+[10] Felix Berkenkamp, Andreas Krause, and Angela P. Schoellig. 2016. Bayesian
+Optimization with Safety Constraints: Safe and Automatic Parameter Tuning in
+Robotics. CoRR abs/1602.04450 (2016).
+[11] Roberto Calandra, André Seyfarth, Jan Peters, and Marc Peter Deisenroth. 2014.
+An experimental comparison of Bayesian optimization for bipedal locomotion.
+In ICRA. IEEE, 1951–1958.
+[12] Karl Dias, Mark Ramacher, Uri Shaft, Venkateshwaran Venkataramani, and Gra-
+ham Wood. 2005. Automatic Performance Diagnosis and Tuning in Oracle. In
+CIDR. www.cidrdb.org, 84–94.
+[13] Djellel Eddine Difallah, Andrew Pavlo, Carlo Curino, and Philippe Cudré-
+Mauroux. 2013. OLTP-Bench: An Extensible Testbed for Benchmarking Relational
+Databases. Proc. VLDB Endow. 7, 4 (2013), 277–288.
+[14] Liang Du, Ruobin Gao, Ponnuthurai Nagaratnam Suganthan, and David Z. W.
+Wang. 2022. Bayesian optimization based dynamic ensemble for time series
+forecasting. Inf. Sci. 591 (2022), 155–175.
+[15] Songyun Duan, Vamsidhar Thummala, and Shivnath Babu. 2009. Tuning Database
+Configuration Parameters with iTuned. Proc. VLDB Endow. 2, 1 (2009), 1246–1257.
+[16] David Eriksson, Michael Pearce, Jacob R. Gardner, Ryan Turner, and Matthias
+Poloczek. 2019. Scalable Global Optimization via Local Bayesian Optimization.
+In NeurIPS. 5497–5508.
+[17] Martin Ester, Hans-Peter Kriegel, Jörg Sander, and Xiaowei Xu. 1996. A Density-
+Based Algorithm for Discovering Clusters in Large Spatial Databases with Noise.
+In KDD. AAAI Press, 226–231.
+[18] Ayat Fekry, Lucian Carata, Thomas F. J.-M. Pasquier, Andrew Rice, and Andy
+Hopper. 2020. To Tune or Not to Tune?: In Search of Optimal Configurations for
+Data Analytics. In KDD. ACM, 2494–2504.
+[19] Ayat Fekry, Lucian Carata, Thomas F. J.-M. Pasquier, Andrew Rice, and Andy
+Hopper. 2020. Tuneful: An Online Significance-Aware Configuration Tuner for
+Big Data Analytics. CoRR abs/2001.08002 (2020).
+[20] Marcello Fiducioso, Sebastian Curi, Benedikt Schumacher, Markus Gwerder, and
+Andreas Krause. 2019. Safe Contextual Bayesian Optimization for Sustainable
+Room Temperature PID Control Tuning. In IJCAI. ijcai.org, 5850–5856.
+[21] Lorenz Fischer, Shen Gao, and Abraham Bernstein. 2015. Machines Tuning Ma-
+chines: Configuring Distributed Stream Processors with Bayesian Optimization.
+In CLUSTER. IEEE Computer Society, 22–31.
+[22] Adam Foster, Martin Jankowiak, Eli Bingham, Paul Horsfall, Yee Whye Teh,
+Tom Rainforth, and Noah D. Goodman. 2019. Variational Bayesian Optimal
+Experimental Design. In NeurIPS. 14036–14047.
+[23] Archana Ganapathi, Harumi A. Kuno, Umeshwar Dayal, Janet L. Wiener, Ar-
+mando Fox, Michael I. Jordan, and David A. Patterson. 2009. Predicting Multiple
+Metrics for Queries: Better Decisions Enabled by Machine Learning. In ICDE.
+IEEE Computer Society, 592–603.
+[24] Jacob R. Gardner, Matt J. Kusner, Zhixiang Eddie Xu, Kilian Q. Weinberger, and
+John P. Cunningham. 2014. Bayesian Optimization with Inequality Constraints.
+In ICML (JMLR Workshop and Conference Proceedings, Vol. 32). JMLR.org, 937–945.
+[25] Michael A. Gelbart, Jasper Snoek, and Ryan P. Adams. 2014. Bayesian Optimiza-
+tion with Unknown Constraints. In UAI. AUAI Press, 250–259.
+[26] Benjamin Hilprecht, Andreas Schmidt, Moritz Kulessa, Alejandro Molina, Kristian
+Kersting, and Carsten Binnig. 2020. DeepDB: Learn from Data, not from Queries!
+Proc. VLDB Endow. 13, 7 (2020), 992–1005.
+[27] Frank Hutter, Holger H. Hoos, and Kevin Leyton-Brown. 2014. An Efficient
+Approach for Assessing Hyperparameter Importance. In ICML (JMLR Workshop
+and Conference Proceedings, Vol. 32). JMLR.org, 754–762.
+[28] Frank Hutter, Lars Kotthoff, and Joaquin Vanschoren (Eds.). 2019. Automatic
+Machine Learning: Methods, Systems, Challenges. Springer.
+[29] Shrainik Jain and Bill Howe. 2018. Query2Vec: NLP Meets Databases for Gener-
+alized Workload Analytics. CoRR abs/1801.05613 (2018).
+[30] Shrainik Jain, Jiaqi Yan, Thierry Cruanes, and Bill Howe. 2019. Database-Agnostic
+Workload Management. In CIDR. www.cidrdb.org.
+[31] Marjan Kaedi, Nasser Ghasem-Aghaee, and Chang Wook Ahn. 2013. Holographic
+memory-based Bayesian optimization algorithm (HM-BOA) in dynamic environ-
+ments. Sci. China Inf. Sci. 56, 9 (2013), 1–17.
+[32] Konstantinos Kanellis, Ramnatthan Alagappan, and Shivaram Venkataraman.
+2020. Too Many Knobs to Tune? Towards Faster Database Tuning by Pre-selecting
+Important Knobs. In HotStorage. USENIX Association.
+[33] Andreas Kipf, Thomas Kipf, Bernhard Radke, Viktor Leis, Peter A. Boncz, and
+Alfons Kemper. 2019. Learned Cardinalities: Estimating Correlated Joins with
+Deep Learning. In CIDR. www.cidrdb.org.
+[34] Johannes Kirschner, Mojmir Mutny, Nicole Hiller, Rasmus Ischebeck, and Andreas
+Krause. 2019. Adaptive and Safe Bayesian Optimization in High Dimensions via
+One-Dimensional Subspaces. In ICML (Proceedings of Machine Learning Research,
+Vol. 97). PMLR, 3429–3438.
+[35] Andreas Krause and Cheng Soon Ong. 2011. Contextual Gaussian Process Bandit
+Optimization. In NIPS. 2447–2455.
+[36] Adit Krishnan, Mahashweta Das, Mangesh Bendre, Hao Yang, and Hari Sundaram.
+2020. Transfer Learning via Contextual Invariants for One-to-Many Cross-
+Domain Recommendation. In SIGIR. ACM, 1081–1090.
+[37] Mayuresh Kunjir and Shivnath Babu. 2020. Black or White? How to Develop
+an AutoTuner for Memory-based Analytics. In SIGMOD Conference. ACM, 1667–
+1683.
+[38] Hai Lan, Zhifeng Bao, and Yuwei Peng. 2021. A Survey on Advancing the DBMS
+Query Optimizer: Cardinality Estimation, Cost Model, and Plan Enumeration.
+Data Sci. Eng. 6, 1 (2021), 86–101.
+[39] Viktor Leis, Andrey Gubichev, Atanas Mirchev, Peter A. Boncz, Alfons Kemper,
+and Thomas Neumann. 2015. How Good Are Query Optimizers, Really? Proc.
+VLDB Endow. 9, 3 (2015), 204–215.
+[40] Benjamin Letham, Brian Karrer, Guilherme Ottoni, and Eytan Bakshy. 2017. Con-
+strained Bayesian Optimization with Noisy Experiments. CoRR abs/1706.07094
+(2017).
+[41] Guoliang Li, Xuanhe Zhou, Shifu Li, and Bo Gao. 2019. QTune: A Query-Aware
+Database Tuning System with Deep Reinforcement Learning. Proc. VLDB Endow.
+12, 12 (2019), 2118–2130.
+[42] Edo Liberty, Zohar S. Karnin, Bing Xiang, Laurence Rouesnel, Baris Coskun,
+Ramesh Nallapati, Julio Delgado, Amir Sadoughi, Yury Astashonok, Piali Das,
+Can Balioglu, Saswata Chakravarty, Madhav Jha, Philip Gautier, David Arpin,
+Tim Januschowski, Valentin Flunkert, Yuyang Wang, Jan Gasthaus, Lorenzo
+Stella, Syama Sundar Rangapuram, David Salinas, Sebastian Schelter, and Alex
+Smola. 2020. Elastic Machine Learning Algorithms in Amazon SageMaker. In
+SIGMOD Conference. ACM, 731–737.
+[43] Lin Ma, Dana Van Aken, Ahmed Hefny, Gustavo Mezerhane, Andrew Pavlo, and
+Geoffrey J. Gordon. 2018. Query-based Workload Forecasting for Self-Driving
+Database Management Systems. In SIGMOD Conference. ACM, 631–645.
+[44] Lin Ma, William Zhang, Jie Jiao, Wuwen Wang, Matthew Butrovich, Wan Shen
+Lim, Prashanth Menon, and Andrew Pavlo. 2021. MB2: Decomposed Behavior
+Modeling for Self-Driving Database Management Systems. In SIGMOD Conference.
+ACM, 1248–1261.
+[45] Vitor Hirota Makiyama, M. Jordan Raddick, and Rafael D. C. Santos. 2015. Text
+Mining Applied to SQL Queries: A Case Study for the SDSS SkyServer. In SIMBig
+(CEUR Workshop Proceedings, Vol. 1478). CEUR-WS.org, 66–72.
+[46] Alonso Marco, Felix Berkenkamp, Philipp Hennig, Angela P. Schoellig, Andreas
+Krause, Stefan Schaal, and Sebastian Trimpe. 2017. Virtual vs. real: Trading off
+simulations and physical experiments in reinforcement learning with Bayesian
+optimization. In ICRA. IEEE, 1557–1563.
+[47] Ryan C. Marcus, Parimarjan Negi, Hongzi Mao, Chi Zhang, Mohammad Alizadeh,
+Tim Kraska, Olga Papaemmanouil, and Nesime Tatbul. 2019. Neo: A Learned
+Query Optimizer. Proc. VLDB Endow. 12, 11 (2019), 1705–1718.
+[48] Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Alex Graves, Ioannis
+Antonoglou, Daan Wierstra, and Martin A. Riedmiller. 2013. Playing Atari
+with Deep Reinforcement Learning. CoRR abs/1312.5602 (2013).
+[49] Rémi Munos. 2011. Optimistic Optimization of a Deterministic Function without
+the Knowledge of its Smoothness. In NIPS. 783–791.
+[50] John A. Nelder and R. Mead. 1965. A Simplex Method for Function Minimization.
+Comput. J. 7, 4 (1965), 308–313.
+[51] Jennifer Ortiz, Magdalena Balazinska, Johannes Gehrke, and S. Sathiya Keerthi.
+2019. An Empirical Analysis of Deep Learning for Cardinality Estimation. CoRR
+abs/1905.06425 (2019).
+[52] R. Malinga Perera, Bastian Oetomo, Benjamin I. P. Rubinstein, and Renata
+Borovica-Gajic. 2021. DBA bandits: Self-driving index tuning under ad-hoc,
+analytical workloads with safety guarantees. In ICDE. IEEE, 600–611.
+[53] Bobak Shahriari, Kevin Swersky, Ziyu Wang, Ryan P. Adams, and Nando de Fre-
+itas. 2016. Taking the Human Out of the Loop: A Review of Bayesian Optimization.
+Proc. IEEE 104, 1 (2016), 148–175.
+
+===== PDF PAGE 15 =====
+[54] Jasper Snoek, Hugo Larochelle, and Ryan P. Adams. 2012. Practical Bayesian
+Optimization of Machine Learning Algorithms. In NIPS. 2960–2968.
+[55] Niranjan Srinivas, Andreas Krause, Sham M. Kakade, and Matthias W. Seeger.
+2010. Gaussian Process Optimization in the Bandit Setting: No Regret and
+Experimental Design. In ICML. Omnipress, 1015–1022.
+[56] Yanan Sui, Alkis Gotovos, Joel W. Burdick, and Andreas Krause. 2015. Safe
+Exploration for Optimization with Gaussian Processes. In ICML (JMLR Workshop
+and Conference Proceedings, Vol. 37). JMLR.org, 997–1005.
+[57] David G. Sullivan, Margo I. Seltzer, and Avi Pfeffer. 2004. Using probabilistic
+reasoning to automate software tuning. In SIGMETRICS. ACM, 404–405.
+[58] Ji Sun and Guoliang Li. 2019. An End-to-End Learning-based Cost Estimator.
+Proc. VLDB Endow. 13, 3 (2019), 307–319.
+[59] Ilya Sutskever, Oriol Vinyals, and Quoc V. Le. 2014. Sequence to Sequence
+Learning with Neural Networks. In NIPS. 3104–3112.
+[60] Rebecca Taft, Nosayba El-Sayed, Marco Serafini, Yu Lu, Ashraf Aboulnaga,
+Michael Stonebraker, Ricardo Mayerhofer, and Francisco Jose Andrade. 2018.
+P-Store: An Elastic Database System with Predictive Provisioning. In SIGMOD
+Conference. ACM, 205–219.
+[61] Jian Tan, Niv Nayman, Mengchang Wang, and Rong Jin. 2021. CobBO: Coordinate
+Backoff Bayesian Optimization with Two-Stage Kernels. CoRR abs/2101.05147
+(2021).
+[62] Jian Tan, Tieying Zhang, Feifei Li, Jie Chen, Qixing Zheng, Ping Zhang, Honglin
+Qiao, Yue Shi, Wei Cao, and Rui Zhang. 2019. iBTune: Individualized Buffer
+Tuning for Large-scale Cloud Databases. Proc. VLDB Endow. 12, 10 (2019), 1221–
+1234.
+[63] Linnan Wang, Rodrigo Fonseca, and Yuandong Tian. 2020. Learning Search Space
+Partition for Black-box Optimization using Monte Carlo Tree Search. In NeurIPS.
+[64] Zi Wang, Clement Gehring, Pushmeet Kohli, and Stefanie Jegelka. 2018. Batched
+Large-scale Bayesian Optimization in High-dimensional Spaces. In AISTATS
+(Proceedings of Machine Learning Research, Vol. 84). PMLR, 745–754.
+[65] Ziyu Wang, Babak Shakibi, Lin Jin, and Nando de Freitas. 2014. Bayesian Multi-
+Scale Optimistic Optimization. In AISTATS (JMLR Workshop and Conference
+Proceedings, Vol. 33). JMLR.org, 1005–1014.
+[66] Zhijie Wei, Zuohua Ding, and Jueliang Hu. 2014. Self-tuning performance of
+database systems based on fuzzy rules. In FSKD. IEEE, 194–198.
+[67] Gerhard Weikum, Axel Mönkeberg, Christof Hasse, and Peter Zabback. 2002. Self-
+tuning Database Technology and Information Services: from Wishful Thinking
+to Viable Engineering. In VLDB. Morgan Kaufmann, 20–31.
+[68] Martin Wistuba, Nicolas Schilling, and Lars Schmidt-Thieme. 2015. Sequential
+Model-Free Hyperparameter Tuning. In ICDM. IEEE Computer Society, 1033–
+1038.
+[69] Jiaqi Yan, Qiuye Jin, Shrainik Jain, Stratis D. Viglas, and Allison W. Lee.
+2018. Snowtrail: Testing with Production Queries on a Cloud Database. In
+DBTest@SIGMOD. ACM, 4:1–4:6.
+[70] Zongheng Yang, Amog Kamsetty, Sifei Luan, Eric Liang, Yan Duan, Peter Chen,
+and Ion Stoica. 2020. NeuroCard: One Cardinality Estimator for All Tables. Proc.
+VLDB Endow. 14, 1 (2020), 61–73.
+[71] Zongheng Yang, Eric Liang, Amog Kamsetty, Chenggang Wu, Yan Duan, Peter
+Chen, Pieter Abbeel, Joseph M. Hellerstein, Sanjay Krishnan, and Ion Stoica.
+2019. Deep Unsupervised Cardinality Estimation. Proc. VLDB Endow. 13, 3 (2019),
+279–292.
+[72] Ya-Xiang Yuan. [n.d.]. A Review of Trust Region Algorithms for Optimization.
+[73] Ji Zhang, Yu Liu, Ke Zhou, Guoliang Li, Zhili Xiao, Bin Cheng, Jiashu Xing,
+Yangtao Wang, Tianheng Cheng, Li Liu, Minwei Ran, and Zekang Li. 2019. An
+End-to-End Automatic Cloud Database Tuning System Using Deep Reinforcement
+Learning. In SIGMOD Conference. ACM, 415–432.
+[74] Xinyi Zhang, Hong Wu, Zhuo Chang, Shuowei Jin, Jian Tan, Feifei Li, Tieying
+Zhang, and Bin Cui. 2021. ResTune: Resource Oriented Tuning Boosted by
+Meta-Learning for Cloud Databases. In SIGMOD Conference. ACM, 2102–2114.
+[75] Yuqing Zhu, Jianxun Liu, Mengying Guo, Yungang Bao, Wenlong Ma, Zhuoyue
+Liu, Kunpeng Song, and Yingchun Yang. 2017. BestConfig: tapping the perfor-
+mance potential of systems via automatic configuration tuning. In SoCC. ACM,
+338–350.
+[76] Zainab Zolaktaf, Mostafa Milani, and Rachel Pottinger. 2020. Facilitating SQL
+Query Composition and Analysis. In SIGMOD Conference. ACM, 209–224.
+
+===== PDF PAGE 16 =====
+Appendix
+OUTLINE
+This supplemental material is organized as follows:
+A.1 More details about OnlineTune Architecture.
+A.2 High-Level Algorithm.
+A.3 Details about subspace adaptation.
+A1 MORE DETAILS ABOUT ONLINETUNE
+ARCHITECTURE
+System Architecture. Figure A1 presents the architecture of On-
+lineTune. The left part shows the online database system in the
+cloud environment that runs ever-changing workloads. The right
+part represents the OnlineTune server deployed in the backend
+tuning cluster. OnlineTune maintains a data repository that stores
+the historical observations {< 𝑐𝑖,𝜃𝑖,𝑦𝑖 >}𝑡
+1 from the previous tun-
+ing iterations, which could be initially empty. The controller moni-
+tors the states of tuning tasks and transfers the data between the
+database side and OnlineTune server side. The main parts of On-
+lineTune run on the server side, whose resource consumption
+doesn’t affect the online database. The context featurization mod-
+ule is deployed in the database instance for data privacy concerns.
+Database Instance Tuning server
+Context
+Featurization
+Controller
+Controller
+Data Repo
+ML
+models
+Figure A1: OnlineTune Architecture.
+Discussion. OnlineTune is a reactive approach: it featurizes the
+online workloads at the beginning of an iteration and applies a
+configuration for the later time of the iteration. Since changes in
+real-world workloads are gradual, the little lagging can be accept-
+able. A predictive module for the context might help. However, it
+still assumes gradual and predictable changes based on historical
+data, and an inaccurate prediction module could greatly affect the
+tuner’s performance.
+A2 TOP-LEVEL ALGORITHM
+Algorithm 3 presents the top-level algorithm. OnlineTune first
+queries the default configuration and its performance to form the
+initial safety set and initializes the data repository (Line1–3). The
+safety threshold is set as the default performance. At the beginning
+of an iteration, OnlineTune collects the incoming workload queries
+and corresponding optimizer’s estimations to calculate context
+vector 𝑐𝑖 (Line 5, Section 5.1). OnlineTune loads a prediction model
+𝑚𝑛
+𝑖−1 selected by a SVM model that inputs the context vector and
+outputs a cluster label 𝑛(Line 6, Section 5.3). Then, a configuration
+subspace is initialized or adapted (Line 7, Section 6.1). OnlineTune
+discretizes the configuration subspace and assesses the safety of
+unevaluated configurations based on the black-and-white prior
+knowledge to form a safe candidate set (safety set) (Line 8, Section
+6.2). Next, OnlineTune recommends a configuration 𝜃𝑖 within the
+safety set to trade-off exploitation (i.e., making decisions based on
+existing knowledge) and exploration (i.e., acquiring new knowledge
+or expanding the safety set) (Line 9, Section 6.3). The configuration
+𝜃𝑖 is applied to the online database, and the database performance 𝑦𝑖
+during the tuning interval is collected. Finally, OnlineTune updates
+the prediction model and data repository with {𝜃𝑖,𝑐𝑖,𝑦𝑖}(Lines 12
+to 11). OnlineTune determines whether to re-cluster or not ((Line
+13, see Algorithm 1 for details). If needing re-cluster, OnlineTune
+clusters the observations based on {𝑐𝑖}𝑡
+1, fits prediction models for
+each cluster, and re-train the SVM model, as illustrated in Section
+5.3.
+Algorithm 3: Top-Level Algorithm of OnlineTune
+Output: Configuration recommendation adaptively with
+changing environment
+1 Featurize the environment factor, get context 𝑐0.
+2 Query default configuration 𝜃0 and get its performance 𝑦0.
+3 Initialize a data repository 𝐻0 with < 𝑐0,𝜃0,𝑦0 >.
+4 for 𝑖 ←1 to 𝐾 do
+5 Featurize and get context 𝑐𝑖.
+6 Select a model 𝑚𝑛
+𝑖−1, where 𝑛= 𝑆𝑉𝑀(𝑐𝑖).
+7 Θ𝑛
+𝑖
+= Subspace_Adaptation (Θ𝑛
+𝑖−1,𝐻𝑖−1).
+8 Generate safe candidates 𝑆𝑛
+𝑖 ∈Θ𝑛
+𝑖.
+9 Select a configuration 𝜃𝑖 within 𝑆𝑛
+𝑖.
+10 Apply 𝜃𝑖 and evaluate its performance 𝑦𝑖.
+11 𝐻𝑖 = Append(𝐻𝑖−1,< 𝜃𝑖,𝑐𝑖,𝑦𝑖 >).
+12 Fit prediction model 𝑚𝑛
+𝑖 on 𝐻𝑖.
+13 Offline_Clustering(𝐻𝑖).
+A3 DETAILS ABOUT SUBSPACE
+ADAPTATION
+A3.1 More Rationale about Subspace
+Restriction
+Given a configuration space Θ and a contextual GP model, we can
+discretize Θ to obtain a set of candidates and assess the safety of
+each candidate based on the estimation of the GP model. However,
+the direct operation over the whole space suffers from the curse
+of dimensionality. First, the candidates need to be close to each
+other in order to use the GP to generalize safety. When tuning more
+than a couple of knobs, it is computationally affordable to con-
+duct a fine discretization over the whole configuration space [34].
+In addition, the database performance function is often complex,
+making the estimation of the GP model problematic for high di-
+mensional configuration (more than ten parameters) [53]. To deal
+
+===== PDF PAGE 17 =====
+Table A1: Average time breakdown for one tuning iteration on JOB workload.
+Featurization Model Selection Model Update Subspace Adaptation Safety Assessment Candidate Selection Apply & Evaluation
+Average Time 0.0577s 0.0259s 1.3583s 0.2695s 0.1354s 0.0278s 178.1254s
+Percentage 0.03% 0.01% 0.75% 0.15% 0.08% 0.02% 98.96%
+with those challenges, we draw inspiration from a class of trust-
+region methods in stochastic optimization [72]. These methods use
+a linear and quadratic prediction model inside a trust region, which
+is often a sphere or a polytope centered at the best observation.
+Intuitively, while linear and quadratic models are likely to be in-
+adequate to model globally, they can be accurate in a sufficiently
+small trust region [16]. However, the linear models struggle to han-
+dle noisy observations and require small trust regions to provide
+accurate modeling behavior. Naturally, we use contextual GP as
+the prediction model to describe the function 𝑓(𝜃,𝑐)and restrict
+OnlineTune’s optimization space in the trust region (i.e., configu-
+ration subspace). The optimization can be solved efficiently within
+the trust region, and the GP model’s estimation can be trusted in
+the trust region [16].
+A3.2 Direction Oracles for Line Region
+OnlineTune implements two strategies to generate the directions,
+including random direction and important direction.
+Random direction. A strategy is to pick the direction uniformly
+(random direction), increasing the exploration.
+Important direction. OnlineTune also chooses the directions
+aligned with the important configuration knob (important di-
+rection), inspired by the important knobs pre-selecting proce-
+dure before tuning used by existing configuration tuning ap-
+proaches [6, 18, 32]. It is empirically shown that restricting the
+optimization space in several important knobs can largely reduce
+the tuning iterations and achieve similar improvement [32]. The im-
+portance of knobs is quantified by Fanova [27], a line-time approach
+for assessing feature importance. However, detecting important
+knobs needs thousands of evaluation samples for a given workload.
+And fixing the configuration space wrongly (e.g., filtering important
+knobs) will severely hinder the optimization. OnlineTune’s adap-
+tation of subspace solves this problem by adjusting the subspace
+over iterations.
+A random direction is chosen if the performance improvement
+in the previous hypercube region is lower than a threshold (explo-
+ration). Otherwise, an important direction is chosen by sampling
+from the top-5 important knobs (exploitation). The importance of
+knobs is updated with the increasing observations.

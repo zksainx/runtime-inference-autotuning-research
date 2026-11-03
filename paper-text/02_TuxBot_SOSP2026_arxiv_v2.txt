@@ -1,0 +1,1916 @@
+Source: 02_TuxBot_SOSP2026_arxiv_v2.pdf
+Pages: 18
+
+===== PDF PAGE 1 =====
+arXiv:2605.15026v2 [cs.OS] 14 Jul 2026
+TuxBot: Semantic-Aware Online OS Tuning with Large
+Language Models
+Georgios Liargkovas
+Columbia University
+gliargko@cs.columbia.edu
+Hubertus Franke
+IBM Research
+frankeh@us.ibm.com
+Abstract
+Online OS tuning can improve long-running services, but
+existing controllers are poorly matched to live hosts. They
+treat scheduler, power, memory, and I/O controls as black-
+box variables and optimize a scalar reward. This view ignores
+cross-knob policy structure, breaks down when application
+metrics are unavailable, and can send a running service into
+degraded regions that persist after the bad setting is removed.
+We present TuxBot, a host-side framework for steady-state
+OS tuning with bounded language-model guidance. TuxBot
+turns knob schemas, telemetry, current configuration, re-
+cent action–response history, and retrieved prior runs into a
+compact decision context. A fast loop proposes low-latency
+updates, a slower loop periodically revises the search strat-
+egy, and every proposed change passes through typed vali-
+dation before reaching kernel or sysctl interfaces. This lets
+the controller reason about OS-control meaning and indi-
+rect performance signals while keeping model cost, latency,
+and authority constrained. We evaluate TuxBot on 13 live
+workloads from five benchmark suites while tuning up to 41
+Linux parameters. Across the suite, TuxBot improves stable-
+phase performance by 72.5% over default settings and by
+153.3% relative to the strongest non-LLM baseline. A 30-
+window session costs about $0.20 in model calls. With only
+host-level metrics, TuxBot still outperforms baselines given
+direct application objectives by 93.7 percentage points, while
+avoiding severe degraded regions reached by structure-blind
+exploration.
+CCS Concepts:• Software and its engineering →Op-
+erating systems; • Computer systems organization →
+Performance of systems; • Computing methodologies →
+Artificial intelligence.
+Keywords: operating systems, online tuning, performance
+autotuning, large language models, Linux
+1 Introduction
+Primer on OS tuning: Modern operating systems expose
+a large runtime control surface for scheduling, power man-
+agement, memory, and I/O. These settings affect applica-
+tion performance and efficiency, but the best configuration
+Mihir Nitin Joshi
+Columbia University
+mnj2122@columbia.edu
+Kostis Kaffes
+Columbia University
+kkaffes@cs.columbia.edu
+depends on the workload, hardware, and current operat-
+ing conditions[2–4, 12, 17, 28, 48, 49]. As those conditions
+change, static settings are not enough, motivating the online
+tuning loop we study.
+Figure 1 shows that loop. A tuner is a host-side controller
+that runs alongside applications, periodically observes avail-
+able system and application signals, proposes updates to a
+set of OS knobs, and uses the resulting measurements to
+decide the next step.
+We study tuners that operate out of band: they are not
+inline on each request, and they are not kernel fast-path
+controllers such as the CPU scheduler, a packet scheduler,
+or a TCP congestion controller [16, 30, 36, 56]. Instead, they
+perform steady-state online tuning. While services continue
+to run, the tuner adjusts the parameters of such OS con-
+trollers, e.g., the CPU scheduler time slice or the network
+stack’s polling budget, over seconds-to-minutes timescales
+to improve sustained application performance rather than
+going after transient sub-second fluctuations.
+In principle, this tuning can be done manually by experts
+using carefully thought-out heuristics. However, that does
+not scale as manual tuning would effectively require a per-
+formance engineer for each workload on each server mon-
+itoring changing conditions. Two common ways to auto-
+mate this loop are Bayesian optimization and reinforcement
+learning [33, 72, 82]. A Bayesian tuner observes a scalar ob-
+jective, updates a surrogate model over the configuration
+space, selects the next configuration based on that model,
+and repeats. An RL tuner treats tuning as sequential deci-
+sion making. It maps measurements to states, applies knob
+changes as actions, and improves a policy or value func-
+tion from observed rewards. Systems such as CherryPick [5],
+SmartConf [79], OPPerTune [73], TUNA [31], MLOS [22, 55],
+and SelfTune [51] show that this style of automation can
+improve configurations in practice.
+Lack of semantic understanding: We show that these
+approaches are not sufficient for the online tuning of a live
+application’s OS environment because of three recurring fail-
+ures. First, a tuner can make semantically unsound changes
+that push the system into an operating region that is hard
+to recover from. Some are semantically violating, such as
+1
+
+===== PDF PAGE 2 =====
+signals
+Host
+knob updates
+Tuner
+Application
+OS knobs
+Figure 1. Steady-state online tuning. A host-side tuner up-
+dates OS knobs on a running host and uses observed signals
+to choose the next step.
+minperfpct > maxperfpct (minimum cpu frequency greater
+than maximum cpu frequency), while others are numerically
+valid but nonsensical for the target workload, such as com-
+bining extreme busy polling, shallow idle states, and very
+long scheduler windows for a latency-sensitive service. For
+example, for Memcached under high load, MLOS repeatedly
+explores such semantically unsound configurations that lead
+to > 47×tail-latency increase. Second, many real deploy-
+ments do not expose the application metrics (or app metrics)
+to the OS. For PostgreSQL running Wikipedia [23], replacing
+the real latency objective with either of two plausible low-
+level observable system proxies, instructions per cycle (IPC)
+or cache misses, yields p99 latency 2×worse than tuning
+using the application metric. Third, the problem gets harder
+as the control surface grows [1, 17]. For PostgreSQL running
+TPC-C, increasing the tuning surface from 1 to 32 knobs
+sharply degrades p99 latency by 50%.
+These failures have the same root cause. Bayesian and RL
+tuners search over numeric or categorical knob values and
+interpret scalar rewards, but a live OS uses these values to
+configure coupled scheduling, power, memory, and I/O poli-
+cies on a running machine. The main challenge is therefore
+not only search cost, but reasoning about the meaning of
+knobs, telemetry, and recovery on a live system.
+Our approach: Our key insight is that LLMs can help with
+exactly these failures because they can reason over the mean-
+ing of knobs and telemetry, not just their numeric values,
+i.e., they have a semantic view of the system state. Like a
+human expert, given knob names, subsystem context, doc-
+umentation, current telemetry, and recent history, an LLM
+can interpret candidate configurations in context rather than
+as isolated numbers. That lets the tuner reject semantically
+unsound knob combinations, including both conflicting pa-
+rameters and numerically valid but workload-nonsensical
+ones, propose safer repairs, and avoid regions that a human
+operator would not explore on a live system due to their ex-
+perience, knowledge, and intuition. The same reasoning also
+helps when direct application metrics are unavailable. In-
+stead of relying on one brittle proxy such as IPC [88] or cache
+misses [9, 10, 68], the model can interpret a joint telemetry
+signature [20, 44, 61, 71, 83]—for example, CPU saturation,
+run-queue growth, memory pressure, power-state behavior,
+Georgios Liargkovas, Mihir Nitin Joshi, Hubertus Franke, and Kostis Kaffes
+and I/O wait—and infer whether the workload is moving
+toward or away from a better operating point without re-
+quiring any training.
+We turn this insight into TuxBot, an LLM-based frame-
+work for online OS tuning. TuxBot builds a semantic view of
+a tuning problem from the tuning goal, the active knob set,
+current telemetry, and recent system behavior, and uses that
+context to choose OS configuration updates for live appli-
+cations. Instead of treating scheduler, power, memory, and
+I/O knobs as unrelated values, it reasons about them as parts
+of a joint system. This lets TuxBot remain effective in the
+regimes where current tuners struggle: when direct applica-
+tion metrics are unavailable, when the search space contains
+numerically valid but semantically dubious configurations,
+and when the control surface is large and highly coupled.
+Recent systems such as SchedCP [89], ADRS [18], DB-
+BERT [76], GPTuner [41, 57], 𝜆-Tune [32] have shown that
+LLMs can help improve systems by structuring, pruning, or
+guiding search, mostly in offline or controlled settings. But
+bringing that same semantic reasoning into a live tuner is
+much harder. First, strong reasoning models are slow and
+expensive. In an online tuner, that matters twice: (1) they
+cost more to run, and (2) they delay the next control decision
+while the service keeps running. Second, pretrained models
+bring broad system knowledge without task-specific training.
+However they do not automatically accumulate workload-
+specific experience across sessions. Third, an open-ended
+terminal interface gives the model many more opportunities
+to make a damaging mistake, because it can issue arbitrary
+commands, combine them in unsafe ways, and mutate un-
+related host state. Making TuxBot deployable therefore re-
+quires more than adding an LLM to the loop. It requires a
+design that manages latency and cost, preserves workload-
+specific experience, and keeps online actuation safe.
+TuxBot addresses these three challenges. To make online
+reasoning practical, it uses a dual-loop controller that pairs
+a low-latency Instant model with a slower Reasoning model.
+The fast path does fast exploration with low reaction latency
+and low cost, while the slower path spends more inference
+budget only on decisions that benefit from deeper reasoning.
+This lets TuxBot do online tuning without placing an ex-
+pensive reasoning model on every control step. TuxBot also
+maintains explicit memory so that tuning does not restart
+from scratch in every session. It records summaries from
+prior runs and retrieves them to warm-start new ones, allow-
+ing the tuner to reuse workload-specific experience across
+sessions. Finally, TuxBot constrains online actuation through
+a typed, validated control surface. LLM proposals are checked
+before any change reaches the host, which keeps semantic
+reasoning paired with safe execution.
+We evaluate TuxBot on 13 workloads from five bench-
+mark suites, tuning up to 41 Linux parameters. Across these
+workloads, TuxBot improves performance by an average of
+153.3% over the strongest baseline, MLOS, while costing only
+2
+
+===== PDF PAGE 3 =====
+TuxBot : Semantic-Aware Online OS Tuning with Large Language Models
+$0.2 in LLM API usage for a full steady-state tuning session,
+i.e., tuning a live application until convergence. More no-
+tably, TuxBot still outperforms the baselines by 93.7% when
+it is restricted to system-level metrics while the baselines
+are given direct access to application-level metrics. TuxBot
+also avoids the catastrophic operating regions that cause
+severe performance degradation for the other tuners on sev-
+eral workloads. On Xapian in particular, that catastrophic
+behavior takes the form of a queue-dominated metastable
+regime [11, 39] that traps the baselines during the session,
+whereas TuxBot avoids it.
+Contributions. We make the following contributions:
+•We show how existing online OS tuners fail on live systems
+due to their lack of semantic understanding.
+•We present TuxBot, the first semantic-aware LLM-based
+framework for online OS tuning that combines cost-aware
+dual-loop control, explicit memory, and typed actuation
+to tune Linux knobs safely and effectively, even when
+application-level metrics are unavailable.
+•We show that TuxBot outperforms state-of-the-art tuners
+by 153.3% on average while avoiding catastrophic failures.
+2 Why Online OS Tuning Is Semantically
+Blind
+To concretely demonstrate the failures of existing tuners,
+we use MLOS as a running example throughout this section.
+MLOS is the best-performing baseline we evaluate (§6), and
+it cleanly instantiates the classic parameter tuning loop. This
+section shows how the classic tuning approach applied to a
+live OS leads to the failures previewed in the introduction.
+Numeric Validity Is Not Good Policy: MLOS treats each
+OS knob as an independent variable with an admissible nu-
+meric range. The kernel does not apply these knobs indepen-
+dently. It combines scheduler, CPU-power, memory, and I/O
+settings into one runtime policy that determines how the
+machine schedules work and allocates resources. Because of
+that, a configuration can be numerically valid for each knob
+in isolation and still be semantically unsound once those set-
+tings interact on a live system; recent work on configuration
+analysis likewise shows that such settings even if they are
+well-formed are a recurring source of failures [42].
+Here, semantically unsound covers two cases: configura-
+tions that express an internally contradictory policy, and
+numerically valid but nonsensical configurations that a hu-
+man expert would not consider for the current workload. The
+tuner has to discover, through live exploration, which combi-
+nations express beneficial policies and which combinations
+degrade application performance.
+Table 1 shows the effect on Memcached, a latency-sensitive
+cache service, under high load. We co-tune eight OS knobs to
+minimize p99 latency. For the first 10 seconds, MLOS keeps
+the tail latency stable. By 20–25 seconds, it enters numer-
+ically valid but nonsensical regions that combine extreme
+Time(s) p99(ms) Tput(req/s) Config System
+10 1.43 499995.1 Valid Stable state
+20 64.18 458990.6 Unsound busypoll=975; shallow C-state
+25 68.38 466478.1 Unsound busypoll=702; 50 ms timeslice
+150 1.78 499389.8 Repaired Tail recovers
+225 15.02 498136.4 Unsound minperfpct>maxperfpct
+250 54.44 425471.4 Unsound maxperfpct=3%; busypoll=617
+Table 1. Memcached under MLOS on high load (500 000 QPS).
+MLOS enters two kinds of semantically unsound regions:
+numerically valid but nonsensical policies at 20–25 seconds,
+and semantically violating policies at 225–250 seconds. Brief
+repair does not prevent later tail-latency spikes.
+Default Params
+App
+IPC
+Cache
+1
+2
+8
+32
+0 50
+0 50 100
+Stable p99 latency (ms)
+Figure 2. MLOS performance examples. Left: Wikipedia
+p99 under MLOS with App, IPC, and Cache Miss objectives.
+Right: TPC-C p99 under MLOS as the tuning surface grows
+from 1 to 32 parameters.
+busy polling, shallow idle states, and scheduler timescales
+in the tens of milliseconds, driving p99 to 64–68 ms while
+throughput falls to 459–466k ops/s. These knob values are
+sound in isolation, but they do not make sense for this work-
+load; a human expert would avoid them. The service later
+recovers near 150 seconds, but the problem is not solved.
+At 225 seconds, MLOS sets minperfpct above maxperfpct
+(70% > 10%), which is semantically violating because the
+lower bound exceeds the upper bound. Throughput remains
+near target, but p99 is still 15.0 ms. By 250 seconds, MLOS
+again proposes minperfpct>maxperfpct (63% > 3%), now to-
+gether with aggressive busy polling, and p99 jumps back to
+54.4 ms while throughput drops to 425k ops/s. The lesson is
+that semantically blind exploration does not only cause one
+bad step. It can repeatedly visit both numerically valid but
+nonsensical and semantically contradictory configurations,
+while near-normal throughput can hide severe tail-latency
+damage.
+Manually setting constraints does not solve the problem.
+Relevant interactions are numerous and bad configurations
+depend on hardware and workload. A practical OS tuner
+therefore needs to reason about parameter meaning, recent
+trajectory, and subsystem interactions, not only numeric
+bounds. Otherwise the tuner keeps sampling configurations
+that a human operator would never try on a live service.
+Missing Reward, Misleading Proxies: Classic tuning also
+fails when reward itself becomes a semantics problem rather
+than a directly observed scalar. In online OS tuning, the con-
+troller may or may not observe the application-level metric it
+3
+
+===== PDF PAGE 4 =====
+ultimately cares about at each tuning horizon. On some ser-
+vices, stable p99 or throughput is available and can drive the
+loop directly. On others, the signal sits inside a proprietary
+stack, a legacy code path, or instrumentation that operators
+do not want to sample every few seconds. A practical tuner
+has to work well in both scenarios. It should use the appli-
+cation objective when it is available, and still make good
+decisions when only OS and hardware telemetry remain.
+The problem is not that telemetry is missing. It is that, in
+OS tuning, no single low-level signal is a reliable stand-in
+for application performance across workloads and operating
+points. The same IPC or cache-miss value can reflect very
+different underlying states depending on scheduler behavior,
+memory pressure, and I/O activity. Figure 2 (Left) shows
+this on PostgreSQL running the Wikipedia benchmark. For
+MLOS each tuning run optimizes one scalar objective. When
+that objective is the application metric, MLOS lowers p99
+latency relative to the default config. In separate runs where
+the objective is instead IPC or cache misses, p99 becomes
+much worse, even though both counters look like plausible
+low-level performance signals. A practical OS tuner there-
+fore cannot treat one hardware metric as a portable fallback
+reward. Using a weighted combination of machine-level met-
+rics [71] does not solve the problem; it only shifts it to choos-
+ing the weights, and the right weights themselves depend
+on the workload and operating point. This issue appears
+in other systems as well. For instance, memory-tiering sys-
+tems have shown that single signals such as hotness are
+often insufficient, and that good decisions depend on richer
+multi-signal policy reasoning [24, 61, 78, 83].
+More Knobs, More Semantic Risk: The risk of miscon-
+figuration only gets worse as the control surface grows. A
+tuner can look adequate when the control surface is small,
+because the search stays near a narrow region of reasonable
+settings. That picture does not hold once the operating sys-
+tem exposes hundreds of coupled controls. Linux currently
+exposes more than 1,200 tunable knobs and there are propos-
+als for adding many more [17]; recent work on automated
+OS specialization likewise finds that large OS configuration
+spaces contain many invalid or failure-inducing regions that
+make blind exploration expensive and unsafe [1, 67]. Adding
+knobs does not just enlarge the search space. It multiplies
+cross-knob interactions and increases the number of updates
+that can push the host into hard-to-recover states such as
+queue buildup, cache disruption, or writeback pressure.
+Figure 2 (Right) shows the effect on PostgreSQL running
+TPC-C. With one or two tuned knobs, MLOS remains close to
+the default region. As the tuning surface grows from 1 to 32
+knobs, p99 degrades sharply. The search space therefore does
+not just become larger, it also becomes harder to navigate
+safely. More knobs mean more harmful combinations, more
+opportunities for backlog or instability to persist after a bad
+Georgios Liargkovas, Mihir Nitin Joshi, Hubertus Franke, and Kostis Kaffes
+step, and more cases where quick intelligent intervention
+becomes necessary.
+Conclusion: Taken together, these failures show that online
+OS tuning is not just a harder optimization problem. It is
+a problem of preserving semantic structure in the control
+loop. A useful tuner must interpret indirect telemetry, reason
+about what knobs mean together, and avoid damaging parts
+of the live search space before it enters them. That is exactly
+the promise of LLMs. The next section asks whether that
+promise can be realized online.
+3 LLMs for Online OS Tuning: Capabilities
+and Challenges
+3.1 LLMs as Semantic Reasoners
+§ 2 identifies semantic reasoning as a missing layer in to-
+day’s tuners. A better tuner must recognize when a candi-
+date change is semantically unsound, infer likely applica-
+tion progress from indirect telemetry when direct metrics
+are missing, and keep search focused as the control surface
+grows. Our key insight is to use LLMs not as generic agents
+or offline search advisors, but as online semantic reasoners
+inside the tuning loop.
+Reasoning Over Knob Semantics: This property addresses
+the core Memcached failure in § 2. The problem is not that
+today’s tuners are weak numeric optimizers. The problem is
+that they treat knob settings as unrelated values and can dis-
+cover harmful interactions only by probing the live system.
+LLMs are useful for the opposite reason. Given knob names,
+subsystem structure, documentation, current telemetry, and
+recent history, they can interpret a candidate configuration
+in context. They can infer orderings, dependencies, conflicts,
+and workload mismatches, and recognize that a proposal
+is not just a point in a search space but a scheduler, power,
+memory, or I/O policy. That semantic prior lets the tuner
+reject contradictory configurations before trying them and
+keep exploration away from regions that a human operator
+would avoid on a live system.
+This does not eliminate the need for measurement. The
+tuner still has to observe outcomes and adapt to the workload.
+But it changes what the tuner brings to each decision. Instead
+of starting from semantically blind search, it starts with
+priors about which combinations are coherent, which ones
+are dubious, and which local repairs are plausible. That is
+the first reason LLMs are useful in online OS tuning.
+Inferring Application Progress from Indirect Teleme-
+try: The same idea applies when direct application met-
+rics are unavailable. Progress must be inferred from a joint
+telemetry signature rather than a single brittle proxy, using
+signals such as CPU saturation, run-queue growth, memory
+pressure, power-state behavior, I/O wait, and recent trajec-
+tory. LLMs are useful here because they can interpret that
+joint pattern in context. Given telemetry, subsystem informa-
+tion, and recent history, the model can ask what the current
+4
+
+===== PDF PAGE 5 =====
+TuxBot : Semantic-Aware Online OS Tuning with Large Language Models
+signals imply about likely application progress and whether
+a proposed change is moving the system toward or away
+from a better operating point. This is not a standard reward-
+substitution trick. It is a semantic inference problem, and it
+is one of the main reasons LLMs are well suited to online
+tuning in the first place.
+Navigating Large Control Surfaces with Semantic Pri-
+ors: Large control surfaces create a third problem. As the
+number of knobs grows, blind exploration becomes both
+more expensive and less safe. The tuner needs some way to
+focus on the small subset of knobs and knob combinations
+that are likely to matter for the observed bottleneck. LLMs
+help here because they can relate knob groups to subsystems
+and subsystems to current symptoms. If telemetry points to
+queue buildup, memory pressure, or power throttling, the
+model can prioritize the parts of the control surface most
+likely to affect that behavior and deprioritize irrelevant or
+semantically unsound changes.
+This is not just about reducing dimensionality. It is about
+making live exploration safer. By steering search away from
+semantically dubious configurations and toward knobs that
+target the current bottleneck, the tuner can make useful
+progress without paying the full cost of blind exploration
+over dozens of interacting parameters.
+3.2 Making Semantic Tuning Practical Online
+Despite its promise, bringing LLM-based semantic reasoning
+into an online tuner is hard.
+Cost and latency: First, semantics are expensive. The mod-
+els that reason best are too slow and costly to place on every
+control step. This is one reason LLMs have been most at-
+tractive in offline database tuning settings where the model
+can spend time pruning a search space for a static configu-
+ration before deployment. Online OS tuning does not have
+that slack. The application keeps running while the model
+thinks. A design that puts a slow model on the critical path
+of every action will both react too late and spend too much.
+Safety: Second, semantic capability makes broad actuation
+tempting, but an online tuner cannot expose that capability
+through an unbounded shell. LLMs can reason about seman-
+tics, but they can also make confident mistakes. With raw
+shell access those mistakes become stateful system changes
+[29, 40, 90]. In our TPC-C experiments, a terminal-enabled
+agent wandered into CPU offlining, large dirty-ratio writes,
+tuned-adm profile changes, and block-scheduler rewrites.
+Public incidents show the same pattern in other agentic sys-
+tems [21, 65]. The lesson for online OS tuning is not to avoid
+LLMs, but to bound them. The tuner needs a typed, validated
+interface over approved knobs and observability tools, not
+an unstructured command channel [40, 90, 91].
+Memory without training: Third, a pretrained LLM starts
+with useful priors, but without explicit memory it must
+System Performance Tools
+Tuning Target
+& Goal [§4.1]
+PMU
+RAPL
+…
+OS Metrics
+Memory
+[§4.3]
+3
+1
+App Metrics
+Application
+API -
+Telemetry
+[§5]
+2
+Context
+Manager
+[§4.1]
+Tuning
+prompt
+4
+OS Knobs
+List Knobs
+Tuner
+[§4.2]
+Apply Knobs …
+Scheduler
+NAPI
+Power
+Parameter
+Validator
+6 5
+[§4.4]
+Proposed
+Knobs
+Figure 3. System overview of TuxBot.
+rediscover the same workload-specific facts in every ses-
+sion. Unless the system records prior actions, outcomes, and
+workload-specific regularities, the model must repeatedly re-
+infer which counters predict, e.g., p99 for this service, which
+regions of the knob space are unsafe on this hardware, and
+which recovery patterns signal persistent backlog.
+Conclusion: These constraints suggest a narrower role for
+the LLM than naive agentic control. The model should serve
+as a semantic reasoner inside a bounded tuner that preserves
+cross-run memory and separates fast corrective control from
+slower reinterpretation. That observation motivates the de-
+sign of TuxBot.
+4 TuxBot
+Design Overview: We introduce TuxBot, an LLM-based
+framework for online OS tuning. TuxBot operates beneath
+live applications, observes host and, when available, applica-
+tion behavior over fixed tuning intervals, and applies only
+validated knob updates through a typed interface.
+Figure 3 shows the main components and the workflow
+over one tuning iteration. Together, these components form
+a single host-side control loop that gathers measurements,
+constructs decision context, chooses updates, and validates
+every change before it reaches the OS. A session begins
+with a typed tuning request 1 . API–Telemetry attaches to
+the workload and performance tools and returns the cur-
+rent knob state and latest measurements 2 . The Context
+Manager combines them with any cross-run memory 3 and
+builds the decision context 4 . The Tuner runs two loops:
+an Instant path for low-latency corrections and a Reasoning
+path for slower strategic updates. Proposals pass through
+the Parameter Validator 5 and are applied to OS knobs 6 .
+After the next tuning interval, the framework ingests the
+resulting measurements and repeats.
+4.1 Context construction
+Figure 4 shows the prompt structure built by the Context
+Manager. Each tuner request has a session specification and
+a per-iteration update. The session specification contains
+the role, task, constraints, active knob set, knob metadata,
+optimization strategy, and, when cross-run memory is avail-
+able, a warm-start prior synthesized from earlier runs. The
+per-iteration update is refreshed on every tuning interval
+5
+
+===== PDF PAGE 6 =====
+Georgios Liargkovas, Mihir Nitin Joshi, Hubertus Franke, and Kostis Kaffes
+Session specification stable
+Role Goal OS tuning agent for a running workload
+minimize p99 for PID; CPU power < 60W
+Knobs wakeup_granularity_ns, latency_ns,
+min_granularity_ns, net.core.busy_poll,
+max_perf_pct, cstate_max , min_perf_pct
+Meta types, ranges, descriptions
+Strategy early: explore ranges; later: exploit; noise-aware
+Prior cstate_max=C1 improved p99; min_granularity_ns
+< 100 𝜇s unstable
+I0.0 I0.1 I0.2 I1.0 I1.1 I1.2 I2.0 I2.1 I2.2
+time
+R0 R1 R2 R3
+Instant request
+Reasoning request
+Instant context entry
+Reasoning context entry
+Per-iteration update refreshed each request
+Config cstate_max=C1 , min_granularity_ns=3,000,000, ...
+Latest app p99= 12.21 ±6%; IPC= 1.71; PWR= 58W;...
+Trace iter. 1–4: [...] ; iter. 5: 15.11 with cstate_max=C2 ;iter. 6:
+11.37 with cstate_max=C1 (best)
+Figure 5. Dual-loop control in TuxBot.
+context entry: a compact record of configuration, latest mea-
+Figure 4. Prompt template in TuxBot: a stable session speci-
+fication and a per-iteration update.
+and contains the current configuration, latest measurement,
+and recent action–response trace. Telemetry provides the
+current configuration and latest measurements (app and sys-
+tem metrics) 2 , and Memory provides a prior summary after
+the first completed interval 3 . On a cold start, TuxBot issues
+the first request without cross-run memory. The Context
+Manager places the fixed fields in the session specification
+and the changing runtime fields in the per-iteration update,
+then sends the resulting prompt to the Tuner 4 .
+4.2 Tuner: Dual-loop control
+Our evaluation shows that online OS tuning needs both a
+fast loop for immediate action and a slower loop for broader
+reasoning. A fast tuner alone is not enough: our evaluation
+(6.4) shows that a low-latency loop can react quickly, but
+without deeper reasoning it tends to get stuck in local op-
+tima or settle for weaker configurations. A more powerful
+yet slower tuner (e.g., an LLM with high reasoning budget)
+alone has the opposite problem: it can reason better, but if
+every decision waits on that reasoning, convergence itself
+takes more iterations and is more expensive because the
+tuner cannot quickly explore alternative configurations and
+correct course, and recovery from a bad step is too slow.
+TuxBot therefore uses two LLM-based tuners at different
+timescales. The fast loop, which we call Instant, runs every
+tuning interval (1-5 seconds) and handles local exploration
+and quick corrections. It is still LLM-based, because even fast
+exploration requires semantic interpretation of knob mean-
+ing, telemetry, and recent action–response history rather
+than purely numeric search. The slow loop, which we call
+Reasoning, runs less often (tens of seconds) and looks over
+a longer history to update the broader search strategy.
+The two tuners read the shared context, but retain his-
+tory differently. Each completed tuner call contributes one
+surement, action, and justification. Instant requests (I in Fig-
+ure 5) contribute instant context entries ( ), while Reasoning
+requests (R) contribute reasoning context entries ( ). per-
+sist, whereas remain visible only until the next Reasoning
+result is committed, after which they are consumed and re-
+moved from future Instant contexts.
+Initially R0 carries no prior entries and I0.0 sees an empty
+shared context. I0.1 then sees the from I0.0, and I0.2 sees
+the from I0.0 and I0.1. R1 consumes those accumulated
+and writes one . When R1 returns, I1.0 starts a new Instant
+phase and sees only the from R1; I1.1 sees that entry plus
+the from I1.0; and I1.2 sees that same reasoning entry
+plus the from I1.0 and I1.1. The same handoff repeats at
+R2 and R3: R2 sees one and the accumulated from the
+I1.X phase, then writes a new ; R3 sees two and the
+accumulated from the I2.X phase, then writes another .
+This replacement policy lets the Instant tuner inherit the
+current Reasoning strategy without losing low latency. It
+also keeps the Instant context short: after R2 returns, I2.0
+sees only the persistent reasoning history, not the I1.X in-
+stant entries. By I2.2, the shared context contains only the
+reasoning entries from R1 and R2 plus the instant entries
+from I2.0 and I2.1. As a result, the unbounded part of context
+growth is O(|Reasoning|)rather than O(|Instant|), which
+limits the latency and quality degradation that the Instant
+tuner would otherwise experience as context grows.
+Optional search-space trimming: Another way to reduce
+LLM cost is to use semantic reasoning only at the start of
+a session, so TuxBot also supports a trimming mode before
+ordinary online control. Inspired by LLM-assisted database
+tuners such as GPTuner [41], DB-BERT [76], and 𝜆-Tune [32],
+it uses the same shared context, Context Manager, and typed
+actuation path for a small number of live iterations, but aims
+to reduce the active knob space and their ranges rather than
+immediately optimize the next operating point [32, 41, 76].
+From the observed action–response trajectory, the tuner
+narrows active parameter ranges, optionally fixes low-impact
+parameters, and revises earlier trims when later evidence
+disagrees, before handing the reduced space to a downstream
+tuner such as MLOS [22]. After the trimming phase, semantic
+control stops and the remaining exploration is delegated
+6
+
+===== PDF PAGE 7 =====
+TuxBot : Semantic-Aware Online OS Tuning with Large Language Models
+to the downstream optimizer over the reduced space. § 6.4
+shows that this mode is cheaper but weaker than the full dual
+loop, proving that semantic understanding is necessary even
+in the later stages of configuration exploration and validating
+our decision for the Instant tuner to be LLM-based.
+4.3 Memory within and across runs
+Making one decision at a time just by observing the current
+context is not enough. A pretrained LLM brings broad sys-
+tems knowledge, but without memory each session must re-
+discover workload-specific facts such as predictive counters,
+unstable knob regions, and slow-recovery patterns. TuxBot
+therefore treats memory as part of the tuner.
+TuxBot maintains memory at two timescales. Within a
+run, TuxBot keeps a session trace. After each tuning inter-
+val, it appends a compact record containing the selected
+action, the resulting configuration, the observed system met-
+rics, any application metrics, and the current constraint sta-
+tus. The Context Manager feeds a suffix of that trace back
+into later prompts as the recent action–response history in
+the per-iteration update. This within-run memory helps the
+tuner separate noise from sustained movement, recognize
+delayed recovery after an earlier bad move, and avoid imme-
+diately revisiting a recently harmful region.
+Across runs, TuxBot maintains a cross-run memory of
+prior tuning sessions. For each session, it stores a compact
+per-iteration trace in a vector store, including the chosen
+action, resulting configuration, system metrics, and, when
+available, application-level metrics. To warm-start a new
+session, TuxBot first observes one tuning window and con-
+structs a bootstrap query from the information available at
+that point. This query encodes the tuning goal, machine
+context, starting configuration, and the first-window sys-
+tem metric signature, with application metrics appended
+when available. The vector store then performs embedding-
+based nearest-neighbor retrieval to return the top-𝑘 prior
+runs whose early-session signatures are most similar to the
+new session. We use 𝑘=3; 𝑘=1 is brittle, while substantially
+larger 𝑘 begins to average away the most relevant evidence.
+A call to the reasoning model compresses the retrieved runs
+into a cross-run memory prior, a short textual summary of
+reusable parameter relationships, promising and risky re-
+gions, and early exploration advice. The Context Manager
+injects that prior into the Session Specification for all later
+iterations. The cross-run memory remains a soft hint rather
+than a constraint. Live measurements and the new action–
+response history override weak or stale memory.
+Memory is useful for repeated workloads, and especially
+helpful for unseen workloads, where early telemetry can
+retrieve transferable tuning advice from similar prior runs.
+4.4 Validation and typed actuation
+In TuxBot, a model output is only a proposal. Before any
+change reaches the operating system, it passes through a
+host-side validation and actuation path. This is the system’s
+authority boundary: the model can suggest knob updates,
+but it never writes kernel state directly.
+To enforce that boundary, TuxBot exposes a small typed
+control surface rather than a shell. For each tuner call, the
+Context Manager places the active knob schema, current
+knob state, parameter descriptions, categorical domains, and
+dependency hints into the structured prompt, and sets the re-
+sponse schema from the current tunable set. When the Tuner
+replies, the host-side Parameter Validator accepts changes
+only for knobs in the current tunable set, checks categorical
+domains, expands per-core updates under the active core
+mask when needed, and rejects proposals that fall outside
+the active session policy.
+After validation, the Parameter Validator translates ac-
+cepted proposals into OS-specific writes through interfaces
+such as debugfs, sysfs, CPU-frequency paths, and sysctl.
+TuxBot applies each update under a host-side lock and records
+the new operating point only if the writes succeed. Failed
+updates leave the previous committed configuration in place,
+and each proposal is recorded with its justification, timing,
+and application outcome for auditability.
+4.5 Discussion
+When to use TuxBot? TuxBot is aimed at non-expert de-
+velopers or operators who know their application is leaving
+performance on the table but do not know which sched-
+uler, power, memory, or networking knobs to change. It is
+also useful for legacy or opaque services that cannot export
+fine-grained application metrics, because it can still make
+useful tuning decisions from system metrics alone. Although
+we focus on OS knobs, the same controller can extend to
+application-specific knobs by adding the relevant schemas,
+validation rules, and actuation paths.
+Like the other tuners in our evaluation, TuxBot targets
+steady-state online tuning. It is therefore better suited to
+long-lived services with sustained demand than to short-
+lived jobs, rapidly shifting bursty workloads, or overload
+episodes that require sub-second reactions. This boundary
+is mainly about the tuning goal rather than LLM overhead
+alone: these systems optimize steady-state behavior, not fast-
+path reactive control.
+When to restart TuxBot? TuxBot treats tuning as a se-
+quence of bounded sessions. When the operating region
+drifts enough that the current configuration is no longer
+near-optimal, the tuner should restart. Prior work studies
+how tuners detect and respond to persistent workload and
+platform shifts without overreacting to short-lived noise [31,
+51, 73]. In our current design, modest drift resumes tuning
+from the current or last stable configuration, while large drift
+starts a new session from scratch.
+Multi-application tuning: TuxBot currently targets one
+primary application per session. Extending it to co-located
+7
+
+===== PDF PAGE 8 =====
+applications would require reasoning about interference,
+multi-objective rewards, and partitioned control domains
+such as cgroups or core subsets rather than a single host-
+wide configuration. That is an important future direction,
+but orthogonal to the question studied here: whether an
+LLM-based controller can safely and effectively tune the OS
+for a live application.
+5 Implementation
+TuxBot is implemented as a Python control plane. The core
+dual-loop tuner, telemetry/actuation path, and session logic
+consist of 6 374 SLOC, plus 3 775 SLOC for baseline tuners.
+TuxBot is open-source and publicly accessible at https://
+github.com/Columbia-DAP-Lab/TuxBot
+Tuner execution and structured responses: The main
+tuner is the dual-loop TuxBot tuner. TuxBot supports all
+OpenAI API, OpenRouter, and Gemini backend-compatible
+models. TuxBot also supports the single-loop LLM tuner and
+the non-LLM tuners used in the evaluation. LLM backends
+return structured replies over the active tunable set rather
+than free-form shell actions. Each reply is parsed into a
+typed tuner response containing knob updates together with
+short explanations and execution metadata. The same path
+also supports replay and end-of-run summaries used by the
+memory experiments.
+Cross-Run memory: We use Gemini Embedding [58] for
+context vectorization and ChromaDB [19] as the vector store.
+Typed actuation and recovery: The Parameter Validator
+stores typed metadata for 41 Linux knobs, including domains,
+per-core scope, and selected dependencies, and maps ac-
+cepted updates to interfaces such as sysctl, sysfs, debugfs,
+cpufreq, and intel_pstate. Before any write reaches the
+host, it restricts proposals to the active tunable set, checks nu-
+meric and categorical values, and expands per-core settings
+over the configured CPU set when needed. Failed writes pre-
+serve the previous committed configuration, and the imple-
+mentation restores the original OS settings when the session
+ends. In addition, TuxBot enforces a response schema on
+LLM responses derived from the active tunable set. It parses
+each reply into a typed tuner response with knob updates, a
+short justification, convergence flags, optional commands,
+and token-usage metadata.
+Request, workload attachment, and telemetry: Work-
+loads attach through a common benchmark interface that
+handles setup, measurement window parsing and aggrega-
+tion, and clean-up.
+During each window, API–Telemetry collects application
+metrics together with system metrics including perf stat
+counters, RAPL package and DRAM power, C-state residency,
+and CPU-load measurements in one normalized record. Di-
+rect tuning, system-only tuning, and single-channel tuning
+such as IPC share the same record; only the reward channel
+exposed to the tuner changes.
+Georgios Liargkovas, Mihir Nitin Joshi, Hubertus Franke, and Kostis Kaffes
+System metric collection is built into TuxBot; the user only
+specifies the CPU scope. Tuning an application with system
+metrics requires zero effort or changes. Application teleme-
+try attachment is workload-specific and is defined once per
+workload type through a parser and an aggregation rule.
+Getting app metrics from a new workload is typically light-
+weight (<30 minutes in most cases), and most of the effort lies
+in identifying how that workload exposes its metrics. TuxBot
+already provides common window-level reducers such as
+mean, median, and sum. Some workloads still require extra
+engineering to expose per-window metrics; for example, we
+modified Tailbench to report interval-level measurements.
+6 Evaluation
+We evaluate TuxBot across six questions that together de-
+termine whether an online OS tuner is both effective and
+deployable: end-to-end quality against classical baselines
+(§6.2), tuning under limited observability with indirect sig-
+nals (§6.3), the quality–cost tradeoff of the dual-loop tuner ar-
+chitecture (§6.4), exploration robustness (§6.5), scalability as
+the knob space grows (§6.6), and the effect of warm-starting
+from memory including transfer to unseen workloads (§6.7).
+6.1 Experimental Setup
+Machines, OS, and execution model: All experiments run
+on bare-metal CloudLab hosts with two Intel Xeon Silver
+4114 processors (40 hardware threads), 192 GiB of DRAM,
+Ubuntu 22.04.2 LTS, and Linux 5.15.0-160-generic. Hyper-
+threading remains enabled. We run one benchmark on each
+host at a time. Latency-oriented runs pin the workload to
+CPUs 0-9, which is also the CPU set sampled by the perfor-
+mance counters collectors.
+TuxBot restores defaults on exit, so each rerun starts from
+the default config.
+Target system and knob space: The default online tuning
+set contains eight coupled Linux knobs spanning the Com-
+pletely Fair Scheduler (CFS), dynamic voltage and frequency
+scaling (DVFS), CPU idle-state selection, and Linux NAPI
+polling. The set includes min_granularity_ns, latency_ns,
+wakeup_granularity_ns, and migration_cost_ns. It also in-
+cludes cstate_max, napi_busy_poll, min_perf_pct, and max
+perf_pct. These are not independent knobs. In CFS, latency_ns
+sets the target scheduling period, while min_granularity_ns
+sets the minimum slice within that period, so the two must
+remain consistent. The DVFS bounds min_perf_pct and max
+perf_pct also interact with cstate_max, because aggressive
+frequency settings reduce the opportunity to benefit from
+deeper idle states. Likewise, aggressive NAPI polling can
+negate deeper idle-state savings. The higher-dimensional
+studies enlarge this set to as many as 41 knobs through the
+same Parameter Validator, adding controls such as energy-
+performance preference (epp), turbo, power-management
+QoS (PM QoS), VM dirty/writeback settings, non-uniform
+8
+
+===== PDF PAGE 9 =====
+TuxBot : Semantic-Aware Online OS Tuning with Large Language Models
+memory access (NUMA) toggles, socket backlog and buffer
+sizes, and TCP behavior. For a given experiment, all tuners
+see the same declared knob schema; what changes is the
+search strategy, not the exposed action space.
+Workloads and optimization objectives: Our evaluation
+set spans 13 benchmarks across five suites: Memcached
+through Mutilate [7], BenchBase [23] on PostgreSQL 14,
+Tailbench [52], Sysbench [54], and DCPerf [74]. The latency-
+sensitive group contains Memcached, TPC-C, Wikipedia,
+YCSB, Twitter, SIbench, Masstree, Silo, Xapian, and Sysbench
+OLTP (Read-Write); these runs minimize p99 latency. The
+throughput senstive group, consists of Sphinx, Sysbench
+CPU, and Sparkbench; they maximize throughput. Unless
+stated otherwise, the evaluation set contains 13 benchmarks;
+some figures also report an 11-benchmark non-catastrophic
+subset that excludes Xapian and Memcached because their
+severely degraded performance under non-TuxBot tuners
+dominates cross-workload aggregates.
+Baselines and tuners: All methods share the same sub-
+strate: workload attachment, telemetry collection, context
+construction, and typed parameter actuation. Only the tuner
+changes, and for LLM variants, the context sent to the model.
+TuxBot (ST) uses Gemini 2.5 Flash as the Reasoning loop
+and Gemini 2.5 Flash-Lite as the Instant loop, with 0.7 tem-
+perature. Single-Reasoning uses only Gemini 2.5 Flash;
+Single-Instant uses only Gemini 2.5 Flash-Lite. TuxBot-
+Trim (ST-Trim) runs TuxBot’s LLM control loop for 10
+tuning windows to reduce the active knob space online, then
+hands the reduced space to MLOS for the remaining 20 win-
+dows.
+We compare against the default Ubuntu 22.04 configura-
+tion (Default Parameters), MLOS [55] using SMAC3 [13]
+with Expected Improvement, a simpler Bayesian Optimiza-
+tion baseline [72], a tabular Q-learning [82] baseline, and a
+DQN [38] baseline. Q-learning and DQN baselines discretize
+the tuned parameters and treat OS tuning as sequential deci-
+sion making over the same parameter space. We use MLOS
+as the main non-LLM baseline in later ablations because it
+is both the strongest classical baseline overall and the only
+one that scales naturally to larger mixed-type knob spaces;
+RL baselines mainly serve as lower-dimensional references.
+Measurement Pipeline, Repetitions, & Reporting: All
+experiments run fully online against continuously executing
+workloads. One iteration or tuning window is a 5 s measure-
+ment window plus at most one tuner decision. We execute
+five runs per configuration/workload pair with 30 tuning
+windows followed by a 20-window stable phase; longer tun-
+ing budgets did not change the results. For TuxBot, the stable
+phase means no further parameter changes after the final
+accepted action, whereas continuously searching baselines
+such as MLOS continue to tune in windows 31–50. TuxBot-
+Trim uses 10 of the 30 tuning windows for trimming and the
+Improvement %
+100
+75
+50
+25
+0
+25
+50
+Tuning Stable No Catastrophic
+ST ST-trim MLOS Bayes DQN Q-Learning
+Figure 6. Aggregate improvement over Default Parameters
+for TuxBot, and baselines.
+remaining 20 for MLOS search. We report relative improve-
+ment over Default Parameters as a percentage; aggregate
+improvement is the geometric mean across the suite aver-
+aged over five runs, and error bars show stdev. across reruns.
+6.2 Performance Comparison Against Baselines
+We begin with the highest-level question: which method
+delivers the strongest end-to-end improvement over the De-
+fault Parameters? To compare mixed latency and throughput
+objectives without letting one extreme workload dominate,
+we aggregate multiplicative improvement factors over De-
+fault Parameters and report their geomean. We report the
+full per-benchmark results in §A.1.
+Results: Figure 6 compares six methods: TuxBot, TuxBot-
+Trim, MLOS, Bayesian, DQN, and Q-Learning. TuxBot is the
+only method with a clearly positive aggregate geomean in
+both phases. During tuning, TuxBot improves over Default
+Parameters by +59.36%. MLOS and TuxBot-Trim are both
+negative at -33.79% and -30.62%, respectively. Bayesian, DQN,
+and Q-Learning are more negative at -45.77%, -40.41%, and
+-51.66% respectively. In the stable phase, TuxBot improves fur-
+ther to +72.49%, while MLOS, TuxBot-Trim, Bayesian, DQN,
+and Q-Learning reach -31.91%, -26.14%, -37.46%, -44.49%, and
+-58.49%, respectively.
+On the non-catastrophic subset, TuxBot rises only mod-
+estly, from +72.49% to +87.22% in the stable phase. The clas-
+sical baselines move more significantly. This gap is driven
+largely by Xapian and Memcached, where the classical base-
+lines enter a queue-dominated metastable failure and cannot
+recover within the session, whereas TuxBot does not. MLOS,
+Bayesian, and DQN flip from negative to positive, reaching
++50.52%, +37.37% and +33.68% respectively after convergence.
+Q-Learning remains negative at -5.7%.
+TuxBot-Trim experiences the biggest gains. It turns defini-
+tively positive at +26.89% during tuning and +63.93% in the
+stable phase. This shows that online trimming helps MLOS
+once the search is restricted to semantically safer regions: the
+initial trimming phase hands Bayesian optimization tighter
+live-derived boundaries, and the stable phase improves sub-
+stantially as a result. Despite this, better ranges alone do not
+solve the online control problem.
+9
+
+===== PDF PAGE 10 =====
+Georgios Liargkovas, Mihir Nitin Joshi, Hubertus Franke, and Kostis Kaffes
+Single-Reasoning
+Improvement %
+100
+75
+50
+25
+0
+25
+50
+75
+Tuning Stable No Catastrophic
+App System IPC App IPC Cache App IPC Cache
+ST ST-trim MLOS
+Improvement %
+100
+75
+50
+25
+0
+25
+50
+ST
+Single-Instant
+ST-Trim
+MLOS
+Tuning Stable No Catastrophic $0.0 $0.2 $0.4
+Figure 7. Aggregate improvement over Default Parameters
+for direct and indirect optimization objectives.
+Figure 8. Dual-loop, single-loop, and MLOS tuning perfor-
+mance. Left: aggregate improvement over Default Param-
+eters during tuning and stable phases. Right: stable-phase
+improvement vs. total session cost for 30 tuning intervals.
+Analysis: Even without taking the catastrophic degrada-
+tion that all baselines cause into account (No-Catastrophic),
+TuxBot clearly outperforms them both during the tuning
+and the stable phase. TuxBot is also the only tuner that con-
+sistently avoids the catastrophic regions, thus being both a
+better and a safer tuner than the baselines.
+6.3 Indirect-Signal Tuning Performance
+We next ask whether system-level proxies can substitute
+for direct application-level feedback. Here, indirect objec-
+tives do not expose the application’s end metric; they rely
+instead on system-level signals such as CPU usage and perf
+stat outputs. Figure 7 compares TuxBot, TuxBot-Trim, and
+MLOS under direct application metrics (App) and indirect
+objectives. For the scalar-proxy baselines, we use IPC and
+LLC misses, two hardware-counter proxies used in prior sys-
+tems work [44, 88]. Because TuxBot-Trim and MLOS require
+an explicit scalar reward, they cannot directly optimize a
+multi-signal metric dump without a hand-written formula.
+Results: Figure 7 shows that TuxBot loses surprisingly little
+when direct app metrics are replaced with system metrics.
+With direct app metrics, TuxBot improves over Default Pa-
+rameters by +59.36% during tuning and +72.5% in the stable
+phase; with the system metrics, it still reaches +21.7% and
++31.9%, and with IPC alone it reaches +18.2% and +16.2%.
+The baselines are much weaker. On the full evaluation set,
+MLOS trails TuxBot by 93.2 pp on app metrics and 78.4 pp
+on IPC during tuning, and by 104.4 pp and 84.0 pp in the
+stable phase. TuxBot-Trim also outperforms MLOS among
+the scalar-reward methods.
+For the non-catastrophic subset, TuxBot remains best at
++87.2% with app metrics, +64.0% with the system metrics, and
++47.21% with IPC. MLOS reaches +50.5% with app metrics but
+remains negative on IPC (-24.1%) and cache misses (-22.8%).
+Even when restricted to system metrics alone, TuxBot stays
+13.5 pp above MLOS with direct app metrics.
+Analysis: The key finding is that TuxBot with only system
+metrics stays much closer to TuxBot with direct application
+metrics than MLOS does even when MLOS receives app-
+level objectives. TuxBot-Trim improves on MLOS, especially
+on the non-catastrophic set, but the gap to TuxBot shows
+that trimming alone is not enough once later exploration is
+delegated to a semantics-unaware tuner.
+6.4 Dual-Loop vs. Single-Loop Tuning and Cost
+We compare TuxBot’s dual loop against two simpler LLM
+baselines, MLOS, and the TuxBot-Trim variant, asking how
+much aggregate improvement each tuner achieves and what
+model-inference cost it incurs during a single tuning session.
+Figure 8 reports the aggregate costs under the same 30-step
+tuning budget and 20-step stable phase.
+Results: The dual loop tuning discussed in §4.2 achieves
+the best cost-quality tradeoff among the LLM tuners. On
+the non-catastrophic subset, TuxBot reaches +87.2% in the
+stable phase at $0.20 per tuning session, while Single-Loop
+Reasoning is comparable overall at +89.7% but costs $0.42;
+put differently, the dual loop is only 2.5 points behind at
+about half the cost (while being slightly better during tuning,
+at +73.2% vs. +71.2%). Single-Loop Instant is cheaper at $0.12,
+but much weaker at +25.4%. MLOS incurs no model-inference
+cost, but it also trails the dual loop substantially at +35.6%
+during tuning and +50.5% in the stable phase on the non-
+catastrophic subset. TuxBot-Trim reaches +63.9% at $0.15,
+still trailing TuxBot (+87.2%) on the same setting.
+Analysis: The dual-loop architecture achieves the best cost-
+quality operating point among the LLM tuners we evalu-
+ate by delivering performance close to the stronger single-
+reasoning tuner at roughly half the inference cost. At a lower
+price point, using TuxBot-Trim to bootstrap MLOS improves
+performance at lower cost, but it cannot address the lack of
+semantics-awareness in the later tuning stages.
+6.5 Tuning-Phase Robustness
+End-state quality is not enough for an online tuner. A deploy-
+able tuner must also avoid degrading performance during
+exploration.
+Because the workload remains live, transient bad con-
+figurations are first-order events. We therefore use three
+trajectory-level metrics over windows 1–30. The P50 bad-
+window rate is the median fraction of tuning windows worse
+than the Default Parameters across reruns; the P10 rate is the
+10th percentile of that same fraction. Variability measures
+trajectory volatility during tuning: for reruns 𝑟 ∈{1, . . . , 𝑅},
+we define it as 1
+𝑅
+𝑅
+𝑟=1
+𝜎𝑟
+|𝜇fixed |·100 , where 𝜎𝑟 is the standard
+10
+
+===== PDF PAGE 11 =====
+TuxBot : Semantic-Aware Online OS Tuning with Large Language Models
+Aggregate %
+120
+100
+80
+60
+40
+20
+0
+ST ST-Trim MLOS
+P50 P10 Variability
+Figure 9. Aggregate P50 bad-window rate, P10 bad-window
+rate, and variability over tuning phase (excl. catastrophic).
+deviation of the tuner’s metric over tuning windows in rerun
+𝑟, and 𝜇fixed is the mean metric of the Default Parameters
+baseline on the same workload.
+Results: Figure 9 shows that TuxBot is the safest online
+tuner. Excluding catastrophic runs, its aggregate P50 bad-
+window rate is 16.9%, versus 28.8% for MLOS and 29.7% for
+TuxBot-Trim; the P10 rate is 12.0%, versus 26.3% and 29.6%.
+Variability is likewise much lower for TuxBot at 11.1%, com-
+pared to 25.1% for MLOS and 24.7% for TuxBot-Trim. TuxBot
+is less variable than MLOS on 12 of 13 workloads, with the
+largest gaps on Xapian (10.9% vs. 39120.2%), Memcached
+(40.3% vs. 1388.2%), and Sysbench OLTP-RW (2.5% vs. 37.5%).
+Analysis: These results isolate the robustness property that
+matters online. TuxBot has the lowest P50 and P10 bad-
+window rates and the lowest variability, so it is worse than
+Default Parameters in fewer windows and follows a smoother
+trajectory than either MLOS or TuxBot-Trim. Trimming nar-
+rows the search space but does not make the online path
+safe: once control passes to MLOS, both bad-window rates
+and variability remain close to MLOS and far above TuxBot.
+TuxBot-Trim therefore helps later-stage optimization with-
+out resolving the instability of semantics-unaware tuners.
+6.6 Scalability with Parameter Dimensionality
+In this section, we evaluate how the tuners scale as the con-
+trol surface expands. A practical operating system tuner
+must remain stable and effective not just on a small handful
+of isolated parameters, but across a broad, heavily coupled
+configuration space. Figure 10 shows the tuning-phase and
+stable-phase improvement as we grow the co-tuned knob
+set from 1 to 41 parameters in three workloads (TPC-C, Sys-
+bench OLTP Read-Write, and Silo), and Table 2 reports the
+corresponding control-loop latency.
+Results: The separation is small in the 1–2 parameter re-
+gion, where all three methods stay close to the defaults. The
+gap opens at 4–8 knobs and becomes large beyond 16.
+TuxBot remains strongly positive across the entire sweep,
+reaching +216.7% stable at 8 parameters, +213.4% at 16, +105%
+at 32, and +155.9% at 41. MLOS is competitive only in the
+smaller spaces: it reaches +119.3% stable at 4 parameters and
++76.3% at 8, but then falls to +19.6%, +28.3%, and +13.0% at
+16, 32, and 41 parameters, while its tuning phase is already
+negative at those same counts (-7.4%, -6.3%, and -11.1%).
+Tuning Stable
+Improvement %
+300
+250
+200
+150
+100
+50
+0
+1 2 4 8 16 32 41
+Parameter Count
+ST ST-Trim MLOS
+ST ST-Trim MLOS
+Figure 10. Aggregate improvement over Default Parameters
+as co-tuned knob set grows from 1 to 41 parameters.
+# Reasoning Instant MLOS
+1 8.08 1.02 0.49
+2 13.53 1.01 0.63
+4 10.07 1.34 0.73
+8 9.71 1.22 2.42
+16 11.53 1.27 4.36
+32 15.80 2.36 4.05
+41 12.22 2.55 5.73
+Table 2. Tuner latency (s) by parameter count.
+TuxBot-Trim sits between the two. From 16 parameters on-
+ward it improves on MLOS in both phases, reaching +153.5%
+at 16 parameters and +203.9% at 41. At 41 parameters, TuxBot-
+Trim delivers the strongest stable result on this three-workload
+subset, but its tuning-phase gain remains much lower than
+TuxBot (+44.3% versus +86.1%).
+Response latency: Table 2 shows TuxBot’s dual-loop split
+is beneficial at high dimensionality. While MLOS is initially
+the fastest, its median decision latency rises tenfold from
+0.49 s at 1 parameter to 5.73 s at 41. This penalty stems
+from surrogate training and acquisition optimization slowing
+down as complex categorical variables are introduced.
+TuxBot remains reactive as the control surface expands.
+The Reasoning loop is slower (8.08 to 15.80 s), but its latency
+does not scale strictly with parameter count and does not
+sit on the critical path. The Instant loop can execute fast
+follow-up actions (1.01 to 2.55 s), preserving rapid control in
+high-dimensional spaces.
+TuxBot-Trim combines the latency drawbacks of both sys-
+tems. Its first 10 iterations incur high Reasoning loop latency
+during the active trimming phase before handing control to
+MLOS. Therefore, TuxBot-Trim pays a high upfront infer-
+ence cost, only to bottleneck on MLOS’s execution delays
+in the larger parameter sets where trimming is intended to
+help.
+Analysis: TuxBot scales best in the domain that matters
+for OS tuning: once the space reaches 16+ knobs, it remains
+strongly positive while MLOS loses most of its gain and often
+turns negative. The latency results reinforce that advantage:
+TuxBot keeps a fast control path whose latency grows slowly,
+11
+
+===== PDF PAGE 12 =====
+Improvement %
+250
+200
+150
+100
+50
+0
+Tuning Stable
+No Mem. Top 1 Top 3 No Mem. Top 1 Top 3
+App System
+Figure 11. Aggregate improvement over Default Parameters
+for TPC-C, Silo, and Sysbench OLTP-RW with and without
+memory with app metrics (left) and system metrics (right).
+whereas MLOS becomes both less effective and slower as the
+space grows.
+6.7 Warm-Starting with Cross-Run Memory
+We next ask whether cross-run memory improves tuning on
+unseen workloads. The live tuning loop stays fixed; only the
+injected prior changes. We compare No Memory, one cross-
+memory prior (Top-1), and a synthesized prior from the top
+three matches (Top-3). The memory includes all benchmarks
+in the broader evaluation set except for the ones we evaluate
+here (i.e., TPC-C, Silo, and Sysbench OLTP-RW), so this
+is transfer rather than same-benchmark reuse. Figure 11
+reports improvement over Default Parameters for app-metric
+and system-metric tuning.
+Results: Figure 11 shows the same ordering in both set-
+tings: Top-3 performs best, No Memory is next, and Top-1
+is worst. With app metrics, Top-3 raises the geomean from
++86.3%/+144.7% to +155.6%/+202.9% during tuning/stable;
+and with system metrics, from +101.5%/+143.1% to 143.7%/
++164.4%. Top-3 also reduces run-to-run spread: error bars
+fall from 54.6/106.0 to 14.1/15.3 with app metrics and from
+40.0/75.7 to 11.2/43.4 with system metrics.
+Analysis: Memory helps most when the prior combines
+a few related runs rather than one match. Top-1 is brittle:
+the retrieved memory entry steers search toward a weaker
+region, so its low spread reflects consistent bias rather than a
+better warm start. Top-3 is more robust because the synthe-
+sized summary preserves repeated signals about promising
+and risky regions while damping one weak match.
+Cross-run memory acts as a warm start rather than a
+constraint. A prior synthesized from several related runs
+steers early exploration toward better operating regions and
+makes tuning more predictable in both phases. The unseen-
+workload setting strengthens the result: exact benchmark
+identity is not required for memory to help.
+7 Related Work
+Parameter tuning support for systems: Classical tuners
+search an explicit numeric space. CherryPick [5], BestCon-
+fig [92], OtterTune [77, 85], and SmartConf [80] represent
+early search-, transfer-, and control-based approaches for
+Georgios Liargkovas, Mihir Nitin Joshi, Hubertus Franke, and Kostis Kaffes
+cloud and DB tuning; MLOS [22, 55] externalizes tunables
+and metrics so external optimizers can drive online exper-
+iments; OPPerTune [73] targets post-deployment service
+tuning with an RL controller that jointly handles numer-
+ical and categorical knobs while managing tuning scope;
+SelfTune [51] tunes cluster-manager parameters online; and
+TUNA [31] keeps the optimizer but improves robustness un-
+der noisy and unstable measurements. Autothrottle [81] uses
+a two-level controller with intermediate targets. Expert in
+Residence [59] is closer in spirit to live OS tuning, but studies
+a narrower Linux CFS setting with a single-loop prompt-
+driven tuner over one or two scheduler knobs. TuxBot in-
+stead uses dual-loop control with explicit context construc-
+tion and memory, and co-tunes a broader OS-wide surface—
+up to 41 knobs across scheduler, power, memory, I/O, and
+networking controls. Within DB tuning, recent work studies
+search-space reduction, sample efficiency, and benchmarking
+support [45–47]. Related OS-side tuning appears in memory-
+tiering systems [49], and KernelX argues for turning fixed
+kernel perf-consts into safely tunable runtime knobs [17].
+Additional works include iTuned [27], Config-Snob [8], and
+Holon [86]; outside DBMSs, Carver and follow-on ML-based
+storage tuning show similar workload-dependent behavior
+in storage systems [2, 3, 12].
+LLMs for tuning and policy generation: LLM-based sys-
+tems add semantically informed proposal generation. DB-
+BERT [76], GPTuner [41], 𝜆-Tune [32], and Booster [87] use
+LLMs to read manuals, filter knobs, narrow ranges, generate
+candidate configurations, or leverage prior tuning history
+before handing control back to a conventional tuner. Au-
+toOS [15] similarly uses an LLM to generate an optimized
+kernel configuration, but as a one-off pre-deployment step.
+Recent congestion-control optimization work [37] use LLMs
+mostly offline or outside the control loop. AIOS [64] and
+Herding LLaMaS [43] are broader OS-flavored agentic vi-
+sions rather than live online autotuners. A more agentic
+line uses LLMs to generate or evolve policies directly: Al-
+phaEvolve [66], Duel-Evolve [50], OpenEvolve [6], AdaE-
+volve [14], and SkyDiscover [62] couple LLMs with evaluator-
+driven evolutionary search; Barbarians at the Gate [18] ar-
+gues that many systems problems are amenable to this dis-
+covery style; and Glia [35] and sched-agent / SchedCP [89]
+bring similar reasoning to systems design and scheduler-
+specific control. These systems generally target offline dis-
+covery, narrow policy domains, or evaluator-driven synthe-
+sis rather than host-attached, OS-wide runtime tuning.
+Systems optimization with traditional ML: A parallel
+line uses traditional ML to replace or augment subsystem
+heuristics directly [16, 24–26, 30, 36, 53, 56, 60, 61, 63, 70, 78,
+83]. Relative to these systems, TuxBot does not replace one
+kernel or datacenter policy with a learned model; it reasons
+over an exposed multi-knob OS control surface online.
+12
+
+===== PDF PAGE 13 =====
+TuxBot : Semantic-Aware Online OS Tuning with Large Language Models
+System support for learned systems and OS optimiza-
+tion: Recent work also studies the infrastructure needed to
+make learned or LLM-generated policies practical, including
+Kgent [90], Guardrails for the OS [69], Canopy [84], Verifying
+Learning-Augmented Systems [29], learning-directed ker-
+nel infrastructure [70], KernMLOps [34], and OQueue [75].
+TuxBot is complementary: it keeps learning in a host-side
+controller and bounds all changes through typed, validated
+actuation over existing OS knobs.
+8 Conclusion
+TuxBot brings LLM-based semantic reasoning into online OS
+tuning through a practical host-side control framework. The
+dual-loop design, explicit memory, and typed actuation make
+online tuning practical, let the controller reason over cou-
+pled knob meanings and joint telemetry, and keep the model
+from writing directly to host state. Across 13 live workloads
+and up to 41 Linux parameters, TuxBot delivers strong gains,
+stays effective as the control surface grows, and avoids the
+catastrophic operating regions that hurt semantics-unaware
+tuners, providing more consistent and predictable perfor-
+mance. TuxBot improves over the state-of-the-art MLOS
+tuner by +153.3% and maintains +93.7% improvement when
+restricted to system metrics.
+Acknowledgments
+This research received funding from the Columbia-Dream
+Sports AI Innovation Center as well as DAPLab corporate
+support in the form of funding and/or compute from Ama-
+zon, IntellectAI, Infosys, Tidalwave, Veris, shopify, Microsoft,
+Thinking Machines, Dandy, Perplexity, and Daytona. The
+views and conclusions presented here are those of the au-
+thors and should not be interpreted as representing the offi-
+cial positions of the funding organizations.
+References
+[1] Mathieu Acher, Hugo Martin, Juliana Alves Pereira, Arnaud Blouin,
+Jean-Marc Jézéquel, Djamel Eddine Khelladi, Luc Lesoil, and Olivier
+Barais. Learning very large configuration spaces: What matters for linux
+kernel sizes. PhD thesis, Inria Rennes-Bretagne Atlantique, 2019.
+[2] Ibrahim Umit Akgun, Ali Selman Aydin, Andrew Burford, Michael
+McNeill, Michael Arkhangelskiy, and Erez Zadok. Improving storage
+systems using machine learning. ACM Transactions on Storage, 19(1):1–
+30, 2023.
+[3] Ibrahim Umit Akgun, Ali Selman Aydin, Aadil Shaikh, Lukas Velikov,
+and Erez Zadok. A machine learning framework to improve storage
+system performance. In Proceedings of the 13th ACM Workshop on Hot
+Topics in Storage and File Systems, HotStorage ’21, page 94–102, New
+York, NY, USA, 2021. Association for Computing Machinery.
+[4] Nabeel Akhtar, Ali Raza, Vatche Ishakian, and Ibrahim Matta. Cose:
+Configuring serverless functions using statistical learning. In IEEE
+INFOCOM 2020 - IEEE Conference on Computer Communications, pages
+129–138, 2020.
+[5] Omid Alipourfard, Hongqiang Harry Liu, Jianshu Chen, Shivaram
+Venkataraman, Minlan Yu, and Ming Zhang. {CherryPick}: Adap-
+tively unearthing the best cloud configurations for big data analytics.
+In 14th USENIX Symposium on Networked Systems Design and Imple-
+mentation (NSDI 17), pages 469–482, 2017.
+[6] Henrique Assumpção, Diego Ferreira, Leandro Campos, and Fabricio
+Murai. Codeevolve: An open source evolutionary coding agent for
+algorithm discovery and optimization. arXiv preprint arXiv:2510.14150,
+2025.
+[7] Berk Atikoglu, Yuehai Xu, Eitan Frachtenberg, Song Jiang, and Mike
+Paleczny. Workload analysis of a large-scale key-value store. In
+Proceedings of the 12th ACM SIGMETRICS/PERFORMANCE joint inter-
+national conference on Measurement and Modeling of Computer Systems,
+pages 53–64, 2012.
+[8] Manaf Bin-Yahya, Yifei Zhao, Hossein Shafieirad, Anthony Ho, Shijun
+Yin, Fanzhao Wang, and Geng Li. {Config-Snob}: Tuning for the best
+configurations of networking protocol stack. In 2024 USENIX Annual
+Technical Conference (USENIX ATC 24), pages 749–765, 2024.
+[9] Sergey Blagodurov, Sergey Zhuravlev, and Alexandra Fedorova.
+Contention-aware scheduling on multicore systems. ACM Trans-
+actions on Computer Systems (TOCS), 28(4):1–45, 2010.
+[10] Sergey Blagodurov, Sergey Zhuravlev, and Alexandra Fedorova.
+Contention-aware scheduling on multicore systems. ACM Trans.
+Comput. Syst., 28(4), December 2010.
+[11] Nathan Bronson, Abutalib Aghayev, Aleksey Charapko, and Timothy
+Zhu. Metastable failures in distributed systems. In Proceedings of the
+Workshop on Hot Topics in Operating Systems, HotOS ’21, page 221–227,
+New York, NY, USA, 2021. Association for Computing Machinery.
+[12] Zhen Cao, Geoff Kuenning, and Erez Zadok. Carver: Finding important
+parameters for storage system tuning. In 18th USENIX Conference on
+File and Storage Technologies (FAST 20), pages 43–57, 2020.
+[13] Victor Carbune, Thierry Coppey, Alexander Daryin, Thomas Dese-
+laers, Nikhil Sarda, and Jay Yagnik. Smartchoices: hybridizing pro-
+gramming and machine learning. arXiv preprint arXiv:1810.00619,
+2018.
+[14] Mert Cemri, Shubham Agrawal, Akshat Gupta, Shu Liu, Audrey Cheng,
+Qiuyang Mang, Ashwin Naren, Lutfi Eren Erdogan, Koushik Sen,
+Matei Zaharia, et al. Adaevolve: Adaptive llm driven zeroth-order
+optimization. arXiv preprint arXiv:2602.20133, 2026.
+[15] Huilai Chen, Yuanbo Wen, Limin Cheng, Shouxu Kuang, Yumeng
+Liu, Weijia Li, Ling Li, Rui Zhang, Xinkai Song, Wei Li, et al. Autoos:
+make your os more powerful by exploiting large language models. In
+Forty-first International Conference on Machine Learning, 2024.
+[16] Jingde Chen, Subho S. Banerjee, Zbigniew T. Kalbarczyk, and Rav-
+ishankar K. Iyer. Machine learning for load balancing in the linux
+kernel. In Proceedings of the 11th ACM SIGOPS Asia-Pacific Workshop
+on Systems, pages 67–74, 2020.
+[17] Zhongjie Chen, Wentao Zhang, Yulong Tang, Ran Shu, Fengyuan
+Ren, Tianyin Xu, and Jing Liu. Principled performance tunability in
+operating system kernels. arXiv preprint arXiv:2512.12530, 2025.
+[18] Audrey Cheng, Shu Liu, Melissa Pan, Zhifei Li, Bowen Wang, Alex
+Krentsel, Tian Xia, Mert Cemri, Jongseok Park, Shuo Yang, et al. Bar-
+barians at the gate: How ai is upending systems research. arXiv
+preprint arXiv:2510.06189, 2025.
+[19] Chroma-Core. Chroma: The AI-native open-source embedding database,
+2023. Accessed: 2026-04-01.
+[20] Ira Cohen, Jeffrey S Chase, Moises Goldszmidt, Terence Kelly, and
+Julie Symons. Correlating instrumentation data to system states: A
+building block for automated diagnosis and control. In OSDI, volume 4,
+pages 16–16, 2004.
+[21] Sam Cox. Code execution through deception: Gemini ai cli hi-
+jack. https://tracebit.com/blog/code-exec-deception-gemini-ai-cli-
+hijack, July 2025. Tracebit Research Blog. Accessed: 2026-03-19.
+[22] Carlo Curino, Neha Godwal, Brian Kroth, Sergiy Kuryata, Greg Lapin-
+ski, Siqi Liu, Slava Oks, Olga Poppe, Adam Smiechowski, Ed Thayer,
+et al. Mlos: An infrastructure for automated software performance
+engineering. In Proceedings of the Fourth International Workshop on
+13
+
+===== PDF PAGE 14 =====
+Georgios Liargkovas, Mihir Nitin Joshi, Hubertus Franke, and Kostis Kaffes
+Data Management for End-to-End Machine Learning, pages 1–5, 2020.
+[23] Djellel Eddine Difallah, Andrew Pavlo, Carlo Curino, and Philippe
+Cudré-Mauroux. Oltp-bench: An extensible testbed for benchmarking
+relational databases. PVLDB, 7(4):277–288, 2013.
+[24] Thaleia Dimitra Doudali, Sergey Blagodurov, Abhinav Vishnu, Sud-
+hanva Gurumurthi, and Ada Gavrilovska. Kleio: A hybrid memory
+page scheduler with machine intelligence. In Proceedings of the 28th
+International symposium on high-performance parallel and distributed
+computing, pages 37–48, 2019.
+[25] Thaleia Dimitra Doudali and Ada Gavrilovska. Machine learning
+augmented hybrid memory management. In Proceedings of the 30th
+International Symposium on High-Performance Parallel and Distributed
+Computing, HPDC ’21, page 253–254, New York, NY, USA, 2021. Asso-
+ciation for Computing Machinery.
+[26] Thaleia Dimitra Doudali, Daniel Zahka, and Ada Gavrilovska. Tun-
+ing the frequency of periodic data movements over hybrid memory
+systems. arXiv preprint arXiv:2101.07200, 2021.
+[27] Songyun Duan, Vamsidhar Thummala, and Shivnath Babu. Tuning
+database configuration parameters with ituned. Proc. VLDB Endow.,
+2(1):1246–1257, August 2009.
+[28] Simon Eismann, Long Bui, Johannes Grohmann, Cristina Abad, Niko-
+las Herbst, and Samuel Kounev. Sizeless: Predicting the optimal size
+of serverless functions. In Proceedings of the 22nd International Mid-
+dleware Conference, pages 248–259, 2021.
+[29] Tomer Eliyahu, Yafim Kazak, Guy Katz, and Michael Schapira. Verify-
+ing learning-augmented systems. SIGCOMM ’21, page 305–318, New
+York, NY, USA, 2021. Association for Computing Machinery.
+[30] Henrique Fingler, Isha Tarte, Hangchen Yu, Ariel Szekely, Bodun
+Hu, Aditya Akella, and Christopher J Rossbach. Towards a machine
+learning-assisted kernel with lake. In Proceedings of the 28th ACM
+International Conference on Architectural Support for Programming
+Languages and Operating Systems, Volume 2, pages 846–861, 2023.
+[31] Johannes Freischuetz, Konstantinos Kanellis, Brian Kroth, and Shiv-
+aram Venkataraman. Tuna: Tuning unstable and noisy cloud applica-
+tions. In Proceedings of the Twentieth European Conference on Computer
+Systems, pages 954–973, 2025.
+[32] Victor Giannakouris and Immanuel Trummer. 𝜆-tune: Harnessing
+large language models for automated database system tuning. Pro-
+ceedings of the ACM on Management of Data, 3(1):1–26, 2025.
+[33] Daniel Golovin, Benjamin Solnik, Subhodeep Moitra, Greg Kochanski,
+John Karro, and David Sculley. Google vizier: A service for black-box
+optimization. In Proceedings of the 23rd ACM SIGKDD international
+conference on knowledge discovery and data mining, pages 1487–1495,
+2017.
+[34] Dhruv Goyal and Sebastian Angel. Using ebpf hooks to profile linux
+file system activity across benchmarking workloads. 2025.
+[35] Pouya Hamadanian, Pantea Karimi, Arash Nasr-Esfahany, Kimia Noor-
+bakhsh, Joseph Chandler, Ali ParandehGheibi, Mohammad Alizadeh,
+and Hari Balakrishnan. Glia: A human-inspired ai for automated
+systems design and optimization. arXiv preprint arXiv:2510.27176,
+2025.
+[36] Mingzhe Hao, Levent Toksoz, Nanqinqin Li, Edward Edberg Halim,
+Henry Hoffmann, and Haryadi S Gunawi. {LinnOS}: Predictability
+on unpredictable flash storage with a light neural network. In 14th
+USENIX Symposium on Operating Systems Design and Implementation
+(OSDI 20), pages 173–190, 2020.
+[37] Zhiyuan He, Aashish Gottipati, Lili Qiu, Yuqing Yang, and Francis Y
+Yan. Congestion control system optimization with large language
+models. arXiv preprint arXiv:2508.16074, 2025.
+[38] Todd Hester, Matej Vecerik, Olivier Pietquin, Marc Lanctot, Tom
+Schaul, Bilal Piot, Dan Horgan, John Quan, Andrew Sendonaris, Ian
+Osband, et al. Deep q-learning from demonstrations. In Proceedings
+of the AAAI conference on artificial intelligence, volume 32, 2018.
+[39] Lexiang Huang, Matthew Magnusson, Abishek Bangalore Muralikr-
+ishna, Salman Estyak, Rebecca Isaacs, Abutalib Aghayev, Timothy
+Zhu, and Aleksey Charapko. Metastable failures in the wild. In 16th
+USENIX Symposium on Operating Systems Design and Implementation
+(OSDI 22), pages 73–90, Carlsbad, CA, July 2022. USENIX Association.
+[40] Jinghao Jia, Raj Sahu, Adam Oswald, Dan Williams, Michael V. Le, and
+Tianyin Xu. Kernel extension verification is untenable. In HotOS 2023:
+Proceedings of the 19th Workshop on Hot Topics in Operating Systems,
+pages 150–157, 2023.
+[41] Lao Jiale, Wang Jianping, Chen Wanghu, Wang Yibo, Zhang Yunjia,
+Tang Mingjie, Li Yufei, Cheng Zhiyuan, and Wang Jianguo. Gptuner:
+A manual-reading database tuning system via gpt-guided bayesian
+optimization. Proceedings of the VLDB Endowment, 17(8):1939–1952,
+2024.
+[42] Sai Krishna Reddy Kakarla, Francis Y. Yan, and Ryan Beckett. Diffy:
+Data-driven bug finding for configurations. Proceedings of the ACM
+on Programming Languages, 8(PLDI), 2024.
+[43] Aditya K Kamath and Sujay Yadalam. Herding llamas: Using llms as
+an os module. arXiv preprint arXiv:2401.08908, 2024.
+[44] Melanie Kambadur, Tipp Moseley, Rick Hank, and Martha A. Kim.
+Measuring interference between live datacenter applications. In SC
+’12: Proceedings of the International Conference on High Performance
+Computing, Networking, Storage and Analysis, pages 1–12, 2012.
+[45] Konstantinos Kanellis, Ramnatthan Alagappan, and Shivaram
+Venkataraman. Too many knobs to tune? towards faster database
+tuning by pre-selecting important knobs. In 12th USENIX Workshop
+on Hot Topics in Storage and File Systems (HotStorage 20), 2020.
+[46] Konstantinos Kanellis, Cong Ding, Brian Kroth, Andreas Müller, Carlo
+Curino, and Shivaram Venkataraman. Llamatune: sample-efficient
+dbms configuration tuning. arXiv preprint arXiv:2203.05128, 2022.
+[47] Konstantinos Kanellis, Johannes Freischuetz, and Shivaram Venkatara-
+man. Nautilus: A benchmarking platform for dbms knob tuning. In
+Proceedings of the Eighth Workshop on Data Management for End-to-
+End Machine Learning, pages 72–76, 2024.
+[48] Konstantinos Kanellis, Sujay Yadalam, Hayden Coffey, Shivaram
+Venkataraman, and Michael Swift. From good to great: Parameter
+tuning in memory tiering systems. IEEE Transactions on Computers,
+75(4):1378–1390, 2026.
+[49] Konstantinos Kanellis, Sujay Yadalam, Shivaram Venkataraman, and
+Michael Swift. Striking the right chord: Parameter tuning in memory
+tiering systems. In Proceedings of the 3rd Workshop on Disruptive
+Memory Systems, DIMES ’25, page 1–9, New York, NY, USA, 2025.
+Association for Computing Machinery.
+[50] Sweta Karlekar, Carolina Zheng, Magnus Saebo, Nicolas Beltran-Velez,
+Shuyang Yu, John Bowlan, Michal Kucer, and David Blei. Duel-evolve:
+Reward-free test-time scaling via llm self-preferences. arXiv preprint
+arXiv:2602.21585, 2026.
+[51] Ajaykrishna Karthikeyan, Nagarajan Natarajan, Gagan Somashekar,
+Lei Zhao, Ranjita Bhagwan, Rodrigo Fonseca, Tatiana Racheva, and
+Yogesh Bansal. {SelfTune}: Tuning cluster managers. In 20th USENIX
+Symposium on Networked Systems Design and Implementation (NSDI
+23), pages 1097–1114, 2023.
+[52] Harshad Kasture and Daniel Sanchez. Tailbench: a benchmark suite
+and evaluation methodology for latency-critical applications. In 2016
+IEEE International Symposium on Workload Characterization (IISWC),
+pages 1–10. IEEE, 2016.
+[53] Jonghyeon Kim, Wonkyo Choe, and Jeongseob Ahn. Exploring the
+design space of page management for Multi-Tiered memory systems.
+In 2021 USENIX Annual Technical Conference (USENIX ATC 21), pages
+715–728. USENIX Association, July 2021.
+[54] Alexey Kopytov. sysbench: Scriptable database and system perfor-
+mance benchmark. https://github.com/akopytov/sysbench, 2024. Ver-
+sion 1.0.20.
+14
+
+===== PDF PAGE 15 =====
+TuxBot : Semantic-Aware Online OS Tuning with Large Language Models
+[55] Brian Kroth, Sergiy Matusevych, Rana Alotaibi, Yiwen Zhu, Anja
+Gruenheid, and Yuanyuan Tian. Mlos in action: Bridging the gap
+between experimentation and auto-tuning in the cloud. Proceedings
+of the VLDB Endowment, 17(12):4269–4272, 2024.
+[56] Daniar H Kurniawan, Rani Ayu Putri, Peiran Qin, Kahfi S Zulkifli,
+Ray AO Sinurat, Janki Bhimani, Sandeep Madireddy, Achmad Imam
+Kistijantoro, and Haryadi S Gunawi. Heimdall: Optimizing storage i/o
+admission with extensive machine learning pipeline. In Proceedings
+of the Twentieth European Conference on Computer Systems, pages
+1109–1125, 2025.
+[57] Jiale Lao, Yibo Wang, Yufei Li, Jianping Wang, Yunjia Zhang, Zhiyuan
+Cheng, Wanghu Chen, Mingjie Tang, and Jianguo Wang. Gptuner: An
+llm-based database tuning system. ACM SIGMOD Record, 54(1):101–
+110, 2025.
+[58] Jinhyuk Lee, Feiyang Chen, Sahil Dua, Daniel Cer, Madhuri
+Shanbhogue, Iftekhar Naim, Gustavo Hernández Ábrego, Zhe Li,
+Kaifeng Chen, Henrique Schechter Vera, et al. Gemini embedding: Gen-
+eralizable embeddings from gemini. arXiv preprint arXiv:2503.07891,
+2025.
+[59] Georgios Liargkovas, Vahab Jabrayilov, Hubertus Franke, and Kostis
+Kaffes. An expert in residence: LLM agents for always-on operating
+system tuning. In Machine Learning for Systems 2025, 2025.
+[60] Jianheng Ling, Pratik Worah, Yawen Wang, Yunchuan Kong, Chunlei
+Wang, Clifford Stein, Diwakar Gupta, Jason Behmer, Logan A. Bush,
+Prakash Ramanan, Rajesh Kumar, Thomas Chestna, Yajing Liu, YING
+LIU, Ye Zhao, Kathryn S. McKinley, Meeyoung Park, and Martin Maas.
+Lava: Lifetime-aware vm allocation with learned distributions and
+adaptation to mispredictions. In M. Zaharia, G. Joshi, and Y. Lin,
+editors, Proceedings of Machine Learning and Systems, volume 7. MLSys,
+2025.
+[61] Jinshu Liu, Hamid Hadian, Hanchen Xu, and Huaicheng Li. Tiered
+memory management beyond hotness. In 19th USENIX Symposium
+on Operating Systems Design and Implementation (OSDI 25), pages
+731–747, 2025.
+[62] Shu Liu, Mert Cemri, Shubham Agarwal, Alexander Krentsel, Ash-
+win Naren, Qiuyang Mang, Zhifei Li, Akshat Gupta, Monishwaran
+Maheswaran, Audrey Cheng, Melissa Pan, Ethan Boneh, Kannan Ram-
+chandran, Koushik Sen, Alexandros G. Dimakis, Matei Zaharia, and
+Ion Stoica. Skydiscover: A flexible framework for ai-driven scientific
+and algorithmic discovery, 2026.
+[63] Martin Maas, David G Andersen, Michael Isard, Mohammad Mahdi
+Javanmard, Kathryn S McKinley, and Colin Raffel. Combining ma-
+chine learning and lifetime-based resource management for memory
+allocation and beyond. Communications of the ACM, 67(4):87–96, 2024.
+[64] Kai Mei, Xi Zhu, Wujiang Xu, Wenyue Hua, Mingyu Jin, Zelong Li,
+Shuyuan Xu, Ruosong Ye, Yingqiang Ge, and Yongfeng Zhang. Aios:
+Llm agent operating system. arXiv preprint arXiv:2403.16971, 2024.
+[65] Lee Chong Ming. Replit’s ceo apologizes after its ai agent
+wiped a company’s code base in a test run and lied about
+it. https://www.businessinsider.com/replit-ceo-apologizes-ai-coding-
+tool-delete-company-database-2025-7, July 2025. Business Insider,
+accessed 2026-03-19.
+[66] Alexander Novikov, Ngân V˜u, Marvin Eisenberger, Emilien Dupont,
+Po-Sen Huang, Adam Zsolt Wagner, Sergey Shirobokov, Borislav Ko-
+zlovskii, Francisco JR Ruiz, Abbas Mehrabian, et al. Alphaevolve: A
+coding agent for scientific and algorithmic discovery. arXiv preprint
+arXiv:2506.13131, 2025.
+[67] Juliana Alves Pereira, Mathieu Acher, Hugo Martin, Jean-Marc
+Jézéquel, Goetz Botterweck, and Anthony Ventresque. Learning soft-
+ware configuration spaces: A systematic literature review. Journal of
+Systems and Software, 182:111044, 2021.
+[68] Jia Rao and Cheng-Zhong Xu. Online capacity identification of multi-
+tier websites using hardware performance counters. IEEE Transactions
+on Parallel and Distributed Systems, 22(3):426–438, 2010.
+[69] Divyanshu Saxena, Jiayi Chen, Sujay Yadalam, Yeonju Ro, Rohit
+Dwivedula, Eric H Campbell, Aditya Akella, Christopher J Rossbach,
+and Michael Swift. How i learned to stop worrying and love learned os
+policies. In Proceedings of the 2025 Workshop on Hot Topics in Operating
+Systems, pages 1–7, 2025.
+[70] Divyanshu Saxena, Nihal Sharma, Donghyun Kim, Rohit Dwivedula,
+Jiayi Chen, Chenxi Yang, Sriram Ravula, Zichao Hu, Aditya Akella,
+Sebastian Angel, et al. On a foundation model for operating systems.
+arXiv preprint arXiv:2312.07813, 2023.
+[71] Kai Shen, Ming Zhong, Sandhya Dwarkadas, Chuanpeng Li, Christo-
+pher Stewart, and Xiao Zhang. Hardware counter driven on-the-fly
+request signatures. In Proceedings of the 13th International Conference
+on Architectural Support for Programming Languages and Operating
+Systems, ASPLOS XIII, page 189–200, New York, NY, USA, 2008. Asso-
+ciation for Computing Machinery.
+[72] Jasper Snoek, Hugo Larochelle, and Ryan P Adams. Practical bayesian
+optimization of machine learning algorithms. Advances in neural
+information processing systems, 25, 2012.
+[73] Gagan Somashekar, Karan Tandon, Anush Kini, Chieh-Chun Chang,
+Petr Husak, Ranjita Bhagwan, Mayukh Das, Anshul Gandhi, and Na-
+garajan Natarajan. {OPPerTune}:{Post-Deployment}configuration
+tuning of services made easy. In 21st USENIX Symposium on Networked
+Systems Design and Implementation (NSDI 24), pages 1101–1120, 2024.
+[74] Wei Su, Abhishek Dhanotia, Carlos Torres, Jayneel Gandhi, Neha
+Gholkar, Shobhit Kanaujia, Maxim Naumov, Kalyan Subramanian,
+Valentin Andrei, Yifan Yuan, and Chunqiang Tang. Dcperf: An open-
+source, battle-tested performance benchmark suite for datacenter
+workloads. In Proceedings of the 52nd Annual International Symposium
+on Computer Architecture, ISCA ’25, page 1717–1730, New York, NY,
+USA, 2025. Association for Computing Machinery.
+[75] Aditya Atul Tewari, Sujay Yadalam, Arthur Michener Peters, Saurabh
+Agarwal, Aditya Akella, Michael M Swift, and Christopher J Rossbach.
+Oqueue: Observable communication in learning directed operating
+systems. In Proceedings of the 4th Workshop on Practical Adoption
+Challenges of ML for Systems, pages 31–36, 2025.
+[76] Immanuel Trummer. Db-bert: a database tuning tool that" reads
+the manual". In Proceedings of the 2022 international conference on
+management of data, pages 190–203, 2022.
+[77] Dana Van Aken, Andrew Pavlo, Geoffrey J Gordon, and Bohan Zhang.
+Automatic database management system tuning through large-scale
+machine learning. In Proceedings of the 2017 ACM international con-
+ference on management of data, pages 1009–1024, 2017.
+[78] Midhul Vuppalapati and Rachit Agarwal. Tiered memory management:
+Access latency is the key! In Proceedings of the ACM SIGOPS 30th
+Symposium on Operating Systems Principles, SOSP ’24, page 79–94,
+New York, NY, USA, 2024. Association for Computing Machinery.
+[79] Shu Wang, Chi Li, Henry Hoffmann, Shan Lu, William Sentosa,
+and Achmad Imam Kistijantoro. Understanding and auto-adjusting
+performance-sensitive configurations. In Proceedings of the Twenty-
+Third International Conference on Architectural Support for Program-
+ming Languages and Operating Systems, ASPLOS ’18, page 154–168,
+New York, NY, USA, 2018. Association for Computing Machinery.
+[80] Shu Wang, Chi Li, Henry Hoffmann, Shan Lu, William Sentosa,
+and Achmad Imam Kistijantoro. Understanding and auto-adjusting
+performance-sensitive configurations. Acm Sigplan Notices, 53(2):154–
+168, 2018.
+[81] Zibo Wang, Pinghe Li, Chieh-Jan Mike Liang, Feng Wu, and Francis Y.
+Yan. Autothrottle: A practical bi-level approach to resource man-
+agement for slo-targeted microservices. In 21st USENIX Symposium
+on Networked Systems Design and Implementation (NSDI 24), pages
+149–165, 2024.
+[82] Christopher JCH Watkins and Peter Dayan. Q-learning. Machine
+learning, 8(3):279–292, 1992.
+15
+
+===== PDF PAGE 16 =====
+Georgios Liargkovas, Mihir Nitin Joshi, Hubertus Franke, and Kostis Kaffes
+Gemini 2.5
+[83] Lingfeng Xiang, Zhen Lin, Weishu Deng, Hui Lu, Jia Rao, Yifan Yuan,
+and Ren Wang. Nomad:{Non-Exclusive}memory tiering via trans-
+actional page migration. In 18th USENIX Symposium on Operating
+Systems Design and Implementation (OSDI 24), pages 19–35, 2024.
+[84] Chenxi Yang, Divyanshu Saxena, Rohit Dwivedula, Kshiteej Maha-
+jan, Swarat Chaudhuri, and Aditya Akella. Canopy: Property-driven
+learning for congestion control. arXiv preprint arXiv:2412.10915, 2024.
+[85] Bohan Zhang, Dana Van Aken, Justin Wang, Tao Dai, Shuli Jiang, Jacky
+Lao, Siyuan Sheng, Andrew Pavlo, and Geoffrey J Gordon. A demon-
+stration of the ottertune automatic database management system
+tuning service. Proceedings of the VLDB Endowment, 11(12):1910–1913,
+2018.
+[86] William Zhang, Wan Shen Lim, Matthew Butrovich, and Andrew Pavlo.
+The holon approach for simultaneously tuning multiple components
+in a self-driving database management system with machine learning
+via synthesized proto-actions. Proceedings of the VLDB Endowment,
+17(11):3373–3387, 2024.
+[87] William Zhang, Wan Shen Lim, and Andrew Pavlo. This is going
+to sound crazy, but what if we used large language models to boost
+automatic database tuning algorithms by leveraging prior history?
+we will find better configurations more quickly than retraining from
+scratch! arXiv preprint arXiv:2510.17748, 2025.
+[88] Xiao Zhang, Eric Tune, Robert Hagmann, Rohit Jnagal, Vrigo Gokhale,
+and John Wilkes. Cpi2: Cpu performance isolation for shared com-
+pute clusters. In Proceedings of the 8th ACM European Conference on
+Computer Systems, pages 379–391, 2013.
+[89] Yusheng Zheng, Yanpeng Hu, Wei Zhang, and Andi Quinn. Towards
+agentic os: An llm agent framework for linux schedulers. arXiv preprint
+arXiv:2509.01245, 2025.
+[90] Yusheng Zheng, Yiwei Yang, Maolin Chen, and Andrew Quinn. Kgent:
+Kernel extensions large language model agent. In Proceedings of the
+ACM SIGCOMM 2024 Workshop on EBPF and Kernel Extensions, eBPF
+’24, page 30–36, New York, NY, USA, 2024. Association for Computing
+Machinery.
+[91] Yusheng Zheng, Tong Yu, Yiwei Yang, Yanpeng Hu, Xiaozheng Lai,
+Dan Williams, and Andi Quinn. Extending applications safely and
+efficiently. In 19th USENIX Symposium on Operating Systems Design
+and Implementation (OSDI 25), pages 557–574, 2025.
+[92] Yuqing Zhu, Jianxun Liu, Mengying Guo, Yungang Bao, Wenlong Ma,
+Zhuoyue Liu, Kunpeng Song, and Yingchun Yang. Bestconfig: tapping
+the performance potential of systems via automatic configuration
+tuning. In Proceedings of the 2017 Symposium on Cloud Computing,
+SoCC ’17, page 338–350, New York, NY, USA, 2017. Association for
+Computing Machinery.
+Improv. (%)
+200
+100
+Gemini 3 Flash
+Kimi K2
+0
+Tuning Stable $0 $0.25 $0.5
+Figure 12. Model backend comparison on TPC-C, Silo, and
+Sysbench OLTP-RW. Left: aggregate improvement over De-
+fault Parameters during tuning and stable phases. Right:
+stable-phase improvement vs. total session cost.
+A Additional Evaluation Details
+A.1 Per-Benchmark Results
+Table 3 expands the aggregate comparison from §6.2 into
+full per-benchmark results. The goal here is not to repeat the
+geomean trends already discussed in §6.2, but to expose the
+workload-level pattern behind them: where TuxBot’s gains
+come from, which workloads remain close to default, and
+where other tuners are occasionally stronger.
+Observations: The table shows that TuxBot’s gains are
+broad rather than concentrated in one or two workloads.
+TuxBot improves 9 of 13 workloads during tuning, stays near
+default on 2, and degrades 2. After convergence, it improves
+9 workloads, stays near default on 4, and degrades none. The
+strongest wins appear on Masstree, Silo, Sysbench OLTP-
+RW, Xapian, and Sparkbench, while Sphinx, Sysbench CPU,
+YCSB, and Mutilate leave less headroom or remain harder to
+tune online.
+The table also makes the non-TuxBot conclusions more
+precise. TuxBot-Trim is strongest on selected workloads such
+as TPC-C and SIbench after convergence, and it performs
+well on Wikipedia, but its behavior remains uneven because
+later exploration is delegated to MLOS. MLOS and the other
+classical baselines still achieve good single-workload results
+in some cases—for example, MLOS on Sphinx after conver-
+gence and Bayesian or DQN on Wikipedia—but they do not
+match TuxBot’s breadth across the full suite. Most of the
+best raw values in the table belong to TuxBot, especially
+on the latency-sensitive services where semantically bad
+exploration is most costly.
+A.2 Model Backend Tradeoffs
+We ask whether TuxBot’s gains depend on one specific model
+backend. To answer that question, we keep the dual-loop
+architecture fixed and vary only the backend. The compari-
+son uses the same app-metric setting, the same 30-window
+tuning budget followed by a 20-window stable phase, and
+evaluates the three-workload subset of TPC-C, Silo, and Sys-
+bench OLTP-RW. Figure 12 summarizes both quality and
+cost.
+Results: Figure 12 shows that the dual-loop tuner gener-
+alizes across model families, but the quality–cost frontier
+shifts. Gemini 2.5 Flash is the strongest backend on this
+subset, reaching +153.7% during tuning and +216.7% in the
+stable phase. Gemini 3 Flash is lower at +138.4% and +152.7%,
+while Kimi K2 is lower again during tuning at +77.1% but
+still reaches +143.8% after convergence.
+The right panel shows that these quality differences come
+with modest but nontrivial cost differences. Gemini 2.5 Flash
+costs about $0.20 per full tuning session, Gemini 3 Flash
+about $0.28, and Kimi K2 $0.048. Gemini 2.5 Flash there-
+fore gives the best absolute performance at moderate cost,
+while Kimi K2 occupies the lowest-cost point on the frontier.
+Gemini 3 Flash is dominated by Gemini 2.5 Flash on this
+subset, since it costs more while delivering lower quality.
+Although Gemini 3 Flash is slightly cheaper per action than
+16
+
+===== PDF PAGE 17 =====
+TuxBot : Semantic-Aware Online OS Tuning with Large Language Models
+Benchmark Goal Default TuxBot TuxBot-Trim MLOS Bayesian DQN Q-Learning
+Tun. Sta. Tun. % Sta. % Tun. % Sta. % Tun. % Sta. % Tun. % Sta. % Tun. % Sta. % Tun. % Sta. %
+Masstree p99 ↓ 27.9 23.3 1.3 2052.7 1.1 2096.6 5.9 373.8 3.1 655.6 3.6 673.6 1.7 1251.5 4.6 500.1 3.1 661.1 3.7 662.6 3.0 671.2 5.4 411.4 5.3 339.4
+SIbench p99 ↓ 3.4 3.6 2.9 17.7 3.3 10.1 3.2 9.0 2.8 26.7 3.4 2.0 3.2 11.7 3.6 -3.4 3.5 1.6 3.7 -7.4 4.1 -13.0 3.6 -5.3 3.8 -6.4
+Silo p99 ↓ 25.4 22.6 2.8 820.4 1.2 1724.3 11.6 118.7 6.1 269.1 5.4 372.4 4.1 457.2 10.0 153.7 8.4 169.0 9.4 168.6 8.4 170.2 12.0 111.6 11.9 90.3
+Sphinx tput ↑ 8.2 7.9 7.3 -10.9 7.7 -3.3 7.8 -4.3 6.9 -13.1 7.5 -8.0 8.0 0.8 6.6 -19.7 7.5 -5.3 6.9 -15.7 6.9 -13.2 7.2 -12.6 6.8 -13.6
+Sys-CPU tput ↑ 941.5 941.5 933.8 -0.8 936.9 -0.5 843.3 -10.4 764.4 -18.8 847.9 -9.9 898.1 -4.6 672.7 -28.5 792.8 -15.8 827.3 -12.1 824.0 -12.5 795.6 -15.5 775.5 -17.6
+Sys-OLTP-RW p99 ↓ 22.7 23.4 15.5 46.6 15.8 47.9 22.7 0.0 21.3 9.8 20.1 13.3 25.2 -7.2 28.4 -20.0 21.4 9.3 21.3 6.5 21.9 6.7 33.8 -32.7 37.2 -37.2
+TPC-C p99 ↓ 78.4 77.7 67.4 16.3 66.1 17.5 63.6 23.3 58.0 34.0 76.4 2.7 80.9 -4.0 124.1 -36.8 95.6 -18.8 202.5 -61.3 204.5 -62.0 156.0 -49.7 206.5 -62.4
+Twitter p99 ↓ 0.7 0.6 0.6 5.7 0.6 6.5 0.6 3.8 0.6 3.5 0.6 2.9 0.6 8.8 1.2 -43.6 0.9 -26.5 0.8 -21.9 0.9 -24.1 1.5 -54.6 1.5 -57.9
+Wikipedia p99 ↓ 40.9 41.7 35.1 16.7 37.5 11.1 24.0 70.8 19.4 114.5 36.3 12.8 34.4 21.2 23.8 71.7 18.7 122.9 22.0 86.1 20.6 101.9 24.4 67.9 27.5 51.7
+Xapian p99 ↓ 52.6 49.1 42.3 24.4 38.6 27.2 7536.3 -99.3 46472.9 -99.9 24770.8 -99.8 80620.6 -99.9 26028.0 -99.8 70548.7 -99.9 5747.6 -99.1 15323.0 -99.7 26794.6 -99.8 88112.7 -99.9
+YCSB p99 ↓ 4.8 5.5 5.0 -4.5 5.6 -1.9 5.4 -11.2 6.2 -11.4 5.3 -9.8 6.1 -9.9 6.7 -28.7 6.3 -13.5 5.3 -8.9 6.1 -9.7 9.5 -49.3 10.2 -46.4
+Memcached p99 ↓ 1.5 1.4 1.7 -15.2 1.4 0.3 16.4 -91.1 25.2 -94.3 18.6 -92.2 11.3 -87.3 23.6 -93.8 14.4 -90.0 30.6 -95.2 27.8 -94.9 36.9 -96.1 40.0 -96.4
+Sparkbench tput ↑ 336.7 342.7 365.9 8.7 363.3 6.0 357.0 6.0 342.7 0.0 331.9 -1.4 313.2 -8.6 318.0 -5.5 340.2 -0.7 318.4 -5.4 331.4 -3.3 307.3 -8.7 315.3 -8.0
+Table 3. Per-benchmark results for the main comparison in §6.2. The Goal column reports whether each benchmark minimizes
+p99 latency or maximizes throughput. Default reports the raw phase metric under Default Parameters; each tuner reports the
+raw phase metric and the corresponding relative improvement. Green denotes improvement greater than 5% over Default
+Parameters, yellow denotes values within ±5%, and red denotes degradation worse than 5%. Bold marks the best raw value
+among tuners in each phase. Throughput values are in ops/s and latency values are p99 in ms.
+System Live loop Indirect tuning Semantics-aware control Guardrailed actuation Platform / target
+OtterTune [85] DBMS-specific
+MLOS [55] Agnostic / software systems
+SelfTune [51] Cluster managers
+TUNA [31] Agnostic / cloud autotuning
+CherryPick [5] Agnostic / cloud configs
+DB-BERT / GPTuner / 𝜆-Tune [32, 41, 76] DBMS-specific
+Booster [87] DBMS-specific / tuner-assist
+AlphaEvolve [66] Agnostic / evaluator-driven
+sched-agent / SchedCP [89] Scheduler-specific
+TuxBot Agnostic / OS-wide
+Table 4. Positioning of TuxBot relative to representative autotuning and agentic-control systems. full support, partial
+support, and no support. Live loop asks whether the tuner stays attached to a running deployment and keeps making
+decisions online. Indirect tuning asks whether tuning can continue when direct application metrics disappear and only system
+metrics or other proxies remain.
+Gemini 2.5 Flash, it takes many more actions (126 vs. 77),
+which makes the full session more expensive.
+Gemini 2.5 Flash is also the most stable after convergence.
+Its stable-phase spread is only ±8.7 points, compared to ±42.4
+for Gemini 3 Flash and ±85.0 for Kimi K2. Kimi K2 remains
+strongly positive, but its larger spread suggests a less pre-
+dictable final operating point.
+Analysis: These results suggest that the benefit comes pri-
+marily from the default TuxBot architecture rather than from
+one specific model family. All three backends remain clearly
+positive after convergence, which shows that the dual-loop
+design transfers across model families. At the same time,
+backend choice still matters operationally. Gemini 2.5 Flash
+is the best default choice when absolute performance mat-
+ters most. Kimi K2 is attractive when API budget is the pri-
+mary constraint, because it offers the strongest cost efficiency
+while remaining clearly positive. Gemini 3 Flash is less at-
+tractive than Gemini 2.5 Flash on this subset because it sits
+at a worse point on the quality–cost frontier.
+B TuxBot Positioning Among Prior Systems
+The related-work discussion in §7 compares prior systems in
+prose. Table 4 provides a more explicit positioning of TuxBot
+along four properties that matter specifically for live OS
+tuning: whether the system remains attached to a live de-
+ployment, whether tuning can continue from indirect signals
+when direct application metrics disappear, whether control
+is semantics-aware, and whether actuation is guardrailed.
+These properties are often blurred together in prior work.
+A system can stay online yet still depend on a continuously
+exported application reward, or it can use semantic guidance
+without a bounded execution interface.
+Interpretation: The table highlights why TuxBot occupies
+a distinct point in the design space. Classical autotuners such
+as OtterTune, MLOS, SelfTune, TUNA, and CherryPick con-
+tribute strong optimization mechanisms, but they generally
+lack some combination of indirect tuning, semantic control,
+or guardrailed actuation. LLM-assisted tuners such as DB-
+BERT, GPTuner, 𝜆-Tune, and Booster add semantic guidance,
+but mostly as offline assistants or tuner-side components
+rather than bounded live controllers. Scheduler-specific sys-
+tems such as sched-agent / SchedCP come closest in spirit,
+17
+
+===== PDF PAGE 18 =====
+but they operate over a much narrower control surface. In
+this comparison, TuxBot is the only system that combines
+Georgios Liargkovas, Mihir Nitin Joshi, Hubertus Franke, and Kostis Kaffes
+a live loop, indirect tuning, semantics-aware control, and
+guardrailed actuation over an OS-wide tuning surface.
+18

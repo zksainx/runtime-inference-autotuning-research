@@ -1,0 +1,103 @@
+{
+  "checked_at": "2026-10-31",
+  "repository": "https://github.com/Columbia-DAP-Lab/TuxBot",
+  "branch_at_access": "TuxBot-SOSP-26",
+  "source_version_note": "The Git tree response is a tree SHA, not a commit SHA. Individual downloaded contents are pinned and independently verified by Git blob SHA1 and SHA256.",
+  "sources": [
+    {
+      "file": "evidence/tuxbot-parameter-manager.py",
+      "source_url": "https://api.github.com/repos/Columbia-DAP-Lab/TuxBot/contents/src/optimizer/parameter_manager.py?ref=TuxBot-SOSP-26",
+      "html_url": "https://github.com/Columbia-DAP-Lab/TuxBot/blob/TuxBot-SOSP-26/src/optimizer/parameter_manager.py",
+      "git_blob_sha1": "f5356da8c8740d08c2d06c778c80183638ae5d70",
+      "immutable_content_api": "https://api.github.com/repos/Columbia-DAP-Lab/TuxBot/git/blobs/f5356da8c8740d08c2d06c778c80183638ae5d70",
+      "sha256": "7e124cb61a06f425f9447f4ac396731e49454ee3110c1629d4af3a88ff2fda59",
+      "bytes": 71747
+    },
+    {
+      "file": "evidence/tuxbot-41-param-config.json",
+      "source_url": "https://api.github.com/repos/Columbia-DAP-Lab/TuxBot/contents/reproduction/configs/parameter_count/tpcc_p99_final/41_param/tpcc_hi_p99/llm_dual_app_metrics_final_actor.json?ref=TuxBot-SOSP-26",
+      "html_url": "https://github.com/Columbia-DAP-Lab/TuxBot/blob/TuxBot-SOSP-26/reproduction/configs/parameter_count/tpcc_p99_final/41_param/tpcc_hi_p99/llm_dual_app_metrics_final_actor.json",
+      "git_blob_sha1": "966bdb0e7fdf1cbef7351658805682f5df19ae05",
+      "immutable_content_api": "https://api.github.com/repos/Columbia-DAP-Lab/TuxBot/git/blobs/966bdb0e7fdf1cbef7351658805682f5df19ae05",
+      "sha256": "531f4607e603b2e0c5a2036b9095c40f79665b8fffc41790560337cc770fec4d",
+      "bytes": 7903
+    }
+  ],
+  "paper_version": "Author arXiv 2605.15026v2",
+  "default_knobs_from_paper_section_6_1": [
+    "min_granularity_ns",
+    "latency_ns",
+    "wakeup_granularity_ns",
+    "migration_cost_ns",
+    "cstate_max",
+    "napi_busy_poll",
+    "min_perf_pct",
+    "max_perf_pct"
+  ],
+  "selected_config_name_count": 41,
+  "selected_parameter_names": [
+    "latency_ns",
+    "min_granularity_ns",
+    "wakeup_granularity_ns",
+    "migration_cost_ns",
+    "scaling_governor",
+    "scaling_min_freq",
+    "scaling_max_freq",
+    "epp",
+    "min_perf_pct",
+    "max_perf_pct",
+    "turbo",
+    "pmqos",
+    "cstate_max",
+    "busy_poll",
+    "napi_busy_poll",
+    "busy_read",
+    "netdev_budget",
+    "netdev_budget_usecs",
+    "vm_swappiness",
+    "vm_dirty_ratio",
+    "vm_dirty_background_ratio",
+    "vm_dirty_expire_centisecs",
+    "vm_dirty_writeback_centisecs",
+    "zone_reclaim_mode",
+    "numa_balancing",
+    "sched_autogroup_enabled",
+    "sched_cfs_bandwidth_slice_us",
+    "somaxconn",
+    "netdev_max_backlog",
+    "rmem_default",
+    "wmem_default",
+    "rmem_max",
+    "wmem_max",
+    "tcp_fin_timeout",
+    "tcp_tw_reuse",
+    "tcp_mtu_probing",
+    "tcp_timestamps",
+    "tcp_sack",
+    "tcp_window_scaling",
+    "tcp_fastopen",
+    "tcp_congestion_control"
+  ],
+  "alias_checks": [
+    {
+      "names": [
+        "busy_poll",
+        "napi_busy_poll"
+      ],
+      "target": "net.core.busy_poll",
+      "metadata": "Alias for busy_poll (net.core.busy_poll)",
+      "setter_line": 1354,
+      "setter_body": "def set_napi_busy_poll(self, value: int, cores: Optional[str]=None) -> bool:\n    \"\"\"Set napi_busy_poll sysctl (alias for busy_poll).\n        \n        This is an alias for set_busy_poll since both refer to the same sysctl parameter.\n        \n        Args:\n            value: Busy poll value in microseconds\n            cores: Core specification for IRQ binding like \"0-3\", \"0,1,2\", \"all\", or None\n            \n        Returns:\n            True if successful, False otherwise\n        \"\"\"\n    return self.set_busy_poll(value, cores)",
+      "both_names_in_41_item_config": true
+    }
+  ],
+  "interpretation": "41 exposed names are not 41 independent underlying controls. No claim that all remaining names are independent or available on every host. Source fields in inference frameworks are a different count and do not establish the hot-tuning action-space size.",
+  "other_primary_sources": [
+    "https://arxiv.org/html/2605.15026v2",
+    "https://docs.kernel.org/5.15/admin-guide/pm/intel_pstate.html",
+    "https://docs.kernel.org/5.15/admin-guide/sysctl/net.html",
+    "https://docs.kernel.org/5.15/admin-guide/sysctl/vm.html",
+    "https://www.usenix.org/conference/osdi27/call-for-papers",
+    "https://sigops.org/s/conferences/sosp/2026/cfp.html"
+  ]
+}
