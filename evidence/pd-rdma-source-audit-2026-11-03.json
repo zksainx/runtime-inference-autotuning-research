@@ -1,0 +1,294 @@
+{
+  "checked_at_utc": "2026-11-03T07:11:21.148934+00:00",
+  "scope": "Read-only audit of three-node PD/RDMA configuration, consumers, routing documentation, compatibility validators, and runtime role-switch boundaries. No inference, GPU/RDMA benchmark, live-update validation, or framework modification.",
+  "method": "Read each file with git show at the previously audited immutable commit; hash the exact Git object bytes. Do not use the current working-tree revision as source evidence.",
+  "repository": {
+    "name": "sglang",
+    "origin": "https://github.com/sgl-project/sglang.git",
+    "local_path_at_inspection": "/Users/zkx/sglang",
+    "audited_commit": "4b83f215f498bc0371587bfae4a9470f24e77737",
+    "checkout_head_at_inspection": "464187fa95297a640c56a8fb86c9dfc93a77ec21",
+    "commit_note": "Keep the research proposal on its original audited revision; the inspected checkout has a different HEAD and was not checked out, pulled, or modified."
+  },
+  "files": [
+    {
+      "path": "python/sglang/srt/arg_groups/fields/disagg.py",
+      "git_blob_sha1": "9f4eb0dea42d2eb276d51e7852027413d821d386",
+      "sha256": "93db92886489267f044664c29236e832b217fe674d77f36a3fa1c7e785724e63",
+      "bytes": 8484,
+      "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/arg_groups/fields/disagg.py",
+      "observations": [
+        {
+          "anchor": "    disaggregation_decode_allocation_policy:",
+          "line": 59,
+          "excerpt_end_line": 64,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/arg_groups/fields/disagg.py#L59",
+          "excerpt": "    disaggregation_decode_allocation_policy: A[\n        Literal[\"early\", \"prefill_complete\"],\n        \"When to reserve per-request decode KV in disaggregated serving. \"\n        \"prefill_complete retains KV on prefill until prefill finishes, then \"\n        \"admits it on decode. Set the same policy on both roles. Default: early.\",\n    ] = \"early\"",
+          "classification": "native_configuration",
+          "interpretation": "The early and prefill_complete policies change per-request decode reservation timing and must match across roles."
+        },
+        {
+          "anchor": "    disaggregation_ib_device:",
+          "line": 81,
+          "excerpt_end_line": 84,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/arg_groups/fields/disagg.py#L81",
+          "excerpt": "    disaggregation_ib_device: A[\n        Optional[str],\n        'The InfiniBand devices for disaggregation transfer. Supports a single device (e.g., --disaggregation-ib-device mlx5_0), a shared comma-separated list (e.g., --disaggregation-ib-device mlx5_0,mlx5_1), a per-GPU JSON mapping (e.g., --disaggregation-ib-device \\'{\"0\": \"mlx5_0,mlx5_1\", \"1\": \"mlx5_2\"}\\'), or a path to a JSON file containing that mapping. Default is None, which triggers automatic device detection when mooncake backend is enabled.',\n    ] = None",
+          "classification": "native_configuration",
+          "interpretation": "The pinned configuration supports one HCA, a shared list, or a per-GPU mapping; device reconfiguration is not established as a live action."
+        },
+        {
+          "anchor": "    disaggregation_decode_enable_radix_cache:",
+          "line": 85,
+          "excerpt_end_line": 88,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/arg_groups/fields/disagg.py#L85",
+          "excerpt": "    disaggregation_decode_enable_radix_cache: A[\n        bool,\n        \"Enable radix cache on decode server (PD mode). Caches KV prefixes to avoid redundant transfers. Incompatible with --enable-hisparse, --disaggregation-transfer-backend fake, and speculative algorithms other than EAGLE, EAGLE3, and DSPARK.\",\n    ] = False",
+          "classification": "native_configuration",
+          "interpretation": "Decode prefix reuse is an existing option for avoiding redundant transfers, with explicit compatibility limits."
+        },
+        {
+          "anchor": "    num_reserved_decode_tokens:",
+          "line": 106,
+          "excerpt_end_line": 123,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/arg_groups/fields/disagg.py#L106",
+          "excerpt": "    num_reserved_decode_tokens: A[\n        int,\n        \"Number of decode tokens that will have memory reserved when adding new request to the running batch.\",\n    ] = 512\n    disaggregation_decode_extra_slots: A[\n        Optional[int],\n        \"Number of extra decode req_to_token slots pre-allocated for in-transfer requests (PD mode). If unset, defaults to 0 (or 2x the per-worker running batch for small batches).\",\n    ] = None\n    disaggregation_decode_polling_interval: A[\n        int,\n        \"The interval to poll requests in decode server. Can be set to >1 to reduce the overhead of this.\",\n    ] = 1\n    enable_pd_role_switch: A[\n        bool,\n        \"Allow runtime prefill<->decode role switch via /pd_role_switch (PD mode).\",\n    ] = False\n    optimistic_prefill_attempts: A[\n        int, \"Number of optimistic prefill forward passes that skip the bootstrap wait.\"",
+          "classification": "native_configuration",
+          "interpretation": "Decode reservation, extra request slots, and polling interval are distinct controls; role switching is explicitly opt-in."
+        }
+      ]
+    },
+    {
+      "path": "python/sglang/srt/disaggregation/decode.py",
+      "git_blob_sha1": "fabdcfc1ac71e0f542cdc896076897ba23e68880",
+      "sha256": "3e2f0fa25952b1063803451ccb6e803aa20b48426d3fe32ad2ff85505201492c",
+      "bytes": 146006,
+      "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/disaggregation/decode.py",
+      "observations": [
+        {
+          "anchor": "        self.num_reserved_decode_tokens = num_reserved_decode_tokens",
+          "line": 421,
+          "excerpt_end_line": 425,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/disaggregation/decode.py#L421",
+          "excerpt": "        self.num_reserved_decode_tokens = num_reserved_decode_tokens\n        self.transfer_backend = transfer_backend\n        # Queue for requests pending pre-allocation\n        self.queue: List[DecodeRequest] = []\n        self.retracted_queue: List[Req] = []",
+          "classification": "cached_policy_requiring_update_protocol",
+          "interpretation": "The preallocation queue caches the token reservation value; changing the original config alone does not update this owner."
+        },
+        {
+          "anchor": "    def _prealloc_required_tokens(",
+          "line": 573,
+          "excerpt_end_line": 586,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/disaggregation/decode.py#L573",
+          "excerpt": "    def _prealloc_required_tokens(self, req: Req) -> Tuple[int, int]:\n        full_len, swa_len = self._prealloc_kv_lens(req)\n        page_size = self.token_to_kv_pool_allocator.page_size\n        if page_size > 1:\n            # Match the allocator, which charges whole pages for both pools.\n            full_len = ceil_align(full_len, page_size)\n            swa_len = ceil_align(swa_len, page_size)\n        swa_reserved = self.num_reserved_decode_tokens\n        if get_memory().disable_radix_cache:\n            swa_reserved = 0\n        return (\n            full_len + self.num_reserved_decode_tokens,\n            swa_len + swa_reserved,\n        )",
+          "classification": "native_policy_consumer",
+          "interpretation": "Destination admission accounts for prompt KV and reserved output growth, with page alignment and cache-specific handling."
+        },
+        {
+          "anchor": "        if not hasattr(self, \"polling_count\"):",
+          "line": 3364,
+          "excerpt_end_line": 3377,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/disaggregation/decode.py#L3364",
+          "excerpt": "        if not hasattr(self, \"polling_count\"):\n            self.polling_count = 0\n            self.polling_interval = get_disagg().disaggregation_decode_polling_interval\n\n        self.polling_count = (self.polling_count + 1) % self.polling_interval\n\n        if self.polling_count % self.polling_interval == 0:\n            if get_disagg().disaggregation_decode_host_receive_threshold == 1:\n                req_conns, _ = self.disagg_decode_prealloc_queue.pop_preallocated()\n                self.disagg_decode_transfer_queue.extend(req_conns)\n            transferred_reqs = (\n                self.disagg_decode_transfer_queue.pop_transferred()\n            )  # the requests which kv has arrived\n            if self.enable_hisparse:",
+          "classification": "cached_policy_requiring_update_protocol",
+          "interpretation": "Polling interval is copied into the scheduler on first use. A proposed live update must update that field and define counter transition semantics."
+        }
+      ]
+    },
+    {
+      "path": "python/sglang/srt/disaggregation/mooncake/conn.py",
+      "git_blob_sha1": "69b8ddf0ce62ed70c6aa941a4a915a25d89e904d",
+      "sha256": "d222c6bcc5e5dc296b3f15617a392124dbfeb8c7721cbdf282fbdca2d754d371",
+      "bytes": 148319,
+      "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/disaggregation/mooncake/conn.py",
+      "observations": [
+        {
+          "anchor": "            transfer_thread_pool_size = (",
+          "line": 285,
+          "excerpt_end_line": 303,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/disaggregation/mooncake/conn.py#L285",
+          "excerpt": "            transfer_thread_pool_size = (\n                envs.SGLANG_DISAGGREGATION_THREAD_POOL_SIZE.get()\n            )\n            if transfer_thread_pool_size is None:\n                transfer_thread_pool_size = min(max(4, int(0.5 * cpu_count) // 8), 12)\n            transfer_queue_size = envs.SGLANG_DISAGGREGATION_QUEUE_SIZE.get()\n            self.transfer_queues: List[FastQueue] = [\n                FastQueue() for _ in range(transfer_queue_size)\n            ]\n            assert transfer_thread_pool_size >= transfer_queue_size, (\n                f\"The environment variable SGLANG_DISAGGREGATION_THREAD_POOL_SIZE={transfer_thread_pool_size} must be \"\n                f\"greater than or equal to SGLANG_DISAGGREGATION_QUEUE_SIZE={transfer_queue_size}.\"\n            )\n            self.executors = [\n                concurrent.futures.ThreadPoolExecutor(\n                    transfer_thread_pool_size // transfer_queue_size\n                )\n                for _ in range(transfer_queue_size)\n            ]",
+          "classification": "init_time_resource_allocation",
+          "interpretation": "Prefill allocates transfer queues and executors at initialization. Thread count must be at least the queue count; resizing requires an additional resource transition protocol."
+        }
+      ]
+    },
+    {
+      "path": "python/sglang/srt/model_executor/pool_configurator.py",
+      "git_blob_sha1": "63782a3dd11fd8de6e4463f7fa1234fae351d0a8",
+      "sha256": "abcadf80aa7dceb6eb1c54735132ec300f1e150d52cd9d95a6bac23620b90ac5",
+      "bytes": 72449,
+      "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/model_executor/pool_configurator.py",
+      "observations": [
+        {
+          "anchor": "        self.disaggregation_decode_extra_slots = (",
+          "line": 1125,
+          "excerpt_end_line": 1127,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/model_executor/pool_configurator.py#L1125",
+          "excerpt": "        self.disaggregation_decode_extra_slots = (\n            get_disagg().disaggregation_decode_extra_slots or 0\n        )",
+          "classification": "init_time_resource_allocation",
+          "interpretation": "The pool configurator caches the extra-slot capacity."
+        },
+        {
+          "anchor": "    def _get_num_req_slots(",
+          "line": 1449,
+          "excerpt_end_line": 1452,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/model_executor/pool_configurator.py#L1449",
+          "excerpt": "    def _get_num_req_slots(self, max_running_requests: int) -> int:\n        if self.disaggregation_mode == \"decode\":\n            return max_running_requests + self.disaggregation_decode_extra_slots + 1\n        return max_running_requests + 1",
+          "classification": "init_time_resource_allocation",
+          "interpretation": "Decode physical request slots include max_running_requests, extra transfer slots, and an additional slot. This capacity must be separated from a proposed live admission cap."
+        }
+      ]
+    },
+    {
+      "path": "python/sglang/srt/managers/scheduler_components/internal_state.py",
+      "git_blob_sha1": "574f4a796968efe65bf694c232e014eebbdcca92",
+      "sha256": "3879413625ca0991e3a64ca6a969a67afd1209aeb5c5760c4ab4ba7f46e98184",
+      "bytes": 13068,
+      "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/managers/scheduler_components/internal_state.py",
+      "observations": [
+        {
+          "anchor": "    def _update_handlers(",
+          "line": 168,
+          "excerpt_end_line": 185,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/managers/scheduler_components/internal_state.py#L168",
+          "excerpt": "    def _update_handlers(self) -> Dict[str, _UpdateHandler]:\n        return {\n            \"pp_max_micro_batch_size\": _UpdateHandler(\n                self._validate_pp_micro_batch_size, _override\n            ),\n            \"speculative_accept_threshold_single\": _UpdateHandler(\n                self._validate_accept_threshold, self._apply_accept_threshold\n            ),\n            \"speculative_accept_threshold_acc\": _UpdateHandler(\n                self._validate_accept_threshold, self._apply_accept_threshold\n            ),\n            \"dspark_force_budget_frac\": _UpdateHandler(\n                self._validate_dspark_budget_frac, self._apply_dspark_budget_frac\n            ),\n            \"dspark_clear_info_records\": _UpdateHandler(\n                self._validate_dspark_clear_records, self._apply_dspark_clear_records\n            ),\n        }",
+          "classification": "finite_runtime_allowlist",
+          "interpretation": "The existing setter allows PP micro-batch, speculative acceptance, and DSpark controls; the proposed PD scheduler/transfer controls are not on this allowlist."
+        }
+      ]
+    },
+    {
+      "path": "python/sglang/srt/arg_groups/pd_disaggregation_hook.py",
+      "git_blob_sha1": "21784c9fc69d384b57719a2fba1ac289537cc405",
+      "sha256": "a494bb0dbd23d9bff1d31ab9880f77877a5e582e3a18e2d26dfc33bf43f3a06d",
+      "bytes": 15557,
+      "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/arg_groups/pd_disaggregation_hook.py",
+      "observations": [
+        {
+          "anchor": "def _validate_prefill_complete(",
+          "line": 198,
+          "excerpt_end_line": 240,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/arg_groups/pd_disaggregation_hook.py#L198",
+          "excerpt": "def _validate_prefill_complete(server_args: ServerArgs) -> None:\n    cfg = resolving_view(server_args)\n    unsupported = []\n    if cfg.disaggregation_mode not in (\"prefill\", \"decode\"):\n        unsupported.append(\"aggregated serving\")\n    if cfg.disaggregation_transfer_backend != \"mooncake\":\n        unsupported.append(\"transfer backends other than Mooncake\")\n    if cfg.pp_size != 1 or cfg.attn_cp_size != 1 or cfg.dcp_size != 1:\n        unsupported.append(\"pipeline or attention context parallelism\")\n    attn_dp_size = cfg.dp_size if cfg.enable_dp_attention else 1\n    if cfg.tp_size != attn_dp_size:\n        unsupported.append(\"attention tensor parallelism greater than one\")\n    if cfg.enable_pdmux or cfg.decoupled_spec_role != \"null\":\n        unsupported.append(\"PD multiplexing or decoupled speculation\")\n    if cfg.enable_pd_role_switch:\n        unsupported.append(\"runtime PD role switching\")\n    if cfg.encoder_only or cfg.language_only:\n        unsupported.append(\"encoder disaggregation\")\n    if cfg.enable_hisparse:\n        unsupported.append(\"HiSparse\")\n    if cfg.disaggregation_decode_host_receive_threshold < 1:\n        unsupported.append(\"decode host KV buffering\")\n    if cfg.disaggregation_mode == \"decode\" and (\n        cfg.disaggregation_decode_enable_radix_cache or cfg.enable_hierarchical_cache\n    ):\n        unsupported.append(\"decode radix cache or decode HiCache\")\n    if (\n        cfg.disaggregation_mode == \"prefill\"\n        and cfg.enable_hierarchical_cache\n        and (\n            cfg.hicache_storage_backend is not None\n            or cfg.hicache_write_policy != \"write_back\"\n        )\n    ):\n        unsupported.append(\"prefill HiCache other than L2 write_back\")\n    if envs.SGLANG_DISAGG_STAGING_BUFFER.get():\n        unsupported.append(\"staging buffers\")\n    if envs.SGLANG_RUST_SERVER.get():\n        unsupported.append(\"the Rust bootstrap registry\")\n    if unsupported:\n        raise ValueError(\n            \"--disaggregation-decode-allocation-policy prefill_complete does not \"\n            \"yet support \" + \", \".join(unsupported)",
+          "classification": "native_compatibility_validator",
+          "interpretation": "The pinned prefill_complete policy requires Mooncake, attention TP/CP and PP size one (attention DP can remain), and rejects role switching, decode radix/HiCache, staging buffers, and other listed combinations."
+        }
+      ]
+    },
+    {
+      "path": "docs/docs/advanced_features/pd_disaggregation.mdx",
+      "git_blob_sha1": "18881d3ce080072d6ffd6ece30e6302f33c0ea0c",
+      "sha256": "bf09f6537aa8972c4054a891a7b976cfef432f66f589c380cf847d2c440e058a",
+      "bytes": 37054,
+      "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/docs/docs/advanced_features/pd_disaggregation.mdx",
+      "observations": [
+        {
+          "anchor": "## Decode allocation policy",
+          "line": 23,
+          "excerpt_end_line": 75,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/docs/docs/advanced_features/pd_disaggregation.mdx#L23",
+          "excerpt": "## Decode allocation policy\n\nBy default, decode reserves each request's destination KV slots before prefill\nfinishes. Long prefills can hold these slots while decode waits for the KV data.\nTo delay this reservation, set the following flag on **both prefill and decode**:\n\n```bash\n--disaggregation-decode-allocation-policy prefill_complete\n```\n\nWith `prefill_complete`, prefill computes without waiting for destination slots,\nthen signals readiness after accepting its final prefill result. Decode reserves\nslots and starts the existing KV transfer handshake only after that signal.\nThis changes per-request KV reservation, not the size or creation of the global\nKV pool. The default `early` policy preserves the existing behavior.\n\nDeferring allocation can help when long prefills compete with active decode\nrequests for destination KV capacity. It also retains KV on prefill longer and\nremoves overlap between chunked prefill and KV transfer. Compare both policies\nfor your workload; this option is not a general throughput improvement.\n\nThis initial implementation requires Mooncake (RDMA or `mooncake_tcp`), the Python\nbootstrap registry, and attention TP/CP and pipeline sizes of one. Attention DP\nis allowed when each DP rank has attention TP size one. Prefill automatically\nresolves `--optimistic-prefill-attempts` from zero to one; configurations that\ndisable optimistic prefill after model validation are rejected.\nChunked prefill does not yield just because decode has not admitted the request.\nCompleted requests retain their KV in the existing optimistic-prefill inflight\nqueue until decode supplies destination indices; readiness alone never starts\na KV write.\nAfter a successful transfer, prefill clears the room's readiness and transfer\nstate before notifying decode of success. Retraction recovery can then reuse\nthe same bootstrap room. This notification waits for worker and scheduler\ncleanup; failure and cancellation records remain until their timeout expires.\nRetries remain eligible for prefill after the optimistic attempt budget is\nexhausted and remain subject to the existing cancellation and timeout handling.\n\nOn prefill, `SGLANG_DISAGGREGATION_BOOTSTRAP_TIMEOUT` starts after the final\nprefill result, giving decode admission its own budget. On decode,\n`SGLANG_DISAGGREGATION_WAITING_TIMEOUT` bounds the wait for prefill completion,\nthen starts afresh for admission and again when destination indices are sent\nfor transfer.\n\nThe option does not support staging buffers, runtime PD role switching, PD\nmultiplexing, encoder disaggregation, decoupled speculation, HiSparse, decode radix cache, decode\nHiCache, or non-DSA auxiliary state pools. Prefill HiCache is limited to L2 with\n`write_back` and no storage backend. Unsupported configurations fail validation.\n\nAll communicating workers must use the same revision and enable the same policy. This\nversion of the decode worker rejects policy or peer-layout mismatches before\ndestination registration. Older decode workers do not enforce this check. Keep\n`early` on both sides until every worker has been upgraded, then enable the new\npolicy on both sides.",
+          "classification": "primary_documentation",
+          "interpretation": "Deferred reservation retains KV on prefill longer and removes prefill/transfer overlap. The document also records backend/layout constraints and the requirement to keep policies/revisions aligned across peers."
+        }
+      ]
+    },
+    {
+      "path": "sgl-model-gateway/README.md",
+      "git_blob_sha1": "89a3c8e1d263700cec8acc254b61acb2f0325e63",
+      "sha256": "58c37e4bfd0b44b0e972406c36091a0c3607ef70be479a2dfe76da74215ad876",
+      "bytes": 49651,
+      "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/sgl-model-gateway/README.md",
+      "observations": [
+        {
+          "anchor": "### Prefill/Decode Disaggregation (PD)",
+          "line": 138,
+          "excerpt_end_line": 149,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/sgl-model-gateway/README.md#L138",
+          "excerpt": "### Prefill/Decode Disaggregation (PD)\n- **Rust binary**\n  ```bash\n  ./target/release/sgl-model-gateway \\\n    --pd-disaggregation \\\n    --prefill http://prefill1:30001 9001 \\\n    --prefill http://prefill2:30002 \\\n    --decode http://decode1:30011 \\\n    --decode http://decode2:30012 \\\n    --policy cache_aware \\\n    --prefill-policy cache_aware \\\n    --decode-policy power_of_two",
+          "classification": "documented_routing_configuration",
+          "interpretation": "The gateway supports separate prefill and decode routing policies. This example is not evidence of a supported live policy setter."
+        },
+        {
+          "anchor": "## Load Balancing Policies",
+          "line": 738,
+          "excerpt_end_line": 743,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/sgl-model-gateway/README.md#L738",
+          "excerpt": "## Load Balancing Policies\n- `random`: uniform random worker selection.\n- `round_robin`: sequential rotation with atomic counters.\n- `cache_aware`: maintains a prefix tree of prompts to route repeat traffic and evens load with configurable thresholds (`--cache-threshold`, `--balance-abs-threshold`, `--balance-rel-threshold`, `--eviction-interval`, `--max-tree-size`).\n- `power_of_two`: chooses the lighter worker among two random candidates; integrates with `LoadMonitor`.\n  Per-model overrides are available in PD mode (`--prefill-policy`, `--decode-policy`) and IGW mode via the worker registry.",
+          "classification": "documented_routing_configuration",
+          "interpretation": "Cache-aware routing has cache/load thresholds; power_of_two uses observed worker load. The cache-aware tree is router metadata, not the engine KV eviction policy."
+        }
+      ]
+    },
+    {
+      "path": "python/sglang/srt/disaggregation/role_switch.py",
+      "git_blob_sha1": "cc820a4e586c32d96032dd38735508812d8d0729",
+      "sha256": "cd8c2d37221671bf514b3837ef48c8d394b7ca2c5ba0d0688295580d43d1e45c",
+      "bytes": 11152,
+      "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/disaggregation/role_switch.py",
+      "observations": [
+        {
+          "anchor": "def handle_pd_role_switch(",
+          "line": 43,
+          "excerpt_end_line": 47,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/disaggregation/role_switch.py#L43",
+          "excerpt": "def handle_pd_role_switch(\n    scheduler: Scheduler, recv_req: PdRoleSwitchReqInput\n) -> PdRoleSwitchReqOutput:\n    \"\"\"Flip the scheduler's disaggregation role at runtime. The instance must be\n    idle; rebuild failure is fatal to the instance (no in-place rollback).\"\"\"",
+          "classification": "restricted_runtime_role_switch",
+          "interpretation": "Native runtime role switching requires an idle instance; rebuild failure is fatal and has no in-place rollback."
+        },
+        {
+          "anchor": "    if not scheduler.is_fully_idle():",
+          "line": 73,
+          "excerpt_end_line": 110,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/disaggregation/role_switch.py#L73",
+          "excerpt": "    if not scheduler.is_fully_idle():\n        return _fail(\n            \"instance is not idle; drain all requests before switching\",\n            safe_to_restore=True,\n        )\n\n    required_graph_gb = recv_req.decode_cuda_graph_memory_gb\n    # Same condition ensure_decode_cuda_graphs skips on, so the check cannot be\n    # bypassed while the capture still runs.\n    will_capture_graphs = (\n        new_role == \"decode\" and not scheduler.tp_worker.get_decode_cuda_graph_bs()\n    )\n    if will_capture_graphs and required_graph_gb is None:\n        return _fail(\n            \"decode_cuda_graph_memory_gb is required before capturing decode graphs\",\n            safe_to_restore=True,\n        )\n    if will_capture_graphs and required_graph_gb is not None:\n        if required_graph_gb < 0:\n            return _fail(\n                \"decode_cuda_graph_memory_gb must be non-negative\",\n                safe_to_restore=True,\n            )\n        try:\n            available_graph_gb = get_available_gpu_memory(\n                scheduler.device, get_device().gpu_id\n            )\n        except Exception as e:\n            return _fail(\n                f\"failed to check decode CUDA graph headroom: {e}\",\n                safe_to_restore=True,\n            )\n        if available_graph_gb < required_graph_gb:\n            return _fail(\n                \"insufficient decode CUDA graph headroom: \"\n                f\"required={required_graph_gb:.3f} GB, \"\n                f\"available={available_graph_gb:.3f} GB\",\n                safe_to_restore=True,",
+          "classification": "restricted_runtime_role_switch",
+          "interpretation": "The role-switch handler rejects active work and checks headroom before a first decode graph capture. It does not migrate in-flight requests."
+        },
+        {
+          "anchor": "            teardown_disaggregation(scheduler)",
+          "line": 120,
+          "excerpt_end_line": 144,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/disaggregation/role_switch.py#L120",
+          "excerpt": "            teardown_disaggregation(scheduler)\n            get_context().override(\"role_switch.flip\", disaggregation_mode=new_role)\n            scheduler.init_disaggregation()\n            scheduler._sync_disaggregation_mode_to_subcomponents()\n        except Exception as e:\n            scheduler._pd_role_switch_unhealthy = True\n            logger.critical(\n                \"PD role switch (%s -> %s) failed during teardown/rebuild; \"\n                \"instance unhealthy: %s\",\n                old_role,\n                new_role,\n                e,\n            )\n            return _fail(\n                f\"role switch failed; instance unhealthy, restart required: {e}\"\n            )\n\n        if new_role == \"decode\":\n            # Best-effort deferred capture; a failure only degrades to eager.\n            try:\n                scheduler.tp_worker.ensure_decode_cuda_graphs(\n                    recv_req.decode_cuda_graph_bs\n                )\n            except Exception:\n                logger.exception(\"Decode CUDA graph capture on role switch failed\")",
+          "classification": "restricted_runtime_role_switch",
+          "interpretation": "A switch rebuilds role-specific structures; rebuild failure marks the instance unhealthy. Decode graphs are prepared when required."
+        },
+        {
+          "anchor": "            not sa.enable_pd_role_switch,",
+          "line": 169,
+          "excerpt_end_line": 210,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/disaggregation/role_switch.py#L169",
+          "excerpt": "            not sa.enable_pd_role_switch,\n            True,\n            lambda: \"--enable-pd-role-switch is not set on this instance\",\n        ),\n        (\n            scheduler._pd_role_switch_unhealthy,\n            False,\n            lambda: (\n                \"instance is unhealthy after a failed role switch; restart required\"\n            ),\n        ),\n        (\n            scheduler._pd_role_switch_in_progress,\n            False,\n            lambda: \"another role switch is already in progress\",\n        ),\n        (\n            new_role not in (\"prefill\", \"decode\"),\n            True,\n            lambda: f\"invalid new_role={new_role!r}\",\n        ),\n        (\n            scheduler.disaggregation_mode == DisaggregationMode.NULL,\n            True,\n            lambda: \"instance is not running in PD disaggregation mode\",\n        ),\n        (\n            km is not None and not km.supports_role_switch,\n            True,\n            lambda: (\n                f\"transfer backend {get_disagg().disaggregation_transfer_backend!r} \"\n                \"does not support runtime role switch\"\n            ),\n        ),\n        (\n            getattr(km, \"enable_staging\", False),\n            True,\n            lambda: (\n                \"staging buffer (SGLANG_DISAGG_STAGING_BUFFER) is not \"\n                \"supported with runtime role switch\"\n            ),\n        ),",
+          "classification": "restricted_runtime_role_switch",
+          "interpretation": "The feature must be enabled, the backend must support it, and staging buffers are excluded."
+        }
+      ]
+    },
+    {
+      "path": "python/sglang/srt/entrypoints/http_server.py",
+      "git_blob_sha1": "430d86b9b67be3ef855aea567afb5dea5739799b",
+      "sha256": "3eb653b19dd3328b48f4766134cb130d919d39124a5a0450fa80a4f930da6cc8",
+      "bytes": 111528,
+      "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/entrypoints/http_server.py",
+      "observations": [
+        {
+          "anchor": "@app.api_route(\"/pd_role_switch\", methods=[\"POST\"])",
+          "line": 1610,
+          "excerpt_end_line": 1623,
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/entrypoints/http_server.py#L1610",
+          "excerpt": "@app.api_route(\"/pd_role_switch\", methods=[\"POST\"])\n@auth_level(AuthLevel.ADMIN_OPTIONAL)\nasync def pd_role_switch(\n    obj: Annotated[PdRoleSwitchReqInput, Body()], request: Request\n):\n    \"\"\"Switch this instance's PD disaggregation role (prefill<->decode) at runtime.\n    Requires --enable-pd-role-switch; the instance must be idle.\"\"\"\n    try:\n        result = await _global_state.tokenizer_manager.pd_role_switch(obj, request)\n    except Exception as e:\n        return _create_error_response(e)\n    return ORJSONResponse(\n        msgspec_to_builtins(result),\n        status_code=HTTPStatus.OK if result.success else HTTPStatus.BAD_REQUEST,",
+          "classification": "native_runtime_endpoint",
+          "interpretation": "An existing administrative HTTP endpoint forwards typed role-switch requests; it is separate from set_internal_state."
+        }
+      ]
+    }
+  ],
+  "interpretation_limits": [
+    "A field, consumer, or startup example does not establish a supported live setter.",
+    "Proposed request routing weights, admission caps, byte-credit backpressure, transfer fairness, and policy-version receipts remain research extensions.",
+    "Transport thread pools, request-slot capacity, backend/device selection, KV layout/dtype, TP/PP, and P:D role allocation are not first-version fine-grained live controls.",
+    "The native role switch drains the target instance; it does not satisfy the proposal's same-instance in-flight preservation contract.",
+    "Configuration combinations are constrained; deferred decode reservation, decode radix caching, and role switching must not be treated as independent simultaneously enabled knobs.",
+    "No new vLLM connector source audit was performed. SGLang PD controls must not be advertised as equivalent vLLM APIs.",
+    "No performance improvement or preferred P:D ratio has been measured."
+  ]
+}
