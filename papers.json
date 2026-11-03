@@ -43,13 +43,6 @@
     "file": "03_LaTune_WWW2026.pdf",
     "status": "downloaded",
     "access_date": "2026-10-30",
-    "download_attempts": [
-      {
-        "url": "https://dl.acm.org/doi/pdf/10.1145/3774904.3792382",
-        "exit_code": 56,
-        "error": "curl: (56) The requested URL returned error: 403"
-      }
-    ],
     "source_type": "user_provided_publisher_pdf",
     "provided_from": "/Users/kxzhang/Documents/LaTune.pdf",
     "downloaded_from": "User-provided local file; publisher DOI printed in PDF",
@@ -74,18 +67,6 @@
     "downloaded_from": "https://arxiv.org/pdf/2203.14473",
     "bytes": 1534774,
     "sha256": "d396262b7a7cc5dc10a844435d7cee6b65abf7253c6aa661f9eeec181463dc80",
-    "download_attempts": [
-      {
-        "url": "https://users.cs.utah.edu/~lifeifei/papers/sigmod22-onlinetune.pdf",
-        "exit_code": 22,
-        "error": "curl: (22) The requested URL returned error: 403"
-      },
-      {
-        "url": "https://arxiv.org/pdf/2203.14473",
-        "exit_code": 0,
-        "error": ""
-      }
-    ],
     "version_note": "Author-hosted PDF returned 403; downloaded arXiv copy with SIGMOD 2022 layout and appendix."
   },
   {
@@ -99,18 +80,6 @@
     "file": "05_GPTuner_VLDB2024.pdf",
     "status": "downloaded",
     "access_date": "2026-10-30",
-    "download_attempts": [
-      {
-        "url": "https://www.vldb.org/pvldb/vol17/p1939-tang.pdf",
-        "exit_code": 28,
-        "error": "curl: (28) Operation timed out after 240006 milliseconds with 2879996 out of 6659309 bytes received\ncurl: (28) Operation timed out after 240005 milliseconds with 3719996 out of 6659309 bytes received"
-      },
-      {
-        "url": "https://www.vldb.org/pvldb/vol17/p1939-tang.pdf",
-        "exit_code": 0,
-        "error": ""
-      }
-    ],
     "downloaded_from": "https://www.vldb.org/pvldb/vol17/p1939-tang.pdf",
     "bytes": 6659309,
     "sha256": "70780db58a95d03d5eea2b295999b5e12599b2d05958f80527aabb3c4bcbabf5"
@@ -128,14 +97,7 @@
     "access_date": "2026-10-30",
     "downloaded_from": "https://arxiv.org/pdf/2411.03500",
     "bytes": 2151277,
-    "sha256": "e31a8170e3cc0dc8aa6160b3cc070eade6dbfc2f151fdcae65f6cc30640cc928",
-    "download_attempts": [
-      {
-        "url": "https://arxiv.org/pdf/2411.03500",
-        "exit_code": 0,
-        "error": ""
-      }
-    ]
+    "sha256": "e31a8170e3cc0dc8aa6160b3cc070eade6dbfc2f151fdcae65f6cc30640cc928"
   },
   {
     "id": "07",
@@ -148,23 +110,6 @@
     "file": "07_MorphServe_MLSys2026_arxiv_v2.pdf",
     "status": "downloaded",
     "access_date": "2026-10-30",
-    "download_attempts": [
-      {
-        "url": "https://proceedings.mlsys.org/paper_files/paper/2026/file/8144a9d62e506af0fcdeac0e456b2710-Paper-Conference.pdf",
-        "exit_code": 28,
-        "error": "curl: (28) Operation timed out after 240002 milliseconds with 3023617 out of 8808917 bytes received\ncurl: (28) Operation timed out after 240004 milliseconds with 3189441 out of 8808917 bytes received"
-      },
-      {
-        "url": "https://proceedings.mlsys.org/paper_files/paper/2026/file/8144a9d62e506af0fcdeac0e456b2710-Paper-Conference.pdf",
-        "exit_code": 33,
-        "error": "curl: (33) HTTP server doesn't seem to support byte ranges. Cannot resume."
-      },
-      {
-        "url": "https://arxiv.org/pdf/2506.02006v2",
-        "exit_code": 0,
-        "method": "Parallel byte ranges; verified Content-Range and exact length for every part"
-      }
-    ],
     "downloaded_from": "https://arxiv.org/pdf/2506.02006v2",
     "fallback_pdf_urls": [
       "https://arxiv.org/pdf/2506.02006v2"
@@ -186,14 +131,7 @@
     "access_date": "2026-10-30",
     "downloaded_from": "https://www.usenix.org/system/files/osdi24-sun-biao.pdf",
     "bytes": 1940597,
-    "sha256": "2e99cfc54473cd0a0aeabbb9bf16706b23300a7717e5b370ee256cf75801a9d6",
-    "download_attempts": [
-      {
-        "url": "https://www.usenix.org/system/files/osdi24-sun-biao.pdf",
-        "exit_code": 0,
-        "error": "curl: (28) SSL connection timeout"
-      }
-    ]
+    "sha256": "2e99cfc54473cd0a0aeabbb9bf16706b23300a7717e5b370ee256cf75801a9d6"
   },
   {
     "id": "09",
@@ -208,14 +146,7 @@
     "access_date": "2026-10-30",
     "downloaded_from": "https://www.usenix.org/system/files/osdi24-agrawal.pdf",
     "bytes": 2137282,
-    "sha256": "2416e51f584230107739783e5995d3dea3efad93f189e2c3119434d62a31412c",
-    "download_attempts": [
-      {
-        "url": "https://www.usenix.org/system/files/osdi24-agrawal.pdf",
-        "exit_code": 0,
-        "error": ""
-      }
-    ]
+    "sha256": "2416e51f584230107739783e5995d3dea3efad93f189e2c3119434d62a31412c"
   },
   {
     "id": "10",
@@ -230,14 +161,7 @@
     "access_date": "2026-10-30",
     "downloaded_from": "https://www.usenix.org/system/files/osdi24-zhong-yinmin.pdf",
     "bytes": 832045,
-    "sha256": "bb03e59d6ec6550015901f3f78d7e68f5a07cad8ccacb12f72835a8b667341c1",
-    "download_attempts": [
-      {
-        "url": "https://www.usenix.org/system/files/osdi24-zhong-yinmin.pdf",
-        "exit_code": 0,
-        "error": ""
-      }
-    ]
+    "sha256": "bb03e59d6ec6550015901f3f78d7e68f5a07cad8ccacb12f72835a8b667341c1"
   },
   {
     "id": "11",
@@ -252,14 +176,7 @@
     "access_date": "2026-10-30",
     "downloaded_from": "https://proceedings.mlsys.org/paper_files/paper/2025/file/dbf02b21d77409a2db30e56866a8ab3a-Paper-Conference.pdf",
     "bytes": 1693865,
-    "sha256": "37beb3967fcae981febb3e93d7ae40c59d4b0c6debf12a1529ed803922eeada4",
-    "download_attempts": [
-      {
-        "url": "https://proceedings.mlsys.org/paper_files/paper/2025/file/dbf02b21d77409a2db30e56866a8ab3a-Paper-Conference.pdf",
-        "exit_code": 0,
-        "error": ""
-      }
-    ]
+    "sha256": "37beb3967fcae981febb3e93d7ae40c59d4b0c6debf12a1529ed803922eeada4"
   },
   {
     "id": "12",
@@ -274,14 +191,7 @@
     "access_date": "2026-10-30",
     "downloaded_from": "https://www.pdl.cmu.edu/PDL-FTP/BigLearning/AdaServe_EuroSys_26.pdf",
     "bytes": 937263,
-    "sha256": "244970598a4fe9d0ece32be534129fd6be16a566016bff305151bba16c2cb012",
-    "download_attempts": [
-      {
-        "url": "https://www.pdl.cmu.edu/PDL-FTP/BigLearning/AdaServe_EuroSys_26.pdf",
-        "exit_code": 0,
-        "error": ""
-      }
-    ]
+    "sha256": "244970598a4fe9d0ece32be534129fd6be16a566016bff305151bba16c2cb012"
   },
   {
     "id": "13",
@@ -296,14 +206,7 @@
     "access_date": "2026-10-30",
     "downloaded_from": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/sosp25-final547.pdf",
     "bytes": 1174975,
-    "sha256": "5e94cb3131e3830d04239f43b6956133c1cf728fe5d9a34ab674895560d4c037",
-    "download_attempts": [
-      {
-        "url": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/sosp25-final547.pdf",
-        "exit_code": 0,
-        "error": ""
-      }
-    ]
+    "sha256": "5e94cb3131e3830d04239f43b6956133c1cf728fe5d9a34ab674895560d4c037"
   },
   {
     "id": "14",
@@ -319,13 +222,6 @@
     "downloaded_from": "https://arxiv.org/pdf/2604.18616v2",
     "bytes": 720378,
     "sha256": "3cb2ff1ad49cb9631cf9a36f1123b4edaf33b5baa5e2ea2c3aa84388828a75d3",
-    "download_attempts": [
-      {
-        "url": "https://arxiv.org/pdf/2604.18616v2",
-        "exit_code": 0,
-        "error": ""
-      }
-    ],
     "final_doi": "https://doi.org/10.1145/3830418.3843902",
     "version_note": "Author arXiv v2; SOSP 2026 identity separately verified on official schedule."
   },
@@ -341,14 +237,7 @@
     "access_date": "2026-10-30",
     "downloaded_from": "https://www.usenix.org/system/files/nsdi24-somashekar.pdf",
     "bytes": 2472736,
-    "sha256": "a6dbd02129a4e0e71b178947ad744f65f12125083b2f2af5dcb1fc11fcb0c8fe",
-    "download_attempts": [
-      {
-        "url": "https://www.usenix.org/system/files/nsdi24-somashekar.pdf",
-        "exit_code": 0,
-        "error": ""
-      }
-    ]
+    "sha256": "a6dbd02129a4e0e71b178947ad744f65f12125083b2f2af5dcb1fc11fcb0c8fe"
   },
   {
     "id": "16",
@@ -377,18 +266,6 @@
     "status": "downloaded",
     "access_date": "2026-10-30",
     "version_note": "Author-hosted final-layout PDF, 16 pages; older arXiv/artifact name Niyama is the same work, not a separate paper.",
-    "download_attempts": [
-      {
-        "url": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/QoServe_CC_final_v2.pdf",
-        "exit_code": 56,
-        "error": "curl: (56) Recv failure: Connection reset by peer"
-      },
-      {
-        "url": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/QoServe_CC_final_v2.pdf",
-        "exit_code": 0,
-        "method": "curl retry after connection reset"
-      }
-    ],
     "downloaded_from": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/QoServe_CC_final_v2.pdf",
     "bytes": 2618094,
     "sha256": "6985bb3a55566a3d59ff1434834dfeeb98dc09abb93ad4ed013661e71721298d"

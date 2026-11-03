@@ -4,3 +4,4 @@ __pycache__/
 *.part
 *.retry
 evidence/download-ranges/
+evidence/validation.json

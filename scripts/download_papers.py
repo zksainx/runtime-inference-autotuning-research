@@ -44,8 +44,8 @@ def download(paper):
         paper.update(status="downloaded", bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
     else:
         paper["status"] = "download_failed"
-    if attempts:
-        paper["download_attempts"] = paper.get("download_attempts", []) + attempts
+    if attempts and paper["status"] == "download_failed":
+        print(json.dumps(attempts, indent=2), file=sys.stderr)
     print(paper["id"], paper["status"], paper["file"], flush=True)
     return paper
 
