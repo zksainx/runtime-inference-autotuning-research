@@ -1,0 +1,1866 @@
+{
+  "checked_at_utc": "2026-11-03T07:48:36.438919+00:00",
+  "method": "Read-only AST analysis of selected configuration classes at current audited commits. No framework import. Historical full inventory remains unchanged.",
+  "counting_rule": "Direct public AnnAssign class fields; exclude ClassVar, InitVar and leading-underscore names. Nested configs overlap; do not sum. These are not CLI counts, hot-knob counts or independent search dimensions.",
+  "repositories": [
+    {
+      "repository": "vllm",
+      "path": "/Users/zkx/vllm",
+      "head": "45d0ac9ee197576aefd4e3f67ad98857b6c52697",
+      "files": [
+        {
+          "path": "vllm/engine/arg_utils.py",
+          "sha256": "a167de164b1415113073e06c0d17ab5c8828e8d9cd501363e7d93300eb2ef9f2",
+          "classes": [
+            {
+              "class": "EngineArgs",
+              "field_count": 259,
+              "fields": [
+                {
+                  "name": "model",
+                  "line": 491,
+                  "annotation": "str"
+                },
+                {
+                  "name": "enable_return_routed_experts",
+                  "line": 494,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "return_sampling_mask",
+                  "line": 495,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "model_weights",
+                  "line": 496,
+                  "annotation": "str"
+                },
+                {
+                  "name": "served_model_name",
+                  "line": 497,
+                  "annotation": "str | list[str] | None"
+                },
+                {
+                  "name": "tokenizer",
+                  "line": 498,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "hf_config_path",
+                  "line": 499,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "runner",
+                  "line": 500,
+                  "annotation": "RunnerOption"
+                },
+                {
+                  "name": "convert",
+                  "line": 501,
+                  "annotation": "ConvertOption"
+                },
+                {
+                  "name": "skip_tokenizer_init",
+                  "line": 502,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "enable_prompt_embeds",
+                  "line": 503,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "tokenizer_mode",
+                  "line": 504,
+                  "annotation": "TokenizerMode | str"
+                },
+                {
+                  "name": "trust_remote_code",
+                  "line": 505,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "allowed_local_media_path",
+                  "line": 506,
+                  "annotation": "str"
+                },
+                {
+                  "name": "allowed_media_domains",
+                  "line": 507,
+                  "annotation": "list[str] | None"
+                },
+                {
+                  "name": "download_dir",
+                  "line": 508,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "safetensors_load_strategy",
+                  "line": 509,
+                  "annotation": "SafetensorsLoadStrategy | None"
+                },
+                {
+                  "name": "safetensors_prefetch_num_threads",
+                  "line": 512,
+                  "annotation": "int"
+                },
+                {
+                  "name": "safetensors_prefetch_block_size",
+                  "line": 513,
+                  "annotation": "int"
+                },
+                {
+                  "name": "load_format",
+                  "line": 514,
+                  "annotation": "str | LoadFormats"
+                },
+                {
+                  "name": "config_format",
+                  "line": 515,
+                  "annotation": "str"
+                },
+                {
+                  "name": "dtype",
+                  "line": 516,
+                  "annotation": "ModelDType"
+                },
+                {
+                  "name": "kv_cache_dtype",
+                  "line": 517,
+                  "annotation": "CacheDType | str"
+                },
+                {
+                  "name": "seed",
+                  "line": 518,
+                  "annotation": "int"
+                },
+                {
+                  "name": "max_model_len",
+                  "line": 519,
+                  "annotation": "int"
+                },
+                {
+                  "name": "cudagraph_capture_sizes",
+                  "line": 520,
+                  "annotation": "list[int] | None"
+                },
+                {
+                  "name": "max_cudagraph_capture_size",
+                  "line": 523,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "ir_op_priority",
+                  "line": 526,
+                  "annotation": "IrOpPriorityConfig"
+                },
+                {
+                  "name": "distributed_executor_backend",
+                  "line": 530,
+                  "annotation": "str | DistributedExecutorBackend | type[Executor] | None"
+                },
+                {
+                  "name": "pipeline_parallel_size",
+                  "line": 534,
+                  "annotation": "int"
+                },
+                {
+                  "name": "master_addr",
+                  "line": 535,
+                  "annotation": "str"
+                },
+                {
+                  "name": "master_port",
+                  "line": 536,
+                  "annotation": "int"
+                },
+                {
+                  "name": "nnodes",
+                  "line": 537,
+                  "annotation": "int"
+                },
+                {
+                  "name": "node_rank",
+                  "line": 538,
+                  "annotation": "int"
+                },
+                {
+                  "name": "distributed_timeout_seconds",
+                  "line": 539,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "cpu_distributed_timeout_seconds",
+                  "line": 540,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "numa_bind",
+                  "line": 543,
+                  "annotation": "bool | None"
+                },
+                {
+                  "name": "numa_bind_nodes",
+                  "line": 544,
+                  "annotation": "list[int] | None"
+                },
+                {
+                  "name": "numa_bind_cpus",
+                  "line": 545,
+                  "annotation": "list[str] | None"
+                },
+                {
+                  "name": "device_ids",
+                  "line": 546,
+                  "annotation": "list[int | str] | None"
+                },
+                {
+                  "name": "tensor_parallel_size",
+                  "line": 547,
+                  "annotation": "int"
+                },
+                {
+                  "name": "prefill_context_parallel_size",
+                  "line": 548,
+                  "annotation": "int"
+                },
+                {
+                  "name": "decode_context_parallel_size",
+                  "line": 549,
+                  "annotation": "int"
+                },
+                {
+                  "name": "dcp_comm_backend",
+                  "line": 550,
+                  "annotation": "DCPCommBackend | None"
+                },
+                {
+                  "name": "dcp_q_replicate",
+                  "line": 551,
+                  "annotation": "bool | None"
+                },
+                {
+                  "name": "dcp_kv_cache_interleave_size",
+                  "line": 552,
+                  "annotation": "int"
+                },
+                {
+                  "name": "cp_kv_cache_interleave_size",
+                  "line": 553,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "data_parallel_size",
+                  "line": 554,
+                  "annotation": "int"
+                },
+                {
+                  "name": "data_parallel_rank",
+                  "line": 555,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "data_parallel_start_rank",
+                  "line": 556,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "data_parallel_size_local",
+                  "line": 557,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "data_parallel_address",
+                  "line": 558,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "data_parallel_rpc_port",
+                  "line": 559,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "data_parallel_hybrid_lb",
+                  "line": 560,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "data_parallel_external_lb",
+                  "line": 561,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "data_parallel_multi_port_external_lb",
+                  "line": 562,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "data_parallel_backend",
+                  "line": 563,
+                  "annotation": "DataParallelBackend"
+                },
+                {
+                  "name": "enable_hc_sp",
+                  "line": 564,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "enable_expert_parallel",
+                  "line": 565,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "enable_batch_sharded_sampling",
+                  "line": 566,
+                  "annotation": "bool | None"
+                },
+                {
+                  "name": "enable_ep_weight_filter",
+                  "line": 569,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "moe_backend",
+                  "line": 570,
+                  "annotation": "MoEBackend"
+                },
+                {
+                  "name": "linear_backend",
+                  "line": 571,
+                  "annotation": "LinearBackend"
+                },
+                {
+                  "name": "sparse_indexer_topk_backend",
+                  "line": 572,
+                  "annotation": "SparseIndexerTopkBackend"
+                },
+                {
+                  "name": "all2all_backend",
+                  "line": 575,
+                  "annotation": "All2AllBackend"
+                },
+                {
+                  "name": "enable_elastic_ep",
+                  "line": 576,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "elastic_ep_max_dp_size",
+                  "line": 577,
+                  "annotation": "int"
+                },
+                {
+                  "name": "enable_dbo",
+                  "line": 578,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "ubatch_size",
+                  "line": 579,
+                  "annotation": "int"
+                },
+                {
+                  "name": "dbo_decode_token_threshold",
+                  "line": 580,
+                  "annotation": "int"
+                },
+                {
+                  "name": "dp_sync_interval",
+                  "line": 581,
+                  "annotation": "int"
+                },
+                {
+                  "name": "dbo_prefill_token_threshold",
+                  "line": 582,
+                  "annotation": "int"
+                },
+                {
+                  "name": "disable_nccl_for_dp_synchronization",
+                  "line": 583,
+                  "annotation": "bool | None"
+                },
+                {
+                  "name": "eplb_config",
+                  "line": 586,
+                  "annotation": "EPLBConfig"
+                },
+                {
+                  "name": "enable_eplb",
+                  "line": 587,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "expert_placement_strategy",
+                  "line": 588,
+                  "annotation": "ExpertPlacementStrategy"
+                },
+                {
+                  "name": "max_parallel_loading_workers",
+                  "line": 593,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "block_size",
+                  "line": 596,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "enable_prefix_caching",
+                  "line": 597,
+                  "annotation": "bool | None"
+                },
+                {
+                  "name": "prefix_caching_hash_algo",
+                  "line": 598,
+                  "annotation": "PrefixCachingHashAlgo"
+                },
+                {
+                  "name": "prefix_cache_retention_interval",
+                  "line": 601,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "disable_sliding_window",
+                  "line": 604,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "disable_cascade_attn",
+                  "line": 605,
+                  "annotation": "bool | None"
+                },
+                {
+                  "name": "offload_backend",
+                  "line": 606,
+                  "annotation": "str"
+                },
+                {
+                  "name": "cpu_offload_gb",
+                  "line": 607,
+                  "annotation": "float"
+                },
+                {
+                  "name": "cpu_offload_params",
+                  "line": 608,
+                  "annotation": "set[str]"
+                },
+                {
+                  "name": "offload_group_size",
+                  "line": 609,
+                  "annotation": "int"
+                },
+                {
+                  "name": "offload_num_in_group",
+                  "line": 610,
+                  "annotation": "int"
+                },
+                {
+                  "name": "offload_prefetch_step",
+                  "line": 611,
+                  "annotation": "int"
+                },
+                {
+                  "name": "offload_params",
+                  "line": 612,
+                  "annotation": "set[str]"
+                },
+                {
+                  "name": "gpu_memory_utilization",
+                  "line": 613,
+                  "annotation": "float | None"
+                },
+                {
+                  "name": "kv_cache_memory_bytes",
+                  "line": 614,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "enable_extensible_kv_cache",
+                  "line": 615,
+                  "annotation": "bool | None"
+                },
+                {
+                  "name": "max_num_batched_tokens",
+                  "line": 616,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "max_num_scheduled_tokens",
+                  "line": 617,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "long_prefill_token_threshold",
+                  "line": 618,
+                  "annotation": "int"
+                },
+                {
+                  "name": "long_prefill_token_threshold_adaptive",
+                  "line": 619,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "max_num_seqs",
+                  "line": 622,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "max_num_active_seqs",
+                  "line": 623,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "max_num_queued_reqs",
+                  "line": 624,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "max_num_queued_tokens",
+                  "line": 625,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "max_logprobs",
+                  "line": 626,
+                  "annotation": "int"
+                },
+                {
+                  "name": "logprobs_mode",
+                  "line": 627,
+                  "annotation": "LogprobsMode"
+                },
+                {
+                  "name": "use_fp64_gumbel",
+                  "line": 628,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "enable_trace_replay",
+                  "line": 629,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "disable_log_stats",
+                  "line": 630,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "aggregate_engine_logging",
+                  "line": 631,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "revision",
+                  "line": 632,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "code_revision",
+                  "line": 633,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "hf_token",
+                  "line": 634,
+                  "annotation": "bool | str | None"
+                },
+                {
+                  "name": "hf_overrides",
+                  "line": 635,
+                  "annotation": "HfOverrides"
+                },
+                {
+                  "name": "model_class_overrides",
+                  "line": 636,
+                  "annotation": "dict[str, str]"
+                },
+                {
+                  "name": "tokenizer_revision",
+                  "line": 639,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "quantization",
+                  "line": 640,
+                  "annotation": "QuantizationMethods | str | None"
+                },
+                {
+                  "name": "quantization_config",
+                  "line": 641,
+                  "annotation": "'dict[str, Any] | QuantizationConfigArgs | None'"
+                },
+                {
+                  "name": "allow_deprecated_quantization",
+                  "line": 647,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "enforce_eager",
+                  "line": 648,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "disable_custom_all_reduce",
+                  "line": 649,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "enable_shm_tensor_arena",
+                  "line": 650,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "language_model_only",
+                  "line": 651,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "limit_mm_per_prompt",
+                  "line": 652,
+                  "annotation": "dict[str, int | dict[str, int]]"
+                },
+                {
+                  "name": "enable_mm_embeds",
+                  "line": 655,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "interleave_mm_strings",
+                  "line": 656,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "media_io_kwargs",
+                  "line": 657,
+                  "annotation": "dict[str, dict[str, Any]]"
+                },
+                {
+                  "name": "mm_processor_kwargs",
+                  "line": 660,
+                  "annotation": "dict[str, Any] | None"
+                },
+                {
+                  "name": "mm_processor_cache_gb",
+                  "line": 661,
+                  "annotation": "float"
+                },
+                {
+                  "name": "mm_processor_cache_type",
+                  "line": 662,
+                  "annotation": "MMCacheType | None"
+                },
+                {
+                  "name": "mm_hasher_algorithm",
+                  "line": 665,
+                  "annotation": "MMHasherAlgorithm"
+                },
+                {
+                  "name": "mm_shm_cache_max_object_size_mb",
+                  "line": 668,
+                  "annotation": "int"
+                },
+                {
+                  "name": "mm_encoder_only",
+                  "line": 671,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "mm_encoder_tp_mode",
+                  "line": 672,
+                  "annotation": "MMEncoderTPMode"
+                },
+                {
+                  "name": "mm_encoder_attn_backend",
+                  "line": 673,
+                  "annotation": "AttentionBackendEnum | str | None"
+                },
+                {
+                  "name": "mm_encoder_attn_dtype",
+                  "line": 676,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "mm_encoder_fp8_scale_path",
+                  "line": 677,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "mm_encoder_fp8_scale_save_path",
+                  "line": 678,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "mm_encoder_fp8_scale_save_margin",
+                  "line": 681,
+                  "annotation": "float"
+                },
+                {
+                  "name": "io_processor_plugin",
+                  "line": 684,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "renderer_num_workers",
+                  "line": 685,
+                  "annotation": "int"
+                },
+                {
+                  "name": "skip_mm_profiling",
+                  "line": 686,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "video_pruning_rate",
+                  "line": 687,
+                  "annotation": "float | None"
+                },
+                {
+                  "name": "video_pruning_method",
+                  "line": 688,
+                  "annotation": "str"
+                },
+                {
+                  "name": "mm_tensor_ipc",
+                  "line": 689,
+                  "annotation": "MMTensorIPC"
+                },
+                {
+                  "name": "mm_processor_device",
+                  "line": 690,
+                  "annotation": "MMProcessorDevice"
+                },
+                {
+                  "name": "mm_ipc_gpu_memory_gb",
+                  "line": 691,
+                  "annotation": "float"
+                },
+                {
+                  "name": "mm_device_do_normalize",
+                  "line": 692,
+                  "annotation": "bool | None"
+                },
+                {
+                  "name": "enable_lora",
+                  "line": 694,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "max_loras",
+                  "line": 695,
+                  "annotation": "int"
+                },
+                {
+                  "name": "max_lora_rank",
+                  "line": 696,
+                  "annotation": "MaxLoRARanks"
+                },
+                {
+                  "name": "default_mm_loras",
+                  "line": 697,
+                  "annotation": "dict[str, str] | None"
+                },
+                {
+                  "name": "fully_sharded_loras",
+                  "line": 698,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "max_cpu_loras",
+                  "line": 699,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "lora_dtype",
+                  "line": 700,
+                  "annotation": "str | torch.dtype | None"
+                },
+                {
+                  "name": "lora_target_modules",
+                  "line": 701,
+                  "annotation": "list[str] | None"
+                },
+                {
+                  "name": "enable_tower_connector_lora",
+                  "line": 702,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "specialize_active_lora",
+                  "line": 703,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "enable_mixed_moe_lora_format",
+                  "line": 704,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "enable_moe_shared_loras",
+                  "line": 705,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "max_lora_cls_labels",
+                  "line": 706,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "ray_workers_use_nsight",
+                  "line": 708,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "num_gpu_blocks_override",
+                  "line": 709,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "model_loader_extra_config",
+                  "line": 710,
+                  "annotation": "dict"
+                },
+                {
+                  "name": "ignore_patterns",
+                  "line": 711,
+                  "annotation": "str | list[str]"
+                },
+                {
+                  "name": "enable_chunked_prefill",
+                  "line": 713,
+                  "annotation": "bool | None"
+                },
+                {
+                  "name": "disable_chunked_mm_input",
+                  "line": 714,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "scheduler_reserve_full_isl",
+                  "line": 716,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "prefill_schedule_interval",
+                  "line": 717,
+                  "annotation": "int"
+                },
+                {
+                  "name": "watermark",
+                  "line": 719,
+                  "annotation": "float"
+                },
+                {
+                  "name": "disable_hybrid_kv_cache_manager",
+                  "line": 721,
+                  "annotation": "bool | None"
+                },
+                {
+                  "name": "structured_outputs_config",
+                  "line": 725,
+                  "annotation": "StructuredOutputsConfig"
+                },
+                {
+                  "name": "aux_output_config",
+                  "line": 728,
+                  "annotation": "AuxOutputConfig"
+                },
+                {
+                  "name": "reasoning_parser",
+                  "line": 729,
+                  "annotation": "str"
+                },
+                {
+                  "name": "reasoning_parser_plugin",
+                  "line": 730,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "speculative_config",
+                  "line": 732,
+                  "annotation": "dict[str, Any] | None"
+                },
+                {
+                  "name": "spec_method",
+                  "line": 733,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "spec_model",
+                  "line": 734,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "spec_tokens",
+                  "line": 735,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "watermark_config",
+                  "line": 736,
+                  "annotation": "dict[str, Any] | None"
+                },
+                {
+                  "name": "diffusion_config",
+                  "line": 737,
+                  "annotation": "dict[str, Any] | None"
+                },
+                {
+                  "name": "show_hidden_metrics_for_version",
+                  "line": 739,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "otlp_traces_endpoint",
+                  "line": 742,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "collect_detailed_traces",
+                  "line": 743,
+                  "annotation": "list[DetailedTraceModules] | None"
+                },
+                {
+                  "name": "per_request_spec_decode_metrics",
+                  "line": 746,
+                  "annotation": "Literal['none', 'summary', 'detailed']"
+                },
+                {
+                  "name": "kv_cache_metrics",
+                  "line": 749,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "kv_cache_metrics_sample",
+                  "line": 750,
+                  "annotation": "float"
+                },
+                {
+                  "name": "custom_histogram_buckets",
+                  "line": 753,
+                  "annotation": "dict[str, list[float]] | None"
+                },
+                {
+                  "name": "cudagraph_metrics",
+                  "line": 756,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "enable_layerwise_nvtx_tracing",
+                  "line": 757,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "enable_mfu_metrics",
+                  "line": 760,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "enable_logging_iteration_details",
+                  "line": 761,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "jit_monitor_mode",
+                  "line": 764,
+                  "annotation": "Literal['warn', 'error']"
+                },
+                {
+                  "name": "jit_monitor_verbose",
+                  "line": 765,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "enable_mm_processor_stats",
+                  "line": 766,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "scheduling_policy",
+                  "line": 767,
+                  "annotation": "SchedulerPolicy"
+                },
+                {
+                  "name": "scheduler_cls",
+                  "line": 768,
+                  "annotation": "str | type[object] | None"
+                },
+                {
+                  "name": "pooler_config",
+                  "line": 770,
+                  "annotation": "PoolerConfig | None"
+                },
+                {
+                  "name": "compilation_config",
+                  "line": 771,
+                  "annotation": "CompilationConfig"
+                },
+                {
+                  "name": "attention_config",
+                  "line": 772,
+                  "annotation": "AttentionConfig"
+                },
+                {
+                  "name": "engram_config",
+                  "line": 773,
+                  "annotation": "EngramConfig | None"
+                },
+                {
+                  "name": "mamba_config",
+                  "line": 774,
+                  "annotation": "MambaConfig"
+                },
+                {
+                  "name": "kernel_config",
+                  "line": 775,
+                  "annotation": "KernelConfig"
+                },
+                {
+                  "name": "enable_flashinfer_autotune",
+                  "line": 776,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "monokernel",
+                  "line": 779,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "worker_cls",
+                  "line": 780,
+                  "annotation": "str"
+                },
+                {
+                  "name": "worker_extension_cls",
+                  "line": 781,
+                  "annotation": "str"
+                },
+                {
+                  "name": "profiler_config",
+                  "line": 783,
+                  "annotation": "ProfilerConfig"
+                },
+                {
+                  "name": "logging_config",
+                  "line": 785,
+                  "annotation": "LoggingConfig | None"
+                },
+                {
+                  "name": "log_level",
+                  "line": 786,
+                  "annotation": "LogLevel | None"
+                },
+                {
+                  "name": "log_config_file",
+                  "line": 787,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "kv_transfer_config",
+                  "line": 789,
+                  "annotation": "KVTransferConfig | None"
+                },
+                {
+                  "name": "kv_events_config",
+                  "line": 790,
+                  "annotation": "KVEventsConfig | None"
+                },
+                {
+                  "name": "ec_transfer_config",
+                  "line": 792,
+                  "annotation": "ECTransferConfig | None"
+                },
+                {
+                  "name": "ec_manager_config",
+                  "line": 793,
+                  "annotation": "EncoderCacheManagerConfig"
+                },
+                {
+                  "name": "reasoning_config",
+                  "line": 796,
+                  "annotation": "ReasoningConfig"
+                },
+                {
+                  "name": "generation_config",
+                  "line": 798,
+                  "annotation": "str"
+                },
+                {
+                  "name": "enable_sleep_mode",
+                  "line": 799,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "sleep_mode_backend",
+                  "line": 800,
+                  "annotation": "str"
+                },
+                {
+                  "name": "sleep_mode_offload_cudagraph",
+                  "line": 801,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "sleep_preserve_parameter_names",
+                  "line": 802,
+                  "annotation": "list[str]"
+                },
+                {
+                  "name": "enable_cumem_allocator",
+                  "line": 805,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "enable_nccl_comm_suspend",
+                  "line": 806,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "checkpoint_prepare_on_startup",
+                  "line": 807,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "override_generation_config",
+                  "line": 808,
+                  "annotation": "dict[str, Any]"
+                },
+                {
+                  "name": "model_impl",
+                  "line": 811,
+                  "annotation": "str"
+                },
+                {
+                  "name": "attention_backend",
+                  "line": 812,
+                  "annotation": "AttentionBackendEnum | None"
+                },
+                {
+                  "name": "kv_cache_dtype_skip_layers",
+                  "line": 814,
+                  "annotation": "list[str]"
+                },
+                {
+                  "name": "mamba_cache_dtype",
+                  "line": 817,
+                  "annotation": "MambaDType"
+                },
+                {
+                  "name": "mamba_ssm_cache_dtype",
+                  "line": 818,
+                  "annotation": "MambaDType"
+                },
+                {
+                  "name": "mamba_block_size",
+                  "line": 819,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "prefix_match_unit",
+                  "line": 820,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "mamba_cache_mode",
+                  "line": 821,
+                  "annotation": "MambaCacheMode | None"
+                },
+                {
+                  "name": "enable_mamba_shared_prefix_checkpoint",
+                  "line": 822,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "replayssm_buffer_len",
+                  "line": 825,
+                  "annotation": "int"
+                },
+                {
+                  "name": "use_replayssm",
+                  "line": 826,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "mamba_backend",
+                  "line": 828,
+                  "annotation": "MambaBackendEnum"
+                },
+                {
+                  "name": "mamba_ssu_algorithm",
+                  "line": 829,
+                  "annotation": "MambaSSUAlgorithm | None"
+                },
+                {
+                  "name": "enable_mamba_cache_stochastic_rounding",
+                  "line": 830,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "mamba_cache_philox_rounds",
+                  "line": 833,
+                  "annotation": "int"
+                },
+                {
+                  "name": "additional_config",
+                  "line": 835,
+                  "annotation": "dict[str, Any]"
+                },
+                {
+                  "name": "use_tqdm_on_load",
+                  "line": 837,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "pt_load_map_location",
+                  "line": 838,
+                  "annotation": "str | dict[str, str]"
+                },
+                {
+                  "name": "logits_processors",
+                  "line": 840,
+                  "annotation": "list[str | type[LogitsProcessor]] | None"
+                },
+                {
+                  "name": "async_scheduling",
+                  "line": 845,
+                  "annotation": "bool | None"
+                },
+                {
+                  "name": "stream_interval",
+                  "line": 847,
+                  "annotation": "int"
+                },
+                {
+                  "name": "kv_sharing_fast_prefill",
+                  "line": 849,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "swa_bounded_replay",
+                  "line": 850,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "optimization_level",
+                  "line": 851,
+                  "annotation": "OptimizationLevel"
+                },
+                {
+                  "name": "performance_mode",
+                  "line": 852,
+                  "annotation": "PerformanceMode"
+                },
+                {
+                  "name": "fault_tolerance_config",
+                  "line": 854,
+                  "annotation": "FaultToleranceConfig"
+                },
+                {
+                  "name": "enable_fault_tolerance",
+                  "line": 857,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "kv_offloading_size",
+                  "line": 859,
+                  "annotation": "float | None"
+                },
+                {
+                  "name": "kv_offloading_backend",
+                  "line": 860,
+                  "annotation": "KVOffloadingBackend"
+                },
+                {
+                  "name": "tokens_only",
+                  "line": 861,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "shutdown_timeout",
+                  "line": 863,
+                  "annotation": "int"
+                },
+                {
+                  "name": "watchdog_config",
+                  "line": 865,
+                  "annotation": "WatchdogConfig"
+                },
+                {
+                  "name": "weight_transfer_config",
+                  "line": 867,
+                  "annotation": "WeightTransferConfig | None"
+                },
+                {
+                  "name": "fail_on_environ_validation",
+                  "line": 872,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "gdn_prefill_backend",
+                  "line": 873,
+                  "annotation": "Literal['flashinfer', 'triton', 'cutedsl', 'aiter_flydsl', 'sycl'] | None"
+                },
+                {
+                  "name": "kda_prefill_backend",
+                  "line": 876,
+                  "annotation": "Literal['auto', 'triton', 'flashkda', 'flashinfer', 'fused'] | None"
+                },
+                {
+                  "name": "kda_decode_backend",
+                  "line": 879,
+                  "annotation": "Literal['auto', 'native', 'flashinfer', 'triton'] | None"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "path": "vllm/config/scheduler.py",
+          "sha256": "61485c7a1ef1c7c65339767f4b223f55de76d2ca152eb19df915c88f526be9de",
+          "classes": [
+            {
+              "class": "SchedulerConfig",
+              "field_count": 22,
+              "fields": [
+                {
+                  "name": "runner_type",
+                  "line": 45,
+                  "annotation": "RunnerType"
+                },
+                {
+                  "name": "max_num_batched_tokens",
+                  "line": 48,
+                  "annotation": "int"
+                },
+                {
+                  "name": "max_num_scheduled_tokens",
+                  "line": 55,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "max_num_seqs",
+                  "line": 62,
+                  "annotation": "int"
+                },
+                {
+                  "name": "max_num_active_seqs",
+                  "line": 69,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "long_prefill_token_threshold",
+                  "line": 79,
+                  "annotation": "int"
+                },
+                {
+                  "name": "long_prefill_token_threshold_adaptive",
+                  "line": 86,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "max_num_queued_reqs",
+                  "line": 92,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "max_num_queued_tokens",
+                  "line": 105,
+                  "annotation": "int | None"
+                },
+                {
+                  "name": "enable_chunked_prefill",
+                  "line": 134,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "is_multimodal_model",
+                  "line": 142,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "max_num_encoder_input_tokens",
+                  "line": 146,
+                  "annotation": "int"
+                },
+                {
+                  "name": "encoder_cache_size",
+                  "line": 153,
+                  "annotation": "int"
+                },
+                {
+                  "name": "policy",
+                  "line": 159,
+                  "annotation": "SchedulerPolicy"
+                },
+                {
+                  "name": "disable_chunked_mm_input",
+                  "line": 167,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "scheduler_cls",
+                  "line": 177,
+                  "annotation": "str | type[object] | None"
+                },
+                {
+                  "name": "disable_hybrid_kv_cache_manager",
+                  "line": 182,
+                  "annotation": "bool | None"
+                },
+                {
+                  "name": "scheduler_reserve_full_isl",
+                  "line": 190,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "watermark",
+                  "line": 196,
+                  "annotation": "float"
+                },
+                {
+                  "name": "prefill_schedule_interval",
+                  "line": 203,
+                  "annotation": "int"
+                },
+                {
+                  "name": "async_scheduling",
+                  "line": 211,
+                  "annotation": "bool | None"
+                },
+                {
+                  "name": "stream_interval",
+                  "line": 216,
+                  "annotation": "int"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "path": "vllm/config/kv_transfer.py",
+          "sha256": "08d1725998b2913cea46f1b45cad887ada63b55e29d55fb899713a2a4006c029",
+          "classes": [
+            {
+              "class": "KVTransferConfig",
+              "field_count": 9,
+              "fields": [
+                {
+                  "name": "kv_connector",
+                  "line": 72,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "engine_id",
+                  "line": 76,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "kv_buffer_device",
+                  "line": 79,
+                  "annotation": "str"
+                },
+                {
+                  "name": "kv_role",
+                  "line": 83,
+                  "annotation": "KVRole | None"
+                },
+                {
+                  "name": "kv_port",
+                  "line": 88,
+                  "annotation": "int"
+                },
+                {
+                  "name": "kv_connector_extra_config",
+                  "line": 91,
+                  "annotation": "dict[str, Any]"
+                },
+                {
+                  "name": "kv_connector_module_path",
+                  "line": 94,
+                  "annotation": "str | None"
+                },
+                {
+                  "name": "enable_permute_local_kv",
+                  "line": 98,
+                  "annotation": "bool"
+                },
+                {
+                  "name": "kv_load_failure_policy",
+                  "line": 101,
+                  "annotation": "Literal['recompute', 'fail']"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repository": "sglang",
+      "path": "/Users/zkx/sglang",
+      "head": "f77064f635779601c7b20258ce45ded3fa00ac82",
+      "files": [
+        {
+          "path": "python/sglang/srt/arg_groups/fields/schedule.py",
+          "sha256": "09c3e158889a94c4a7fb9cfadc359292f749160ebda3cdb35740cd8d51fc7140",
+          "classes": [
+            {
+              "class": "Schedule",
+              "field_count": 40,
+              "fields": [
+                {
+                  "name": "mem_fraction_static",
+                  "line": 27,
+                  "annotation": "A[Optional[float], 'The fraction of the memory used for static allocation (model weights and KV cache memory pool). Use a smaller value if you see out-of-memory errors.']"
+                },
+                {
+                  "name": "max_running_requests",
+                  "line": 31,
+                  "annotation": "A[Optional[int], 'The maximum number of running requests.']"
+                },
+                {
+                  "name": "max_queued_requests",
+                  "line": 35,
+                  "annotation": "A[Optional[int], 'The maximum number of queued requests. This option is ignored when using disaggregation-mode.']"
+                },
+                {
+                  "name": "max_total_tokens",
+                  "line": 39,
+                  "annotation": "A[Optional[int], Arg(help='The maximum number of tokens in the memory pool. If not specified, it will be automatically calculated based on the memory usage fraction. This option is typically used for development and debugging purposes.' + f'\\n\\n{human_readable_int.__doc__}', type_parser=human_readable_int)]"
+                },
+                {
+                  "name": "chunked_prefill_size",
+                  "line": 52,
+                  "annotation": "A[Optional[int], 'The maximum number of tokens in a chunk for the chunked prefill. Setting this to -1 means disabling chunked prefill.']"
+                },
+                {
+                  "name": "prefill_decode_interval",
+                  "line": 56,
+                  "annotation": "A[Optional[int], Arg(help='The number of decode rounds to run after a prefill batch before scheduling the next prefill. By default, this is disabled except for profiled Qwen3-VL serving configurations on Hopper. Without data-parallel attention, the interval is skipped while no request is decoding. In data-parallel attention mode, the interval is synchronized across all DP ranks. Set to 0 to disable.', resolvable=True)]"
+                },
+                {
+                  "name": "prefill_decode_interval_min_bs",
+                  "line": 63,
+                  "annotation": "A[int, 'Apply --prefill-decode-interval only while the running batch holds at least this many requests. Below it, prefill is admitted every round so the batch fills quickly. In data-parallel attention mode, each rank compares its own running batch. Set to 0 to apply the interval at any batch size.']"
+                },
+                {
+                  "name": "enable_dynamic_chunking",
+                  "line": 67,
+                  "annotation": "A[bool, 'Enable dynamic chunk size adjustment for pipeline parallelism. When enabled, chunk sizes are dynamically calculated based on fitted function to maintain consistent execution time across chunks.']"
+                },
+                {
+                  "name": "max_prefill_tokens",
+                  "line": 71,
+                  "annotation": "A[int, Arg(help=\"The maximum number of tokens in a prefill batch. The real bound will be the maximum of this value and the model's maximum context length.\" + f'\\n\\n{human_readable_int.__doc__}', type_parser=human_readable_int)]"
+                },
+                {
+                  "name": "prefill_max_requests",
+                  "line": 82,
+                  "annotation": "A[Optional[int], 'The maximum number of requests in a prefill batch. If not specified, there is no limit.']"
+                },
+                {
+                  "name": "schedule_policy",
+                  "line": 86,
+                  "annotation": "A[str, Arg(help='The scheduling policy of the requests.', choices=['lpm', 'random', 'fcfs', 'dfs-weight', 'lof', 'priority', 'routing-key', 'hrrn', 'shortest-prefill-first'])]"
+                },
+                {
+                  "name": "enable_priority_scheduling",
+                  "line": 103,
+                  "annotation": "A[bool, 'Enable priority scheduling. Requests with higher priority integer values will be scheduled first by default.']"
+                },
+                {
+                  "name": "disable_priority_preemption",
+                  "line": 107,
+                  "annotation": "A[bool, 'Disable priority scheduling preemption.']"
+                },
+                {
+                  "name": "default_priority_value",
+                  "line": 111,
+                  "annotation": "A[Optional[int], 'Default priority for requests without explicit priority.']"
+                },
+                {
+                  "name": "abort_on_priority_when_disabled",
+                  "line": 114,
+                  "annotation": "A[bool, 'If set, abort requests that specify a priority when priority scheduling is disabled.']"
+                },
+                {
+                  "name": "schedule_low_priority_values_first",
+                  "line": 118,
+                  "annotation": "A[bool, 'If specified with --enable-priority-scheduling, the scheduler will schedule requests with lower priority integer values first.']"
+                },
+                {
+                  "name": "priority_scheduling_preemption_threshold",
+                  "line": 122,
+                  "annotation": "A[int, 'Minimum difference in priorities for an incoming request to have to preempt running request(s).']"
+                },
+                {
+                  "name": "retraction_policy",
+                  "line": 126,
+                  "annotation": "A[str, Arg(help=\"The decode retraction policy to use when the KV cache is full. 'length' preserves the existing behavior and retracts short-output, long-input requests first. 'priority' retracts lower-priority requests first, using the same priority direction as priority scheduling.\", choices=['length', 'priority'])]"
+                },
+                {
+                  "name": "schedule_conservativeness",
+                  "line": 139,
+                  "annotation": "A[float, 'How conservative the schedule policy is. A larger value means more conservative scheduling. Use a larger value if you see requests being retracted frequently.']"
+                },
+                {
+                  "name": "page_size",
+                  "line": 143,
+                  "annotation": "A[Optional[int], Arg(help='The number of tokens in a page.', resolvable=True)]"
+                },
+                {
+                  "name": "c128_page_size",
+                  "line": 146,
+                  "annotation": "A[int, 'The physical page size of the NPU DSV4 C128 KV cache. Must be a positive multiple of 16.']"
+                },
+                {
+                  "name": "swa_full_tokens_ratio",
+                  "line": 150,
+                  "annotation": "A[Optional[float], Arg(help='The ratio of SWA layer KV tokens / full layer KV tokens, regardless of the number of swa:full layers. It should be between 0 and 1. E.g. 0.5 means if each swa layer has 50 tokens, then each full layer has 100 tokens.', resolvable=True, fallback=0.8)]"
+                },
+                {
+                  "name": "swa_prefix_tails",
+                  "line": 168,
+                  "annotation": "A[Optional[int], Arg(help='When the SWA KV pool is sized from the request cap (DeepSeek-V4 family), how many radix-cached prefix tails it keeps room for. Each tail is one sliding window plus one page. Default: 4 x max_running_requests per attention-DP rank, multiplied by num_layers // draft_layers under encoder SWA bounded replay with DSpark (only draft layers are paged there); 0 when the radix cache is disabled.')]"
+                },
+                {
+                  "name": "disable_hybrid_swa_memory",
+                  "line": 182,
+                  "annotation": "A[bool, Arg(help='Disable the hybrid SWA memory pool.', resolvable=True)]"
+                },
+                {
+                  "name": "prefill_only_disable_kv_cache",
+                  "line": 185,
+                  "annotation": "A[bool, 'Skip the physical KV cache allocation for embedding-mode prefill-only workloads. Currently only valid with --is-embedding, --chunked-prefill-size=-1, --disable-radix-cache, an FA prefill backend, and non-FP4 KV cache so the fa_skip_kv_cache path is active (no layer reads or writes the cache). Other prefill-only workloads such as scoring/MIS may benefit from this later once their attention paths stop using paged KV. Scheduler admission accounting is unchanged; per-layer K/V tensors are sized to (page_size, head_num, head_dim) placeholders so GPU memory is not wasted.']"
+                },
+                {
+                  "name": "disable_chunked_prefix_cache",
+                  "line": 189,
+                  "annotation": "A[bool, 'Disable chunked prefix cache feature for deepseek, which should save overhead for short sequences.']"
+                },
+                {
+                  "name": "disable_overlap_schedule",
+                  "line": 193,
+                  "annotation": "A[bool, Arg(help='Disable the overlap scheduler, which overlaps the CPU scheduler with GPU model worker.', resolvable=True)]"
+                },
+                {
+                  "name": "num_continuous_decode_steps",
+                  "line": 200,
+                  "annotation": "A[int, 'Run multiple continuous decoding steps to reduce scheduling overhead. This can potentially increase throughput but may also increase time-to-first-token latency. The default value is 1, meaning only run one decoding step at a time.']"
+                },
+                {
+                  "name": "scheduler_recv_interval",
+                  "line": 204,
+                  "annotation": "A[int, 'The interval to poll requests in scheduler. Can be set to >1 to reduce the overhead of this.']"
+                },
+                {
+                  "name": "enable_mixed_chunk",
+                  "line": 208,
+                  "annotation": "A[bool, 'Enabling mixing prefill and decode in a batch when using chunked prefill.']"
+                },
+                {
+                  "name": "max_mamba_cache_size",
+                  "line": 216,
+                  "annotation": "A[Optional[int], 'The maximum size of the mamba cache.']"
+                },
+                {
+                  "name": "mamba_full_memory_ratio",
+                  "line": 220,
+                  "annotation": "A[Optional[float], Arg(help='The ratio of mamba state memory to full kv cache memory.', resolvable=True, fallback=0.9)]"
+                },
+                {
+                  "name": "enable_prefill_delayer",
+                  "line": 232,
+                  "annotation": "A[bool, 'Enable prefill delayer for DP attention to reduce idle time.']"
+                },
+                {
+                  "name": "prefill_delayer_max_delay_passes",
+                  "line": 235,
+                  "annotation": "A[int, 'Maximum forward passes to delay prefill.']"
+                },
+                {
+                  "name": "prefill_delayer_token_usage_low_watermark",
+                  "line": 239,
+                  "annotation": "A[Optional[float], 'Token usage low watermark for prefill delayer.']"
+                },
+                {
+                  "name": "prefill_delayer_forward_passes_buckets",
+                  "line": 242,
+                  "annotation": "A[Optional[List[float]], 'Custom buckets for prefill delayer forward passes histogram. 0 and max_delay_passes-1 will be auto-added.']"
+                },
+                {
+                  "name": "prefill_delayer_wait_seconds_buckets",
+                  "line": 246,
+                  "annotation": "A[Optional[List[float]], 'Custom buckets for prefill delayer wait seconds histogram. 0 will be auto-added.']"
+                },
+                {
+                  "name": "prefill_delayer_queue_min_ratio",
+                  "line": 250,
+                  "annotation": "A[Optional[float], 'Opt-in to the adaptive queue-based delay trigger (independent of the slot-based one). Delays prefill until the waiting queue reaches min(running_req * ratio, prefill_max_requests), falling back to the observed max_prefill_bs when no request limit is set. Unset (default) keeps the original slot-only behavior. Typical: 0.1 ~ 0.5.']"
+                },
+                {
+                  "name": "prefill_delayer_max_delay_ms",
+                  "line": 260,
+                  "annotation": "A[Optional[float], 'Wall-clock cap (ms) on a single queue-trigger delay; once exceeded, prefill is force-released to bound worst-case TTFT. Only consulted when --prefill-delayer-queue-min-ratio is set. Typical: 1000 ~ 5000; defaults to 5000 if unset.']"
+                },
+                {
+                  "name": "min_free_slots_delay",
+                  "line": 273,
+                  "annotation": "A[Optional[int], 'Hold new prefills until at least N running-request slots have freed up, so they are admitted in one batch instead of one at a time. Useful when each admission is disproportionately expensive, e.g. speculative decoding with a separate draft prefill pass. An explicit value always wins, capped by max-running-requests (1 disables). When unset, DFlash workloads auto-enable the formula; other workloads stay disabled. Not supported with pipeline parallelism.']"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/arg_groups/fields/disagg.py",
+          "sha256": "187d413619567c4d7cb19938e2d14606e0f951bb30d2d041c6019f823d8cf295",
+          "classes": [
+            {
+              "class": "Disagg",
+              "field_count": 27,
+              "fields": [
+                {
+                  "name": "decoupled_spec_bind_endpoint",
+                  "line": 28,
+                  "annotation": "A[Optional[str], 'ZMQ endpoint this engine binds for its inbound channel in decoupled speculative decoding (verifier: result PULL; drafter: control PULL).']"
+                },
+                {
+                  "name": "decoupled_spec_connect_endpoints",
+                  "line": 33,
+                  "annotation": "A[Optional[List[str]], Arg(help='Peer inbound (bind) endpoints to connect to, ordered by peer rank, for decoupled speculative decoding.', type_parser=json_list_type)]"
+                },
+                {
+                  "name": "decoupled_spec_rank",
+                  "line": 41,
+                  "annotation": "A[Optional[int], \"This engine's rank within its own role space (verifier-rank or drafter-rank) for decoupled speculative decoding.\"]"
+                },
+                {
+                  "name": "decoupled_spec_role",
+                  "line": 46,
+                  "annotation": "A[Literal['null', 'verifier', 'drafter'], \"Role in decoupled speculative decoding: 'null' disables it, 'verifier' runs the target/verify half, 'drafter' runs the draft half.\"]"
+                },
+                {
+                  "name": "disaggregation_mode",
+                  "line": 55,
+                  "annotation": "A[Literal['null', 'prefill', 'decode'], 'Only used for PD disaggregation. \"prefill\" for prefill-only server, and \"decode\" for decode-only server. If not specified, it is not PD disaggregated']"
+                },
+                {
+                  "name": "disaggregation_decode_allocation_policy",
+                  "line": 59,
+                  "annotation": "A[Literal['early', 'prefill_complete'], 'When to reserve per-request decode KV in disaggregated serving. prefill_complete retains KV on prefill until prefill finishes, then admits it on decode. Set the same policy on both roles. Default: early.']"
+                },
+                {
+                  "name": "disaggregation_transfer_backend",
+                  "line": 65,
+                  "annotation": "A[str, Arg(help='The backend for disaggregation transfer. Default is mooncake.', choices=DISAGG_TRANSFER_BACKEND_CHOICES)]"
+                },
+                {
+                  "name": "disaggregation_enable_kv_checksum",
+                  "line": 72,
+                  "annotation": "A[bool, \"Compute an Adler-32 checksum over each request's KV pages on prefill and verify it on decode. Enable on both prefill and decode engines. A mismatch aborts the request, or raises in CI. With a decode-side radix cache the digest covers only the pages prefill sends. A prefill whose KV layout differs (TP width, PP stage, page size, dtype) is admitted unverified with one warning. Disabled by default.\"]"
+                },
+                {
+                  "name": "disaggregation_bootstrap_port",
+                  "line": 81,
+                  "annotation": "A[int, 'Bootstrap server port on the prefill server. Default is 8998.']"
+                },
+                {
+                  "name": "disaggregation_ib_device",
+                  "line": 84,
+                  "annotation": "A[Optional[str], 'The InfiniBand devices for disaggregation transfer. Supports a single device (e.g., --disaggregation-ib-device mlx5_0), a shared comma-separated list (e.g., --disaggregation-ib-device mlx5_0,mlx5_1), a per-GPU JSON mapping (e.g., --disaggregation-ib-device \\'{\"0\": \"mlx5_0,mlx5_1\", \"1\": \"mlx5_2\"}\\'), or a path to a JSON file containing that mapping. Supported by Mooncake and NIXL UCX. Mapping keys are process-visible GPU IDs (after CUDA_VISIBLE_DEVICES); use HCA names without port suffixes for NIXL UCX. For NIXL UCX, a non-empty UCX_NET_DEVICES takes precedence over this option, including per-GPU mappings. Default is None, which preserves backend device selection.']"
+                },
+                {
+                  "name": "disaggregation_decode_enable_radix_cache",
+                  "line": 88,
+                  "annotation": "A[bool, 'Enable radix cache on decode server (PD mode). Caches KV prefixes to avoid redundant transfers. Incompatible with --enable-hisparse, --disaggregation-transfer-backend fake, and speculative algorithms other than EAGLE, EAGLE3, and DSPARK.']"
+                },
+                {
+                  "name": "disaggregation_decode_enable_offload_kvcache",
+                  "line": 92,
+                  "annotation": "A[bool, 'Enable async KV cache offloading on decode server (PD mode).']"
+                },
+                {
+                  "name": "disaggregation_decode_retraction_backup",
+                  "line": 95,
+                  "annotation": "A[Optional[str], Arg(help=\"Storage backend for KV preserved across PD decode retraction. 'cpu_tensor' uses per-request CPU tensors. 'host_pool' uses a reserved HiCache pool and does not fall back on exhaustion. 'none' keeps no backup: a retracted request is aborted with 503 for the client to retry. If omitted, the backend is inferred from the decode KV pool.\", choices=['cpu_tensor', 'host_pool', 'none'])]"
+                },
+                {
+                  "name": "num_reserved_decode_tokens",
+                  "line": 109,
+                  "annotation": "A[int, 'Number of decode tokens that will have memory reserved when adding new request to the running batch.']"
+                },
+                {
+                  "name": "disaggregation_decode_extra_slots",
+                  "line": 113,
+                  "annotation": "A[Optional[int], 'Number of extra decode req_to_token slots pre-allocated for in-transfer requests (PD mode). If unset, defaults to 0 (or 2x the per-worker running batch for small batches).']"
+                },
+                {
+                  "name": "disaggregation_decode_polling_interval",
+                  "line": 117,
+                  "annotation": "A[int, 'The interval to poll requests in decode server. Can be set to >1 to reduce the overhead of this.']"
+                },
+                {
+                  "name": "enable_pd_role_switch",
+                  "line": 121,
+                  "annotation": "A[bool, 'Allow runtime prefill<->decode role switch via /pd_role_switch (PD mode).']"
+                },
+                {
+                  "name": "optimistic_prefill_attempts",
+                  "line": 125,
+                  "annotation": "A[int, 'Number of optimistic prefill forward passes that skip the bootstrap wait.']"
+                },
+                {
+                  "name": "encoder_only",
+                  "line": 132,
+                  "annotation": "A[bool, 'For MLLM with an encoder, launch an encoder-only server']"
+                },
+                {
+                  "name": "language_only",
+                  "line": 136,
+                  "annotation": "A[bool, 'For VLM, load weights for the language model only.']"
+                },
+                {
+                  "name": "language_model_only",
+                  "line": 140,
+                  "annotation": "A[bool, 'Skip the multimodal encoder entirely: its weights are never loaded and the tower is never built, freeing that GPU memory for KV cache. Multimodal requests are rejected. Unlike --language-only this is a standalone mode, not part of encoder/decoder disaggregation.']"
+                },
+                {
+                  "name": "encoder_transfer_backend",
+                  "line": 147,
+                  "annotation": "A[str, Arg(help='The backend for encoder disaggregation transfer. Auto selects a model- and TP-aware backend.', choices=['auto', 'zmq_to_scheduler', 'zmq_to_tokenizer', 'mooncake'])]"
+                },
+                {
+                  "name": "encoder_urls",
+                  "line": 154,
+                  "annotation": "A[List[str], 'List of encoder server urls.']"
+                },
+                {
+                  "name": "encoder_bootstrap_port",
+                  "line": 157,
+                  "annotation": "A[int, 'Port for the EncoderBootstrapServer that runs in the language-only tokenizer manager process. Encoders register here, and language-only receivers fetch the current URL list from here.']"
+                },
+                {
+                  "name": "encoder_register_urls",
+                  "line": 161,
+                  "annotation": "A[List[str], 'One or more EncoderBootstrapServer URLs to register this encoder with on startup, for dynamic encoder discovery. Example: --encoder-register-urls http://prefill0:8997 http://prefill1:8997. Used with --encoder-only servers.']"
+                },
+                {
+                  "name": "enable_adaptive_dispatch_to_encoder",
+                  "line": 165,
+                  "annotation": "A[bool, 'When enabled, adaptively dispatch: multi-image requests go to encoder in language_only epd mode, single-image requests are processed locally.']"
+                },
+                {
+                  "name": "disaggregation_decode_host_receive_threshold",
+                  "line": 170,
+                  "annotation": "A[float, 'Device token usage fraction at which incoming KV is received in the decode retraction host pool, excluding evictable cache pages. Range [0, 1]; 1 disables host receive (default), 0 always uses host receive. Size with --hicache-size or --hicache-ratio; requires dense NHD MHA buffers (including separate paged SWA pools) and a transfer backend that supports host destinations. No built-in backend currently supports this.']"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

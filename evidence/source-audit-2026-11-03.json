@@ -1,0 +1,1001 @@
+{
+  "checked_at_utc": "2026-11-03T07:48:35.734367+00:00",
+  "scope": "Read-only re-audit of scheduler/KV/kernel control evidence and PD/RDMA configuration at user-provided local checkout HEADs. No framework modification, imports, GPU/RDMA experiments, or live-setter validation.",
+  "method": "Read immutable Git object bytes with git show at each inspected HEAD; recompute hashes, locate anchors, and inspect relevant consumer/diff context. Local HEADs are the version boundary, not a claim of remote freshness.",
+  "supersedes_for_current_proposal": [
+    "evidence/source-audit-2026-11-01.json",
+    "evidence/pd-rdma-source-audit-2026-11-03.json"
+  ],
+  "repositories": [
+    {
+      "name": "vllm",
+      "local_path": "/Users/zkx/vllm",
+      "head": "45d0ac9ee197576aefd4e3f67ad98857b6c52697",
+      "working_tree_clean": true,
+      "previous_audited_commit": "3897f95cf17619137536d2a7d325d9c2f39dc38f",
+      "files": [
+        {
+          "path": "vllm/config/scheduler.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/config/scheduler.py",
+          "sha256": "61485c7a1ef1c7c65339767f4b223f55de76d2ca152eb19df915c88f526be9de",
+          "git_blob_sha1": "5ad38c0a46f0446c9f4b43a7452eaa64483a33da",
+          "bytes": 16301,
+          "observations": [
+            {
+              "anchor": "max_num_scheduled_tokens:",
+              "interpretation": "Separate scheduling budget from runner capacity; online setter proposed, not native API.",
+              "classification": "native_source_recheck",
+              "line": 55,
+              "matching_line_count": 1,
+              "excerpt_end_line": 62,
+              "excerpt": "    max_num_scheduled_tokens: int | None = Field(default=None, ge=1)\n    \"\"\"Maximum number of tokens that the scheduler may issue in a single iteration.\n    \n    This is usually equal to max_num_batched_tokens, but can be smaller in cases\n    when the model might append tokens into the batch (such as speculative decoding).\n    Defaults to max_num_batched_tokens.\"\"\"\n\n    max_num_seqs: int = Field(default=DEFAULT_MAX_NUM_SEQS, ge=1)",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/config/scheduler.py#L55"
+            },
+            {
+              "anchor": "max_num_active_seqs:",
+              "interpretation": "Native soft admission cap; separate from physical max_num_seqs.",
+              "classification": "native_source_recheck",
+              "line": 69,
+              "matching_line_count": 1,
+              "excerpt_end_line": 76,
+              "excerpt": "    max_num_active_seqs: int | None = Field(default=None, ge=1)\n    \"\"\"Maximum number of requests the scheduler admits into RUNNING.\n\n    ``max_num_seqs`` sizes the model runner (per-request buffers and CUDA\n    graph capture) and is also the default admission limit. Setting this\n    lowers only the number of requests that may occupy RUNNING, so decode\n    batches stay smaller without shrinking runner or graph capacity. Must\n    be ``<= max_num_seqs``. ``None`` (default) keeps current behavior.",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/config/scheduler.py#L69"
+            },
+            {
+              "anchor": "long_prefill_token_threshold:",
+              "interpretation": "Keep zero/sole-request/adaptive semantics when proposing a live setter.",
+              "classification": "native_source_recheck",
+              "line": 79,
+              "matching_line_count": 1,
+              "excerpt_end_line": 86,
+              "excerpt": "    long_prefill_token_threshold: int = Field(default=0, ge=0)\n    \"\"\"For chunked prefill, a request is considered long if the prompt is\n    longer than this number of tokens. 0 disables the cap (default).\n\n    The cap is not applied when the request is the only one in the batch,\n    since there is no other request for it to starve.\"\"\"\n\n    long_prefill_token_threshold_adaptive: bool = Field(default=False)",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/config/scheduler.py#L79"
+            },
+            {
+              "anchor": "scheduler_reserve_full_isl:",
+              "interpretation": "Full input fit at admission; not maximum-output reservation.",
+              "classification": "native_source_recheck",
+              "line": 190,
+              "matching_line_count": 1,
+              "excerpt_end_line": 197,
+              "excerpt": "    scheduler_reserve_full_isl: bool = True\n    \"\"\"If True, the scheduler checks whether the full input sequence length\n    fits in the KV cache before admitting a new request, rather than only\n    checking the first chunk. Prevents over-admission and KV cache thrashing\n    with chunked prefill.\"\"\"\n\n    watermark: float = Field(default=0.0, ge=0.0, lt=1.0)\n    \"\"\"Fraction of total KV cache blocks to keep free (the watermark) when",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/config/scheduler.py#L190"
+            },
+            {
+              "anchor": "prefill_schedule_interval:",
+              "interpretation": "Native cadence; live update must handle cached state and DP constraints.",
+              "classification": "native_source_recheck",
+              "line": 203,
+              "matching_line_count": 1,
+              "excerpt_end_line": 210,
+              "excerpt": "    prefill_schedule_interval: int = Field(default=1, ge=1)\n    \"\"\"Only admit prefill once every N engine steps, leaving the steps in\n    between to decode alone. 1 (the default) admits prefill on every step.\n\n    A deferred step carries no prefill at all, including chunks of an\n    already-admitted prompt, so a long prompt can take up to N times as many\n    steps to finish prefilling.\"\"\"\n",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/config/scheduler.py#L203"
+            }
+          ]
+        },
+        {
+          "path": "vllm/v1/core/sched/scheduler.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/core/sched/scheduler.py",
+          "sha256": "36451632d7184410e319cfac0f39cfd0bd8be7db834deaacb7eb3a45dc366cf8",
+          "git_blob_sha1": "b6deee421fa13c44ec9da6c96258d0cc27561d36",
+          "bytes": 180393,
+          "observations": [
+            {
+              "anchor": "token_budget = self.max_num_scheduled_tokens",
+              "interpretation": "Budget consumer; bounds alone do not establish request fairness/progress.",
+              "classification": "native_source_recheck",
+              "line": 718,
+              "matching_line_count": 1,
+              "excerpt_end_line": 725,
+              "excerpt": "        token_budget = self.max_num_scheduled_tokens\n        spec = self.vllm_config.speculative_config\n        draft_slots = spec.max_num_new_slots_for_drafting if spec is not None else 0\n        input_budget = self.scheduler_config.max_num_batched_tokens\n        if self._pause_state == PauseState.PAUSED_ALL:\n            # Do not schedule any requests when paused.\n            token_budget = 0\n",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/core/sched/scheduler.py#L718"
+            },
+            {
+              "anchor": "num_running >= self.max_num_active_reqs",
+              "interpretation": "Admission cap consumer; lower cap need not immediately drain RUNNING.",
+              "classification": "native_source_recheck",
+              "line": 1072,
+              "matching_line_count": 1,
+              "excerpt_end_line": 1079,
+              "excerpt": "                if num_running >= self.max_num_active_reqs:\n                    break\n\n                request = request_queue.peek_request()\n                request_id = request.request_id\n\n                ready_to_schedule = self._handle_blocked_waiting_request(request)\n                if not ready_to_schedule:",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/core/sched/scheduler.py#L1072"
+            },
+            {
+              "anchor": "long_prefill_token_threshold_adaptive",
+              "interpretation": "Adaptive state is cached; changing original config alone is insufficient.",
+              "classification": "native_source_recheck",
+              "line": 144,
+              "matching_line_count": 1,
+              "excerpt_end_line": 151,
+              "excerpt": "            self.scheduler_config.long_prefill_token_threshold_adaptive\n        )\n        self.max_model_len = vllm_config.model_config.max_model_len\n        self.enable_kv_cache_events = (\n            self.kv_events_config is not None\n            and self.kv_events_config.enable_kv_cache_events\n        )\n        # Pooling and diffusion models do not append a sampled token after",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/core/sched/scheduler.py#L144"
+            },
+            {
+              "anchor": "self.defer_async_loads = (",
+              "interpretation": "The current scheduler conditionally defers asynchronous external KV loads for the HiSparse host-pool path with in-flight work; proposed PD updates must preserve these existing guards.",
+              "classification": "native_source_recheck",
+              "line": 197,
+              "matching_line_count": 1,
+              "excerpt_end_line": 201,
+              "excerpt": "            self.defer_async_loads = (\n                self.defer_block_free\n                and kv_cache_config.hisparse_host_num_blocks is not None\n            )\n",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/core/sched/scheduler.py#L197"
+            }
+          ]
+        },
+        {
+          "path": "vllm/v1/core/kv_cache_manager.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/core/kv_cache_manager.py",
+          "sha256": "62c24c6c5143c7b1dcd7831180dcd1e0285d258e7ddf4d6c67e071f0a9077d05",
+          "git_blob_sha1": "fd0781de14aafadc325f755166d6c52e1c4a9f28",
+          "bytes": 40342,
+          "observations": [
+            {
+              "anchor": "self.watermark_blocks =",
+              "interpretation": "Initialization-derived count; proposed live update must recompute.",
+              "classification": "native_source_recheck",
+              "line": 210,
+              "matching_line_count": 1,
+              "excerpt_end_line": 217,
+              "excerpt": "        self.watermark_blocks = int(watermark * kv_cache_config.num_blocks)\n        self.kv_cache_event_metadata = tuple(\n            (\n                get_kv_cache_spec_kind(group.kv_cache_spec).value,\n                get_kv_cache_spec_sliding_window(group.kv_cache_spec),\n            )\n            for group in kv_cache_config.kv_cache_groups\n        )",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/core/kv_cache_manager.py#L210"
+            },
+            {
+              "anchor": "if has_scheduled_reqs and request.status in (",
+              "interpretation": "Watermark applies to waiting/preempted admissions while other work exists.",
+              "classification": "native_source_recheck",
+              "line": 520,
+              "matching_line_count": 1,
+              "excerpt_end_line": 527,
+              "excerpt": "        if has_scheduled_reqs and request.status in (\n            RequestStatus.WAITING,\n            RequestStatus.PREEMPTED,\n        ):\n            watermark_blocks = self.watermark_blocks\n\n        # Matches the scheduler's own prefill boundary: `num_tokens - 1`\n        # extends it to resumed requests replaying their output tokens.",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/core/kv_cache_manager.py#L520"
+            }
+          ]
+        },
+        {
+          "path": "vllm/v1/engine/core.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/engine/core.py",
+          "sha256": "f880bdeea2cafe970d0b40a4fd512c0e49a780eb2067487ac5abcf5d7c1cf207",
+          "git_blob_sha1": "028f2b7b4436e0fb18126371634caa5a933bbae3",
+          "bytes": 128563,
+          "observations": [
+            {
+              "anchor": "request_type == EngineCoreRequestType.UTILITY",
+              "interpretation": "Existing utility transport can carry a new typed policy method.",
+              "classification": "native_source_recheck",
+              "line": 1887,
+              "matching_line_count": 2,
+              "excerpt_end_line": 1894,
+              "excerpt": "        elif request_type == EngineCoreRequestType.UTILITY:\n            client_idx, call_id, method_name, args = request\n            if self._reject_utility_in_shutdown(client_idx, call_id, method_name):\n                return\n            output = UtilityOutput(call_id)\n            # Lazily look-up utility method so that failure will be handled/returned.\n            get_result = lambda: (\n                (method := getattr(self, method_name))",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/engine/core.py#L1887"
+            }
+          ]
+        },
+        {
+          "path": "vllm/v1/engine/core_client.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/engine/core_client.py",
+          "sha256": "99940b984963fb391c338a3abe79a41b9db8b6d73dd5e63d9d4e3883b0d2c8f0",
+          "git_blob_sha1": "b56deccaa9497cab687e15a0db32b1eec476377f",
+          "bytes": 91365,
+          "observations": [
+            {
+              "anchor": "def call_utility(self,",
+              "interpretation": "Existing utility caller; no new transport required for first version.",
+              "classification": "native_source_recheck",
+              "line": 1063,
+              "matching_line_count": 1,
+              "excerpt_end_line": 1070,
+              "excerpt": "    def call_utility(self, method: str, *args) -> Any:\n        call_id = uuid.uuid1().int >> 64\n        future: Future[Any] = Future()\n        self.utility_results[call_id] = future\n        self._send_input(EngineCoreRequestType.UTILITY, (0, call_id, method, args))\n\n        return future.result()\n",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/engine/core_client.py#L1063"
+            }
+          ]
+        },
+        {
+          "path": "vllm/v1/worker/gpu_model_runner.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/worker/gpu_model_runner.py",
+          "sha256": "9403f45bc51b1f1be8a6ef9d161a682e5fba2367b9bb75a7f4c7f5a3a03da48f",
+          "git_blob_sha1": "0ac6d49be316dc8ba8362bbf5103f637d25960fd",
+          "bytes": 318489,
+          "observations": [
+            {
+              "anchor": "self.max_num_reqs =",
+              "interpretation": "Physical request capacity is prepared separately from admission policy.",
+              "classification": "native_source_recheck",
+              "line": 525,
+              "matching_line_count": 1,
+              "excerpt_end_line": 532,
+              "excerpt": "        self.max_num_reqs = scheduler_config.max_num_seqs\n\n        # Broadcast PP output for external_launcher (torchrun)\n        # to make sure we are synced across pp ranks\n        # TODO: Support overlapping micro-batches\n        # https://github.com/vllm-project/vllm/issues/18019\n        self.broadcast_pp_output = (\n            self.parallel_config.distributed_executor_backend == \"external_launcher\"",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/worker/gpu_model_runner.py#L525"
+            }
+          ]
+        },
+        {
+          "path": "vllm/v1/attention/backends/composite.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/attention/backends/composite.py",
+          "sha256": "9de6fa8f882442cfd51bc5cea46046630cb826a79af88914eed0909de66337f9",
+          "git_blob_sha1": "f77e5e6d95615113528cd2309df222f7374b1ab1",
+          "bytes": 19192,
+          "observations": [
+            {
+              "anchor": "class MMPrefixAttentionRouting",
+              "interpretation": "Native image-mask/causal routing; not a performance tuning policy.",
+              "classification": "native_source_recheck",
+              "line": 87,
+              "matching_line_count": 1,
+              "excerpt_end_line": 94,
+              "excerpt": "class MMPrefixAttentionRouting(CompositeAttentionRouting):\n    \"\"\"Route image masks to variant zero and causal queries to variant one.\"\"\"\n\n    def __init__(self, layer_names: list[str], vllm_config: VllmConfig) -> None:\n        layers = vllm_config.compilation_config.static_forward_context\n        self.unclamped_window = _has_unclamped_window(\n            layers[name] for name in layer_names\n        )",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/attention/backends/composite.py#L87"
+            },
+            {
+              "anchor": "capture_variant: ClassVar[int]",
+              "interpretation": "Graph replay must select capture child; arbitrary backend switching not established.",
+              "classification": "native_source_recheck",
+              "line": 65,
+              "matching_line_count": 2,
+              "excerpt_end_line": 72,
+              "excerpt": "    capture_variant: ClassVar[int]\n    \"\"\"Child used during graph capture; replay must select the same child.\"\"\"\n\n    def __init__(self, layer_names: list[str], vllm_config: VllmConfig) -> None: ...\n\n    def select(self, metadata: CommonAttentionMetadata) -> int:\n        \"\"\"Return 0 for the first child or 1 for the second child.\"\"\"\n        ...",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/attention/backends/composite.py#L65"
+            }
+          ]
+        },
+        {
+          "path": "vllm/v1/attention/backends/triton_flashinfer.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/attention/backends/triton_flashinfer.py",
+          "sha256": "48d5f967e388d4e8d6bbec8d827b44d855346bc2fada28adf65768bf6623527b",
+          "git_blob_sha1": "07912275913e46df731f171911a7965df90b57df",
+          "bytes": 774,
+          "observations": [
+            {
+              "anchor": "create_composite_attention_backend(",
+              "interpretation": "Concrete constrained composite; compatibility is not universal.",
+              "classification": "native_source_recheck",
+              "line": 12,
+              "matching_line_count": 1,
+              "excerpt_end_line": 19,
+              "excerpt": "TritonFlashInferBackend = create_composite_attention_backend(\n    TritonAttentionBackend,\n    FlashInferBackend,\n    name=\"TritonFlashInferBackend\",\n    backend_name=\"TRITON_FLASHINFER\",\n    module=__name__,\n    routing_policy=MMPrefixAttentionRouting,\n    head_sizes=(256, 512),",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/v1/attention/backends/triton_flashinfer.py#L12"
+            }
+          ]
+        },
+        {
+          "path": "vllm/config/kv_transfer.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/config/kv_transfer.py",
+          "sha256": "08d1725998b2913cea46f1b45cad887ada63b55e29d55fb899713a2a4006c029",
+          "git_blob_sha1": "7b32d88de9f20cac9bef01edda9172be9f65d1fd",
+          "bytes": 7738,
+          "observations": [
+            {
+              "anchor": "class KVTransferConfig:",
+              "interpretation": "Native connector/role/buffer/layout/failure configuration is distinct from a supported live update API.",
+              "classification": "native_source_recheck",
+              "line": 69,
+              "matching_line_count": 1,
+              "excerpt_end_line": 103,
+              "excerpt": "class KVTransferConfig:\n    \"\"\"Configuration for distributed KV cache transfer.\"\"\"\n\n    kv_connector: str | None = None\n    \"\"\"The KV connector for vLLM to transmit KV caches between vLLM instances.\n    \"\"\"\n\n    engine_id: str | None = None\n    \"\"\"The engine id for KV transfers.\"\"\"\n\n    kv_buffer_device: str = field(default_factory=kv_buffer_device_default_factory)\n    \"\"\"The device used by kv connector to buffer the KV cache. Choices are\n    'cuda', 'cpu' and 'xpu'.\"\"\"\n\n    kv_role: KVRole | None = None\n    \"\"\"Whether this vLLM instance produces, consumes KV cache, or both. Choices\n    are 'kv_producer', 'kv_consumer', and 'kv_both'. With MultiConnector, the\n    roles of its connectors decide this instead.\"\"\"\n\n    kv_port: int = 14579\n    \"\"\"The KV connector port, used to build distributed connection.\"\"\"\n\n    kv_connector_extra_config: dict[str, Any] = field(default_factory=dict)\n    \"\"\"any extra config that the connector may need.\"\"\"\n\n    kv_connector_module_path: str | None = None\n    \"\"\"The Python module path to dynamically load the KV connector from.\n    Only supported in V1.\"\"\"\n\n    enable_permute_local_kv: bool = False\n    \"\"\"Experiment feature flag to enable HND to NHD KV Transfer\"\"\"\n\n    kv_load_failure_policy: Literal[\"recompute\", \"fail\"] = \"fail\"\n    \"\"\"Policy for handling KV cache load failures.\n    'recompute': reschedule the request to recompute failed blocks",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/config/kv_transfer.py#L69"
+            }
+          ]
+        },
+        {
+          "path": "vllm/distributed/kv_transfer/kv_connector/v1/nixl/base_worker.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/distributed/kv_transfer/kv_connector/v1/nixl/base_worker.py",
+          "sha256": "ac94532686d3a738781c0ed4c3eb312e5690e3b3fdc804ce15471bbb39de6d2f",
+          "git_blob_sha1": "b90f53f4604a716438bfe0cf31c4d4b7467a6b37",
+          "bytes": 191146,
+          "observations": [
+            {
+              "anchor": "self.nixl_backends =",
+              "interpretation": "Transport backends, lease-derived state, and bidirectional mode are initialized on the worker.",
+              "classification": "native_source_recheck",
+              "line": 682,
+              "matching_line_count": 1,
+              "excerpt_end_line": 698,
+              "excerpt": "        self.nixl_backends = vllm_config.kv_transfer_config.get_from_extra_config(\n            \"backends\", [\"UCX\"]\n        )\n        kv_lease_duration: int = vllm_config.kv_transfer_config.get_from_extra_config(\n            \"kv_lease_duration\", 30\n        )\n        # NOTE (NickLucche): For now we use a hardcoded value for a simpler interface.\n        self._lease_extension = kv_lease_duration * 2 // 3\n\n        self._bidirectional_kv_xfer_enabled: bool = (\n            vllm_config.kv_transfer_config.get_from_extra_config(\n                \"bidirectional_kv_xfer\", False\n            )\n        )\n\n        self.kv_cache_config = kv_cache_config\n        transfer_block_sizes = [",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/distributed/kv_transfer/kv_connector/v1/nixl/base_worker.py#L682"
+            },
+            {
+              "anchor": "num_threads = vllm_config.kv_transfer_config.get_from_extra_config(",
+              "interpretation": "NIXL thread count and UCX backend parameters feed agent/backend construction. They are deployment controls, not established hot setters.",
+              "classification": "native_source_recheck",
+              "line": 788,
+              "matching_line_count": 1,
+              "excerpt_end_line": 830,
+              "excerpt": "        num_threads = vllm_config.kv_transfer_config.get_from_extra_config(\n            \"num_threads\", 4\n        )\n        if nixl_agent_config is None:\n            config = None\n        else:\n            # Enable telemetry by default for NIXL 0.7.1 and above.\n            config = (\n                nixl_agent_config(backends=self.nixl_backends, capture_telemetry=True)\n                if len(non_ucx_backends) > 0\n                else nixl_agent_config(num_threads=num_threads, capture_telemetry=True)\n            )\n\n        # Extra UCX backend init params, e.g. {\"ucx_error_handling_mode\": \"none\"}.\n        params = self.kv_transfer_config.get_from_extra_config(\"ucx_backend_params\", {})\n        ucx_backend_params = {k: str(v) for k, v in params.items()}\n        sleep_mode = vllm_config.model_config.enable_sleep_mode and config is not None\n        # With UCX params, create every backend here, in the configured order.\n        explicit_backends = (config is not None and not sleep_mode) and (\n            bool(ucx_backend_params) and \"UCX\" in self.nixl_backends\n        )\n        if sleep_mode or explicit_backends:\n            config = nixl_agent_config(backends=[], capture_telemetry=True)\n        self.nixl_wrapper = nixl_wrapper_cls(str(uuid.uuid4()), config)\n        if sleep_mode:\n            # Keep slept pages unpinned, for this agent only; UCX_* env vars win.\n            self.nixl_wrapper.create_backend(\n                \"UCX\",\n                {\n                    \"num_threads\": str(num_threads),\n                    \"engine_config\": \"RCACHE_ENABLE=n,TLS=^cuda_ipc\",\n                    **ucx_backend_params,\n                },\n            )\n        elif explicit_backends:\n            for backend in self.nixl_backends:\n                nixl_params: dict[str, str] = {}\n                if backend == \"UCX\":\n                    if not non_ucx_backends:\n                        nixl_params[\"num_threads\"] = str(num_threads)\n                    nixl_params.update(ucx_backend_params)\n                self.nixl_wrapper.create_backend(backend, nixl_params)\n        # Map of engine_id -> {(pp_rank, tp_rank): agent_name, ...}.",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/distributed/kv_transfer/kv_connector/v1/nixl/base_worker.py#L788"
+            }
+          ]
+        },
+        {
+          "path": "vllm/distributed/kv_transfer/kv_connector/v1/nixl/base_scheduler.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/distributed/kv_transfer/kv_connector/v1/nixl/base_scheduler.py",
+          "sha256": "41b58cb4f846ca4bf408507a033f1d05b54da8167d0ce62fc024dd2fa156bdd8",
+          "git_blob_sha1": "1a78fbb4536f1e39417a31f969ddb62b84a1eae8",
+          "bytes": 23614,
+          "observations": [
+            {
+              "anchor": "self._kv_lease_duration: int =",
+              "interpretation": "Lease duration is cached and used to derive heartbeat cadence; live lease changes would need coordinated scheduler/worker state updates.",
+              "classification": "native_source_recheck",
+              "line": 82,
+              "matching_line_count": 1,
+              "excerpt_end_line": 94,
+              "excerpt": "        self._kv_lease_duration: int = (\n            vllm_config.kv_transfer_config.get_from_extra_config(\n                \"kv_lease_duration\", 30\n            )\n        )\n        # NOTE (NickLucche): For now we use a hardcoded value for a simpler interface.\n        self._heartbeat_interval = self._kv_lease_duration // 6\n        if current_platform.device_type == \"cpu\":\n            self.use_host_buffer = False\n        else:\n            self.use_host_buffer = (\n                vllm_config.kv_transfer_config.kv_buffer_device == \"cpu\"\n            )",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/distributed/kv_transfer/kv_connector/v1/nixl/base_scheduler.py#L82"
+            },
+            {
+              "anchor": "self.kv_recompute_threshold: int =",
+              "interpretation": "The remote-pull threshold, bidirectional mode and decode TTL are cached in the scheduler at construction.",
+              "classification": "native_source_recheck",
+              "line": 168,
+              "matching_line_count": 1,
+              "excerpt_end_line": 186,
+              "excerpt": "        self.kv_recompute_threshold: int = int(\n            vllm_config.kv_transfer_config.get_from_extra_config(\n                \"kv_recompute_threshold\", 64\n            )\n        )\n\n        # Bi-directional KV transfer feature supports KV block\n        # transfers from D node to P node\n        self.is_bidirectional_kv_xfer_enabled = (\n            vllm_config.kv_transfer_config.get_from_extra_config(\n                \"bidirectional_kv_xfer\", False\n            )\n        )\n        self.decoder_kv_blocks_ttl = (\n            vllm_config.kv_transfer_config.get_from_extra_config(\n                \"decoder_kv_blocks_ttl\", 480\n            )\n        )\n",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/distributed/kv_transfer/kv_connector/v1/nixl/base_scheduler.py#L168"
+            }
+          ]
+        },
+        {
+          "path": "vllm/distributed/kv_transfer/kv_connector/v1/nixl/pull_scheduler.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/distributed/kv_transfer/kv_connector/v1/nixl/pull_scheduler.py",
+          "sha256": "4c8df5c9342850b892bbdb4d34e51c54e544143b7bd4d62eec00451388c9ebba",
+          "git_blob_sha1": "f59e319472f320193b903fb7a8bb7f95191e8a59",
+          "bytes": 12379,
+          "observations": [
+            {
+              "anchor": "# Check kv_recompute_threshold:",
+              "interpretation": "For reuse of remote decode KV, small remote token counts can choose local recomputation rather than a D-to-P pull.",
+              "classification": "native_source_recheck",
+              "line": 90,
+              "matching_line_count": 1,
+              "excerpt_end_line": 105,
+              "excerpt": "                # Check kv_recompute_threshold: skip pull if\n                # remote tokens are below the threshold.\n                if (\n                    self.kv_recompute_threshold > 0\n                    and count < self.kv_recompute_threshold\n                ):\n                    logger.debug(\n                        \"Skipping remote pull for %s: %d remote tokens < threshold %d\",\n                        request.request_id,\n                        count,\n                        self.kv_recompute_threshold,\n                    )\n                    return 0, False\n                return count, True\n\n        # No remote prefill for this request.",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/distributed/kv_transfer/kv_connector/v1/nixl/pull_scheduler.py#L90"
+            },
+            {
+              "anchor": "request_kv_blocks_ttl = self._kv_lease_duration",
+              "interpretation": "Finished requests establish expiry deadlines from the current P lease or D TTL. Updating a TTL field alone would not rewrite already-issued deadlines.",
+              "classification": "native_source_recheck",
+              "line": 253,
+              "matching_line_count": 1,
+              "excerpt_end_line": 271,
+              "excerpt": "            request_kv_blocks_ttl = self._kv_lease_duration\n            if is_d_node:\n                # For blocks pinned on D, use a simpler timeout for now instead of a\n                # lease mechanism as turn2 request is client-driven.\n                request_kv_blocks_ttl = self.decoder_kv_blocks_ttl\n            logger.debug(\n                \"NIXLConnector request_finished(%s) waiting for %d seconds \"\n                \"before releasing blocks\",\n                request.request_id,\n                request_kv_blocks_ttl,\n            )\n            self._reqs_need_send[request.request_id] = (\n                time.perf_counter() + request_kv_blocks_ttl\n            )\n            if is_d_node:\n                # D blocks expiry time exported for the turn-2 readback.\n                blocks_expiry_time = self._reqs_need_send[request.request_id]\n            # NOTE HMA will \"mark\" empty/null blocks in groups with 0s (eg SWA ones),\n            # trimming down after allocating for the whole sequence length. Empty",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/vllm/distributed/kv_transfer/kv_connector/v1/nixl/pull_scheduler.py#L253"
+            }
+          ]
+        },
+        {
+          "path": "docs/features/nixl_connector_usage.md",
+          "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/docs/features/nixl_connector_usage.md",
+          "sha256": "de4f9f3edb3402981cea9966d2cad4807588527b365756d6d6510adeaafb4e9a",
+          "git_blob_sha1": "00f5860af4c2bbf219cc77a91f4bf6e9636f1f5e",
+          "bytes": 24933,
+          "observations": [
+            {
+              "anchor": "NixlConnector uses NIXL library",
+              "interpretation": "UCX transport/device variables, connector backends and UCX init params configure this transport; NCCL device variables do not select the NIXL UCX transport.",
+              "classification": "native_source_recheck",
+              "line": 26,
+              "matching_line_count": 1,
+              "excerpt_end_line": 70,
+              "excerpt": "NixlConnector uses NIXL library for underlying communication, which supports multiple transport backends. UCX (Unified Communication X) is the primary default transport library used by NIXL. Configure transport environment variables:\n\n```bash\n# Example UCX configuration, adjust according to your environment\nexport UCX_TLS=all  # or specify specific transports like \"rc,ud,sm,^cuda_ipc\" ..etc\nexport UCX_NET_DEVICES=all  # or specify network devices like \"mlx5_0:1,mlx5_1:1\"\n```\n\n!!! tip\n    When using UCX as the transport backend, NCCL environment variables (like `NCCL_IB_HCA`, `NCCL_SOCKET_IFNAME`) are not applicable to NixlConnector, so configure UCX-specific environment variables instead of NCCL variables.\n\n#### Selecting a NIXL transport backend (plugin)\n\nNixlConnector can use different NIXL transport backends (plugins). By default, NixlConnector uses UCX as the transport backend.\n\nTo select a different backend, set `kv_connector_extra_config.backends` in `--kv-transfer-config`.\n\n### Example: using LIBFABRIC backend\n\n```bash\nvllm serve <MODEL> \\\n  --kv-transfer-config '{\n    \"kv_connector\":\"NixlConnector\",\n    \"kv_role\":\"kv_producer\",\n    \"kv_connector_extra_config\":{\"backends\":[\"LIBFABRIC\"]}\n  }'\n```\n\nYou can also pass JSON keys individually using dotted arguments, and you can append list elements using `+`:\n\n```bash\nvllm serve <MODEL> \\\n  --kv-transfer-config.kv_connector NixlConnector \\\n  --kv-transfer-config.kv_role kv_producer \\\n  --kv-transfer-config.kv_connector_extra_config.backends+ LIBFABRIC\n```\n\n!!! note\n    Backend availability depends on how NIXL was built and what plugins are present in your environment. Refer to the [NIXL repository](https://github.com/ai-dynamo/nixl) for available backends and build instructions.\n\n#### UCX backend parameters\n\n`kv_connector_extra_config.ucx_backend_params` passes extra init parameters to NIXL's UCX backend. Values are strings. For example, NIXL creates UCX with `ucx_error_handling_mode=peer` by default; UCX then uses only transports that can detect peer failure, which can exclude intra-node GPU transports such as `rocm_ipc`. To trade that error handling for those transports:\n\n```bash",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/docs/features/nixl_connector_usage.md#L26"
+            },
+            {
+              "anchor": "Enable bidirectional KV transfer by setting",
+              "interpretation": "Bidirectional multi-turn reuse is enabled on both roles; recompute threshold and decode TTL are documented parameters. No benchmark gain is asserted by this audit.",
+              "classification": "native_source_recheck",
+              "line": 221,
+              "matching_line_count": 1,
+              "excerpt_end_line": 252,
+              "excerpt": "Enable bidirectional KV transfer by setting `bidirectional_kv_xfer` in `kv_connector_extra_config` on **both** P and D instances:\n\n```bash\n# Prefill instance\nvllm serve <MODEL> \\\n  --kv-transfer-config '{\n    \"kv_connector\": \"NixlConnector\",\n    \"kv_role\": \"kv_producer\",\n    \"kv_connector_extra_config\": {\n      \"bidirectional_kv_xfer\": true\n    }\n  }'\n\n# Decode instance\nvllm serve <MODEL> \\\n  --kv-transfer-config '{\n    \"kv_connector\": \"NixlConnector\",\n    \"kv_role\": \"kv_consumer\",\n    \"kv_connector_extra_config\": {\n      \"bidirectional_kv_xfer\": true\n    }\n  }'\n```\n\nAdditional configuration options in `kv_connector_extra_config`:\n\n| Parameter | Default | Description |\n| --------- | ------- | ----------- |\n| `bidirectional_kv_xfer` | `false` | Enable bidirectional D→P KV transfer. |\n| `kv_recompute_threshold` | `64` | Minimum number of remote tokens required to trigger a D→P pull. Below this threshold, P recomputes locally instead of pulling (to amortize transfer latency). |\n| `decoder_kv_blocks_ttl` | `480` | TTL (seconds) for KV blocks cached on D for bidirectional reuse. Blocks are released after this duration. Not renewed via heartbeats. |\n",
+              "source_url": "https://github.com/vllm-project/vllm/blob/45d0ac9ee197576aefd4e3f67ad98857b6c52697/docs/features/nixl_connector_usage.md#L221"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sglang",
+      "local_path": "/Users/zkx/sglang",
+      "head": "f77064f635779601c7b20258ce45ded3fa00ac82",
+      "working_tree_clean": true,
+      "previous_audited_commit": "4b83f215f498bc0371587bfae4a9470f24e77737",
+      "files": [
+        {
+          "path": "python/sglang/srt/arg_groups/fields/schedule.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/arg_groups/fields/schedule.py",
+          "sha256": "09c3e158889a94c4a7fb9cfadc359292f749160ebda3cdb35740cd8d51fc7140",
+          "git_blob_sha1": "9d6510df03b02f2ee9e6c0059ec09ce8e641eeca",
+          "bytes": 12200,
+          "observations": [
+            {
+              "anchor": "class Schedule(",
+              "interpretation": "Configuration namespace includes non-hot and structural fields.",
+              "classification": "native_source_recheck",
+              "line": 19,
+              "matching_line_count": 1,
+              "excerpt_end_line": 26,
+              "excerpt": "class Schedule(msgspec.Struct):\n    \"\"\"Namespace ``schedule``.\"\"\"\n\n    _NS_PATH = \"schedule\"\n\n    # -------------------------------------------------------------------------\n    # Memory and scheduling\n    # -------------------------------------------------------------------------",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/arg_groups/fields/schedule.py#L19"
+            },
+            {
+              "anchor": "prefill_decode_interval_min_bs:",
+              "interpretation": "New native batch-size threshold gates prefill/decode cadence; it is not in the internal-state update allowlist.",
+              "classification": "native_source_recheck",
+              "line": 63,
+              "matching_line_count": 1,
+              "excerpt_end_line": 67,
+              "excerpt": "    prefill_decode_interval_min_bs: A[\n        int,\n        \"Apply --prefill-decode-interval only while the running batch holds at least this many requests. Below it, prefill is admitted every round so the batch fills quickly. In data-parallel attention mode, each rank compares its own running batch. Set to 0 to apply the interval at any batch size.\",\n    ] = 0\n    enable_dynamic_chunking: A[",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/arg_groups/fields/schedule.py#L63"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/entrypoints/http_server.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/entrypoints/http_server.py",
+          "sha256": "96637bda0e1c57efce8bd6144e5566f0ad922c9ee95fd59193de763daae70e03",
+          "git_blob_sha1": "0047ab0669b11aec546be9bf4ebb804969270974",
+          "bytes": 119814,
+          "observations": [
+            {
+              "anchor": "@app.api_route(\"/set_internal_state\", methods=[\"POST\", \"PUT\"])",
+              "interpretation": "Existing online endpoint; not a generic server_args setter.",
+              "classification": "native_source_recheck",
+              "line": 887,
+              "matching_line_count": 1,
+              "excerpt_end_line": 894,
+              "excerpt": "@app.api_route(\"/set_internal_state\", methods=[\"POST\", \"PUT\"])\n@auth_level(AuthLevel.ADMIN_OPTIONAL)\nasync def set_internal_state(\n    obj: Annotated[SetInternalStateReq, Body()], request: Request\n):\n    res = await _global_state.tokenizer_manager.set_internal_state(obj)\n    return res\n",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/entrypoints/http_server.py#L887"
+            },
+            {
+              "anchor": "@app.api_route(\"/pd_role_switch\", methods=[\"POST\"])",
+              "interpretation": "An existing administrative HTTP endpoint forwards typed role-switch requests; it is separate from set_internal_state.",
+              "classification": "native_runtime_endpoint",
+              "line": 1625,
+              "matching_line_count": 1,
+              "excerpt_end_line": 1638,
+              "excerpt": "@app.api_route(\"/pd_role_switch\", methods=[\"POST\"])\n@auth_level(AuthLevel.ADMIN_OPTIONAL)\nasync def pd_role_switch(\n    obj: Annotated[PdRoleSwitchReqInput, Body()], request: Request\n):\n    \"\"\"Switch this instance's PD disaggregation role (prefill<->decode) at runtime.\n    Requires --enable-pd-role-switch; the instance must be idle.\"\"\"\n    try:\n        result = await _global_state.tokenizer_manager.pd_role_switch(obj, request)\n    except Exception as e:\n        return _create_error_response(e)\n    return ORJSONResponse(\n        msgspec_to_builtins(result),\n        status_code=HTTPStatus.OK if result.success else HTTPStatus.BAD_REQUEST,",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/entrypoints/http_server.py#L1625"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/managers/scheduler_components/internal_state.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/scheduler_components/internal_state.py",
+          "sha256": "0d34a134f70f8f3a8df52121cd735a3773222d1de717c2e9af6f014804703258",
+          "git_blob_sha1": "5ae8d346f5e1d1b66ace1e4bd7ac51f43ecefa0f",
+          "bytes": 11903,
+          "observations": [
+            {
+              "anchor": "def set_internal_state(",
+              "interpretation": "Native validation/update path; distributed transaction/rollback not established.",
+              "classification": "native_source_recheck",
+              "line": 145,
+              "matching_line_count": 1,
+              "excerpt_end_line": 152,
+              "excerpt": "    def set_internal_state(self, recv_req: SetInternalStateReq):\n        handlers = self._update_handlers()\n        requested = recv_req.server_args\n        try:\n            for key, value in requested.items():\n                handler = handlers.get(key)\n                if handler is None:\n                    raise UpdateRejected(f\"Updating {key} is not supported.\")",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/scheduler_components/internal_state.py#L145"
+            },
+            {
+              "anchor": "def _update_handlers(",
+              "interpretation": "The existing setter allows PP micro-batch, speculative acceptance, and DSpark controls; the proposed PD scheduler/transfer controls are not on this allowlist.",
+              "classification": "finite_runtime_allowlist",
+              "line": 167,
+              "matching_line_count": 1,
+              "excerpt_end_line": 184,
+              "excerpt": "    def _update_handlers(self) -> Dict[str, _UpdateHandler]:\n        return {\n            \"pp_max_micro_batch_size\": _UpdateHandler(\n                self._validate_pp_micro_batch_size, _override\n            ),\n            \"speculative_accept_threshold_single\": _UpdateHandler(\n                self._validate_accept_threshold, self._apply_accept_threshold\n            ),\n            \"speculative_accept_threshold_acc\": _UpdateHandler(\n                self._validate_accept_threshold, self._apply_accept_threshold\n            ),\n            \"dspark_force_budget_frac\": _UpdateHandler(\n                self._validate_dspark_budget_frac, self._apply_dspark_budget_frac\n            ),\n            \"dspark_clear_info_records\": _UpdateHandler(\n                self._validate_dspark_clear_records, self._apply_dspark_clear_records\n            ),\n        }",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/scheduler_components/internal_state.py#L167"
+            },
+            {
+              "anchor": "A relaxed threshold stops acceptance",
+              "interpretation": "Relaxed acceptance can change target policy; excluded from primary actions.",
+              "classification": "native_source_recheck",
+              "line": 195,
+              "matching_line_count": 1,
+              "excerpt_end_line": 202,
+              "excerpt": "        # A relaxed threshold stops acceptance from sampling exactly from the\n        # target policy, which is what a captured sampling mask describes.\n        if not self.scheduler.spec_algorithm.is_dflash() or float(value) == 1.0:\n            return\n        if self._has_active_sampling_mask_request():\n            raise UpdateRejected(\n                f\"Updating {key} is rejected while DFlash sampling-mask \"\n                \"requests are active.\"",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/scheduler_components/internal_state.py#L195"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/managers/scheduler.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/scheduler.py",
+          "sha256": "916e3ce770d54170f3a1bdc98657d3d82f27897e584c66f0f637b769069a54d5",
+          "git_blob_sha1": "4150545976be182949741d29634c8e4d59931fb2",
+          "bytes": 295038,
+          "observations": [
+            {
+              "anchor": "def init_chunked_prefill(self):",
+              "interpretation": "Copies chunk size/interval; hot control must change actual scheduler state.",
+              "classification": "native_source_recheck",
+              "line": 1414,
+              "matching_line_count": 1,
+              "excerpt_end_line": 1421,
+              "excerpt": "    def init_chunked_prefill(self):\n        self.chunked_prefill_size = get_schedule().chunked_prefill_size\n        self.prefill_decode_interval = get_schedule().prefill_decode_interval or 0\n        self._prefill_decode_interval_remaining = 0\n        self.prefill_decode_interval_min_bs = (\n            get_schedule().prefill_decode_interval_min_bs\n        )\n        uses_transformers_backend = (",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/scheduler.py#L1414"
+            },
+            {
+              "anchor": "def get_num_allocatable_reqs(",
+              "interpretation": "Admission capacity path; new soft cap must preserve physical request slots.",
+              "classification": "native_source_recheck",
+              "line": 4230,
+              "matching_line_count": 1,
+              "excerpt_end_line": 4237,
+              "excerpt": "    def get_num_allocatable_reqs(\n        self,\n        running_bs: int,\n        beam_width: Optional[int] = None,\n        running_batch: Optional[ScheduleBatch] = None,\n        num_held_rows: int = 0,\n    ) -> int:\n        pp_budget = get_parallel().pp_max_micro_batch_size - running_bs",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/scheduler.py#L4230"
+            },
+            {
+              "anchor": "prefill_max_requests=get_schedule().prefill_max_requests",
+              "interpretation": "Native per-batch config read; supported hot setter is still proposed.",
+              "classification": "native_source_recheck",
+              "line": 4388,
+              "matching_line_count": 1,
+              "excerpt_end_line": 4395,
+              "excerpt": "            prefill_max_requests=get_schedule().prefill_max_requests,\n            prefill_delayer_single_pass=prefill_delayer_single_pass,\n            dllm_config=self.dllm_config,\n            waiting_queue_len=len(self.waiting_queue),\n            prefill_tile_block_m=prefill_tile_block_m,\n        )\n\n        if self.chunked_req is not None:",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/scheduler.py#L4388"
+            },
+            {
+              "anchor": "chunked_prefill_size = self.chunked_prefill_size",
+              "interpretation": "Continuation may use PP dynamic chunk sizing; avoid competing control.",
+              "classification": "native_source_recheck",
+              "line": 4361,
+              "matching_line_count": 1,
+              "excerpt_end_line": 4368,
+              "excerpt": "        chunked_prefill_size = self.chunked_prefill_size\n        if self.chunked_req is not None and self.dynamic_chunk_sizer is not None:\n            history_len = self.chunked_req.prefix_len\n            dynamic_size = self.dynamic_chunk_sizer.predict(history_len)\n            if dynamic_size is not None:\n                chunked_prefill_size = dynamic_size\n\n        # Prefill policy",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/scheduler.py#L4361"
+            },
+            {
+              "anchor": "def _should_defer_prefill(",
+              "interpretation": "Cadence is bypassed for a small running batch or when nothing decodes without synchronized MLP/DP scheduling. The min-batch threshold is cached at initialization.",
+              "classification": "native_source_recheck",
+              "line": 1463,
+              "matching_line_count": 1,
+              "excerpt_end_line": 1481,
+              "excerpt": "    def _should_defer_prefill(self, running_batch: ScheduleBatch) -> bool:\n        if self._prefill_decode_interval_remaining == 0:\n            return False\n\n        # A small running batch admits prefill every round so it can grow;\n        # the interval only protects decode once the batch is large enough.\n        # With nothing decoding there is no decode to protect, and waiting only\n        # idles the GPU between chunks. DP attention keeps the synchronized\n        # cadence because peer ranks may still be decoding.\n        nothing_decodes = running_batch.is_empty() or running_batch.is_prefill_only\n        if running_batch.batch_size() < self.prefill_decode_interval_min_bs or (\n            nothing_decodes and not self.require_mlp_sync\n        ):\n            self._prefill_decode_interval_remaining = 0\n            return False\n\n        self._prefill_decode_interval_remaining -= 1\n        return True\n",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/scheduler.py#L1463"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/managers/schedule_policy.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/schedule_policy.py",
+          "sha256": "1143525f5c8927ea3c720fe9ded145dc9822d032221429de1e519bd744269710",
+          "git_blob_sha1": "6aa07e064ff126585f1a813f3fcf180322542ba1",
+          "bytes": 75222,
+          "observations": [
+            {
+              "anchor": "class PrefillAdder:",
+              "interpretation": "Distinct input/chunk, mixed-decode, memory and request-count constraints.",
+              "classification": "native_source_recheck",
+              "line": 609,
+              "matching_line_count": 1,
+              "excerpt_end_line": 616,
+              "excerpt": "class PrefillAdder:\n    def __init__(\n        self,\n        page_size: int,\n        tree_cache: BasePrefixCache,\n        token_to_kv_pool_allocator: BaseTokenToKVPoolAllocator,\n        running_batch: ScheduleBatch,\n        new_token_ratio: float,",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/schedule_policy.py#L609"
+            },
+            {
+              "anchor": "self.rem_chunk_tokens = rem_chunk_tokens",
+              "interpretation": "Batch chunk budget differs from vLLM per-request long-prefill threshold.",
+              "classification": "native_source_recheck",
+              "line": 644,
+              "matching_line_count": 1,
+              "excerpt_end_line": 651,
+              "excerpt": "        self.rem_chunk_tokens = rem_chunk_tokens\n        self.chunked_req_limit: Optional[int] = None\n        self.dllm_config = dllm_config\n        # Mamba checkpoints only land on page-aligned chunk ends.\n        self.exact_chunk_fill = (\n            _use_exact_chunk_fill()\n            and dllm_config is None\n            and not (",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/schedule_policy.py#L644"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/managers/scheduler_components/new_token_ratio_tracker.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/scheduler_components/new_token_ratio_tracker.py",
+          "sha256": "d6ad7ede11e9262318649cc5427ee44fb14973d22f8ada26b6d5383a1e77a271",
+          "git_blob_sha1": "fbc1dee21d928c7eb852640d749da98cba5d0e35",
+          "bytes": 1586,
+          "observations": [
+            {
+              "anchor": "class NewTokenRatioTracker:",
+              "interpretation": "Native adaptive tracker; updating conservativeness requires defined tracker state transition.",
+              "classification": "native_source_recheck",
+              "line": 14,
+              "matching_line_count": 1,
+              "excerpt_end_line": 21,
+              "excerpt": "class NewTokenRatioTracker:\n    init: float\n    min: float\n    decay: float\n    current: float\n\n    @classmethod\n    def from_config(cls) -> NewTokenRatioTracker:",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/scheduler_components/new_token_ratio_tracker.py#L14"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/mem_cache/evict_policy.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/mem_cache/evict_policy.py",
+          "sha256": "fff4330dd8e0c04670642ba721f0a1d64e17ff6f3137521d5ca80cc699bf9573",
+          "git_blob_sha1": "7a6e20981c36628505d07d4b8069c6623cef60e9",
+          "bytes": 3943,
+          "observations": [
+            {
+              "anchor": "class LRUStrategy",
+              "interpretation": "Classic eviction strategy exists; not evidence of runtime algorithm switching.",
+              "classification": "native_source_recheck",
+              "line": 16,
+              "matching_line_count": 1,
+              "excerpt_end_line": 23,
+              "excerpt": "class LRUStrategy(EvictionStrategy):\n    def get_priority(self, node: TreeNode) -> float:\n        return node.last_access_time\n\n\nclass LFUStrategy(EvictionStrategy):\n    def get_priority(self, node: TreeNode) -> Tuple[int, float]:\n        return (node.hit_count, node.last_access_time)",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/mem_cache/evict_policy.py#L16"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/mem_cache/unified_radix_cache.py",
+          "sha256": "bc18f0f36a03b74abdd0b1b24b18e09e70abfd01794948773d17cc0460ef45cd",
+          "git_blob_sha1": "0293221b5aca5d0bcf88b6d5640f2aa76bd430f3",
+          "bytes": 183216,
+          "observations": [
+            {
+              "anchor": "def inc_lock_ref(",
+              "interpretation": "Unified cache has references/lifecycle constraints distinct from classic strategy API.",
+              "classification": "native_source_recheck",
+              "line": 1197,
+              "matching_line_count": 1,
+              "excerpt_end_line": 1204,
+              "excerpt": "    def inc_lock_ref(\n        self, node_id: NodeId, skip_lock_components: Sequence[ComponentType] = ()\n    ) -> IncLockRefResult:\n        if self.disable:\n            return IncLockRefResult()\n        return self.tree_core.inc_lock_ref(node_id, skip_lock_components)\n\n    def dec_lock_ref(",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/mem_cache/unified_radix_cache.py#L1197"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py",
+          "sha256": "25f5b8566e69a14a951244b2e6bfe9babf5f3f5399454f3756b54ad899d0ea00",
+          "git_blob_sha1": "135f674275d32a823210d6b2a7f9b7670dbd4dd7",
+          "bytes": 11000,
+          "observations": [
+            {
+              "anchor": "def build_attention_backends(",
+              "interpretation": "Initial construction of execution paths; performance hot routing requires more work.",
+              "classification": "native_source_recheck",
+              "line": 78,
+              "matching_line_count": 1,
+              "excerpt_end_line": 85,
+              "excerpt": "def build_attention_backends(*, model_runner: ModelRunner) -> AttentionBackends:\n    \"\"\"Init attention kernel backend.\"\"\"\n    from sglang.srt.configs.model_config import AttentionArch\n\n    # TODO: Refactor device-specific init branches into platform interface (separate PR).\n    # Must run before the SSM early-return below; Mamba mixers still issue GEMMs.\n    if model_runner.device in (\"cuda\", \"musa\"):\n        init_cublas()",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py#L78"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/arg_groups/fields/disagg.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/arg_groups/fields/disagg.py",
+          "sha256": "187d413619567c4d7cb19938e2d14606e0f951bb30d2d041c6019f823d8cf295",
+          "git_blob_sha1": "7bfc264110c4a225ca4c9358554db62380974df7",
+          "bytes": 8460,
+          "observations": [
+            {
+              "anchor": "disaggregation_decode_allocation_policy:",
+              "interpretation": "The early and prefill_complete policies change per-request decode reservation timing and must match across roles.",
+              "classification": "native_configuration",
+              "line": 59,
+              "matching_line_count": 1,
+              "excerpt_end_line": 64,
+              "excerpt": "    disaggregation_decode_allocation_policy: A[\n        Literal[\"early\", \"prefill_complete\"],\n        \"When to reserve per-request decode KV in disaggregated serving. \"\n        \"prefill_complete retains KV on prefill until prefill finishes, then \"\n        \"admits it on decode. Set the same policy on both roles. Default: early.\",\n    ] = \"early\"",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/arg_groups/fields/disagg.py#L59"
+            },
+            {
+              "anchor": "disaggregation_ib_device:",
+              "interpretation": "The pinned configuration supports one HCA, a shared list, or a per-GPU mapping; device reconfiguration is not established as a live action.",
+              "classification": "native_configuration",
+              "line": 84,
+              "matching_line_count": 1,
+              "excerpt_end_line": 87,
+              "excerpt": "    disaggregation_ib_device: A[\n        Optional[str],\n        'The InfiniBand devices for disaggregation transfer. Supports a single device (e.g., --disaggregation-ib-device mlx5_0), a shared comma-separated list (e.g., --disaggregation-ib-device mlx5_0,mlx5_1), a per-GPU JSON mapping (e.g., --disaggregation-ib-device \\'{\"0\": \"mlx5_0,mlx5_1\", \"1\": \"mlx5_2\"}\\'), or a path to a JSON file containing that mapping. Supported by Mooncake and NIXL UCX. Mapping keys are process-visible GPU IDs (after CUDA_VISIBLE_DEVICES); use HCA names without port suffixes for NIXL UCX. For NIXL UCX, a non-empty UCX_NET_DEVICES takes precedence over this option, including per-GPU mappings. Default is None, which preserves backend device selection.',\n    ] = None",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/arg_groups/fields/disagg.py#L84"
+            },
+            {
+              "anchor": "disaggregation_decode_enable_radix_cache:",
+              "interpretation": "Decode prefix reuse is an existing option for avoiding redundant transfers, with explicit compatibility limits.",
+              "classification": "native_configuration",
+              "line": 88,
+              "matching_line_count": 1,
+              "excerpt_end_line": 91,
+              "excerpt": "    disaggregation_decode_enable_radix_cache: A[\n        bool,\n        \"Enable radix cache on decode server (PD mode). Caches KV prefixes to avoid redundant transfers. Incompatible with --enable-hisparse, --disaggregation-transfer-backend fake, and speculative algorithms other than EAGLE, EAGLE3, and DSPARK.\",\n    ] = False",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/arg_groups/fields/disagg.py#L88"
+            },
+            {
+              "anchor": "num_reserved_decode_tokens:",
+              "interpretation": "Decode reservation, extra request slots, and polling interval are distinct controls; role switching is explicitly opt-in.",
+              "classification": "native_configuration",
+              "line": 109,
+              "matching_line_count": 1,
+              "excerpt_end_line": 126,
+              "excerpt": "    num_reserved_decode_tokens: A[\n        int,\n        \"Number of decode tokens that will have memory reserved when adding new request to the running batch.\",\n    ] = 512\n    disaggregation_decode_extra_slots: A[\n        Optional[int],\n        \"Number of extra decode req_to_token slots pre-allocated for in-transfer requests (PD mode). If unset, defaults to 0 (or 2x the per-worker running batch for small batches).\",\n    ] = None\n    disaggregation_decode_polling_interval: A[\n        int,\n        \"The interval to poll requests in decode server. Can be set to >1 to reduce the overhead of this.\",\n    ] = 1\n    enable_pd_role_switch: A[\n        bool,\n        \"Allow runtime prefill<->decode role switch via /pd_role_switch (PD mode).\",\n    ] = False\n    optimistic_prefill_attempts: A[\n        int, \"Number of optimistic prefill forward passes that skip the bootstrap wait.\"",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/arg_groups/fields/disagg.py#L109"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/disaggregation/decode.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/decode.py",
+          "sha256": "2af3f0386c861394641e855999e9d0da4cad45faf89e1c17ced7611850d144c4",
+          "git_blob_sha1": "6de87e7c8029c5e83435625ec147b3a922da2d50",
+          "bytes": 170951,
+          "observations": [
+            {
+              "anchor": "self.num_reserved_decode_tokens = num_reserved_decode_tokens",
+              "interpretation": "The preallocation queue caches the token reservation value; changing the original config alone does not update this owner.",
+              "classification": "cached_policy_requiring_update_protocol",
+              "line": 495,
+              "matching_line_count": 1,
+              "excerpt_end_line": 499,
+              "excerpt": "        self.num_reserved_decode_tokens = num_reserved_decode_tokens\n        self.transfer_backend = transfer_backend\n        # Queue for requests pending pre-allocation\n        self.queue: List[DecodeRequest] = []\n        self.retracted_queue = _RequestList(",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/decode.py#L495"
+            },
+            {
+              "anchor": "def _prealloc_required_tokens(",
+              "interpretation": "Destination admission accounts for prompt KV and reserved output growth, with page alignment and cache-specific handling.",
+              "classification": "native_policy_consumer",
+              "line": 663,
+              "matching_line_count": 1,
+              "excerpt_end_line": 676,
+              "excerpt": "    def _prealloc_required_tokens(self, req: Req) -> Tuple[int, int]:\n        full_len, swa_len = self._prealloc_kv_lens(req)\n        page_size = self.token_to_kv_pool_allocator.page_size\n        if page_size > 1:\n            # Match the allocator, which charges whole pages for both pools.\n            full_len = ceil_align(full_len, page_size)\n            swa_len = ceil_align(swa_len, page_size)\n        swa_reserved = self.num_reserved_decode_tokens\n        if get_memory().disable_radix_cache:\n            swa_reserved = 0\n        return (\n            full_len + self.num_reserved_decode_tokens,\n            swa_len + swa_reserved,\n        )",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/decode.py#L663"
+            },
+            {
+              "anchor": "if not hasattr(self, \"polling_count\"):",
+              "interpretation": "Polling interval is copied into the scheduler on first use. A proposed live update must update that field and define counter transition semantics.",
+              "classification": "cached_policy_requiring_update_protocol",
+              "line": 3936,
+              "matching_line_count": 1,
+              "excerpt_end_line": 3949,
+              "excerpt": "        if not hasattr(self, \"polling_count\"):\n            self.polling_count = 0\n            self.polling_interval = get_disagg().disaggregation_decode_polling_interval\n\n        self.polling_count = (self.polling_count + 1) % self.polling_interval\n\n        if self.polling_count % self.polling_interval == 0:\n            if get_disagg().disaggregation_decode_host_receive_threshold == 1:\n                req_conns, _ = self.disagg_decode_prealloc_queue.pop_preallocated()\n                self.disagg_decode_transfer_queue.extend(req_conns)\n            transferred_reqs = (\n                self.disagg_decode_transfer_queue.pop_transferred()\n            )  # the requests which kv has arrived\n            if self.enable_hisparse:",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/decode.py#L3936"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/disaggregation/mooncake/conn.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/mooncake/conn.py",
+          "sha256": "bbcb8a78a84f817efff214d9c91f668b24ae0b0c08c716894598e7ea332638b4",
+          "git_blob_sha1": "19794adfcc053730019f7a17efd912a1e6318f26",
+          "bytes": 147702,
+          "observations": [
+            {
+              "anchor": "transfer_thread_pool_size = (",
+              "interpretation": "Prefill allocates transfer queues and executors at initialization. Thread count must be at least the queue count; resizing requires an additional resource transition protocol.",
+              "classification": "init_time_resource_allocation",
+              "line": 333,
+              "matching_line_count": 1,
+              "excerpt_end_line": 351,
+              "excerpt": "            transfer_thread_pool_size = (\n                envs.SGLANG_DISAGGREGATION_THREAD_POOL_SIZE.get()\n            )\n            if transfer_thread_pool_size is None:\n                transfer_thread_pool_size = min(max(4, int(0.5 * cpu_count) // 8), 12)\n            transfer_queue_size = envs.SGLANG_DISAGGREGATION_QUEUE_SIZE.get()\n            self.transfer_queues: List[FastQueue] = [\n                FastQueue() for _ in range(transfer_queue_size)\n            ]\n            assert transfer_thread_pool_size >= transfer_queue_size, (\n                f\"The environment variable SGLANG_DISAGGREGATION_THREAD_POOL_SIZE={transfer_thread_pool_size} must be \"\n                f\"greater than or equal to SGLANG_DISAGGREGATION_QUEUE_SIZE={transfer_queue_size}.\"\n            )\n            self.executors = [\n                concurrent.futures.ThreadPoolExecutor(\n                    transfer_thread_pool_size // transfer_queue_size,\n                    initializer=bind_thread_to_device,\n                    initargs=(self.kv_args.gpu_id,),\n                )",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/mooncake/conn.py#L333"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/model_executor/pool_configurator.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/model_executor/pool_configurator.py",
+          "sha256": "a36b3c1e9ba821257ff7d59993ef61b75692515b1b0638a04faa5bc6f4cef9f6",
+          "git_blob_sha1": "21517da72c79f0efc0e2363228a60555901f9381",
+          "bytes": 76364,
+          "observations": [
+            {
+              "anchor": "self.disaggregation_decode_extra_slots = (",
+              "interpretation": "The pool configurator caches the extra-slot capacity.",
+              "classification": "init_time_resource_allocation",
+              "line": 1168,
+              "matching_line_count": 1,
+              "excerpt_end_line": 1170,
+              "excerpt": "        self.disaggregation_decode_extra_slots = (\n            get_disagg().disaggregation_decode_extra_slots or 0\n        )",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/model_executor/pool_configurator.py#L1168"
+            },
+            {
+              "anchor": "def _get_num_req_slots(",
+              "interpretation": "Decode physical request slots include max_running_requests, extra transfer slots, and an additional slot. This capacity must be separated from a proposed live admission cap.",
+              "classification": "init_time_resource_allocation",
+              "line": 1525,
+              "matching_line_count": 1,
+              "excerpt_end_line": 1528,
+              "excerpt": "    def _get_num_req_slots(self, max_running_requests: int) -> int:\n        if self.disaggregation_mode == \"decode\":\n            return max_running_requests + self.disaggregation_decode_extra_slots + 1\n        return max_running_requests + 1",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/model_executor/pool_configurator.py#L1525"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/arg_groups/pd_disaggregation_hook.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/arg_groups/pd_disaggregation_hook.py",
+          "sha256": "7d5077964c7dbaeea3bf66127dffbf60b4fe6b8351dddda5535eca2169a8c790",
+          "git_blob_sha1": "b48a84523c11ab7a7633f31b76ff8beb2858cc06",
+          "bytes": 16379,
+          "observations": [
+            {
+              "anchor": "def _validate_prefill_complete(",
+              "interpretation": "The pinned prefill_complete policy requires Mooncake, attention TP/CP and PP size one (attention DP can remain), and rejects role switching, decode radix/HiCache, staging buffers, and other listed combinations.",
+              "classification": "native_compatibility_validator",
+              "line": 199,
+              "matching_line_count": 1,
+              "excerpt_end_line": 241,
+              "excerpt": "def _validate_prefill_complete(server_args: ServerArgs) -> None:\n    cfg = resolving_view(server_args)\n    unsupported = []\n    if cfg.disaggregation_mode not in (\"prefill\", \"decode\"):\n        unsupported.append(\"aggregated serving\")\n    if cfg.disaggregation_transfer_backend != \"mooncake\":\n        unsupported.append(\"transfer backends other than Mooncake\")\n    if cfg.pp_size != 1 or cfg.attn_cp_size != 1 or cfg.dcp_size != 1:\n        unsupported.append(\"pipeline or attention context parallelism\")\n    attn_dp_size = cfg.dp_size if cfg.enable_dp_attention else 1\n    if cfg.tp_size != attn_dp_size:\n        unsupported.append(\"attention tensor parallelism greater than one\")\n    if cfg.decoupled_spec_role != \"null\":\n        unsupported.append(\"decoupled speculation\")\n    if cfg.enable_pd_role_switch:\n        unsupported.append(\"runtime PD role switching\")\n    if cfg.encoder_only or cfg.language_only:\n        unsupported.append(\"encoder disaggregation\")\n    if cfg.enable_hisparse:\n        unsupported.append(\"HiSparse\")\n    if cfg.disaggregation_decode_host_receive_threshold < 1:\n        unsupported.append(\"decode host KV buffering\")\n    if cfg.disaggregation_mode == \"decode\" and (\n        cfg.disaggregation_decode_enable_radix_cache or cfg.enable_hierarchical_cache\n    ):\n        unsupported.append(\"decode radix cache or decode HiCache\")\n    if (\n        cfg.disaggregation_mode == \"prefill\"\n        and cfg.enable_hierarchical_cache\n        and (\n            cfg.hicache_storage_backend is not None\n            or cfg.hicache_write_policy != \"write_back\"\n        )\n    ):\n        unsupported.append(\"prefill HiCache other than L2 write_back\")\n    if envs.SGLANG_DISAGG_STAGING_BUFFER.get():\n        unsupported.append(\"staging buffers\")\n    if envs.SGLANG_RUST_SERVER.get():\n        unsupported.append(\"the Rust bootstrap registry\")\n    if unsupported:\n        raise ValueError(\n            \"--disaggregation-decode-allocation-policy prefill_complete does not \"\n            \"yet support \" + \", \".join(unsupported)",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/arg_groups/pd_disaggregation_hook.py#L199"
+            },
+            {
+              "anchor": "if cfg.enable_pd_role_switch:",
+              "interpretation": "The current validator allows some DP configurations but still rejects EP, MoE all-to-all, PP, DP-attention local-control broadcast, decode CP, and speculative combinations.",
+              "classification": "native_source_recheck",
+              "line": 165,
+              "matching_line_count": 2,
+              "excerpt_end_line": 197,
+              "excerpt": "        if cfg.enable_pd_role_switch:\n            view = resolved_view(server_args)\n            unsupported = []\n            if view.ep_size > 1:\n                unsupported.append(f\"expert parallelism (--ep-size {view.ep_size})\")\n            if view.moe_a2a_backend != \"none\":\n                unsupported.append(\n                    f\"MoE all-to-all (--moe-a2a-backend {view.moe_a2a_backend})\"\n                )\n            if view.pp_size > 1:\n                unsupported.append(f\"pipeline parallelism (--pp-size {view.pp_size})\")\n            if (\n                attn_dp_enabled_of(view)\n                and view.enable_dp_attention_local_control_broadcast\n            ):\n                unsupported.append(\"DP attention local control broadcast\")\n            if view.dcp_size > 1:\n                unsupported.append(\n                    f\"decode context parallelism (--dcp-size {view.dcp_size})\"\n                )\n            if view.speculative_algorithm is not None:\n                unsupported.append(\n                    \"speculative decoding \"\n                    f\"(--speculative-algorithm {view.speculative_algorithm})\"\n                )\n            if unsupported:\n                raise ValueError(\n                    \"--enable-pd-role-switch does not rebuild role-specific \"\n                    \"state for the following features: \"\n                    + \", \".join(unsupported)\n                    + \". Remove these options or drop --enable-pd-role-switch.\"\n                )\n",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/arg_groups/pd_disaggregation_hook.py#L165"
+            }
+          ]
+        },
+        {
+          "path": "docs/docs/advanced_features/pd_disaggregation.mdx",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/docs/docs/advanced_features/pd_disaggregation.mdx",
+          "sha256": "e062591d11a409a84530da17eadc0d32c5856d6cb997549d0536f924f998cfef",
+          "git_blob_sha1": "11473b4e4d4daecf849a55ad3fd457bf104b405a",
+          "bytes": 38745,
+          "observations": [
+            {
+              "anchor": "## Decode allocation policy",
+              "interpretation": "Deferred reservation retains KV on prefill longer and removes prefill/transfer overlap. The document also records backend/layout constraints and the requirement to keep policies/revisions aligned across peers.",
+              "classification": "primary_documentation",
+              "line": 23,
+              "matching_line_count": 1,
+              "excerpt_end_line": 75,
+              "excerpt": "## Decode allocation policy\n\nBy default, decode reserves each request's destination KV slots before prefill\nfinishes. Long prefills can hold these slots while decode waits for the KV data.\nTo delay this reservation, set the following flag on **both prefill and decode**:\n\n```bash\n--disaggregation-decode-allocation-policy prefill_complete\n```\n\nWith `prefill_complete`, prefill computes without waiting for destination slots,\nthen signals readiness after accepting its final prefill result. Decode reserves\nslots and starts the existing KV transfer handshake only after that signal.\nThis changes per-request KV reservation, not the size or creation of the global\nKV pool. The default `early` policy preserves the existing behavior.\n\nDeferring allocation can help when long prefills compete with active decode\nrequests for destination KV capacity. It also retains KV on prefill longer and\nremoves overlap between chunked prefill and KV transfer. Compare both policies\nfor your workload; this option is not a general throughput improvement.\n\nThis initial implementation requires Mooncake (RDMA or `mooncake_tcp`), the Python\nbootstrap registry, and attention TP/CP and pipeline sizes of one. Attention DP\nis allowed when each DP rank has attention TP size one. Prefill automatically\nresolves `--optimistic-prefill-attempts` from zero to one; configurations that\ndisable optimistic prefill after model validation are rejected.\nChunked prefill does not yield just because decode has not admitted the request.\nCompleted requests retain their KV in the existing optimistic-prefill inflight\nqueue until decode supplies destination indices; readiness alone never starts\na KV write.\nAfter a successful transfer, prefill clears the room's readiness and transfer\nstate before notifying decode of success. Retraction recovery can then reuse\nthe same bootstrap room. This notification waits for worker and scheduler\ncleanup; failure and cancellation records remain until their timeout expires.\nRetries remain eligible for prefill after the optimistic attempt budget is\nexhausted and remain subject to the existing cancellation and timeout handling.\n\nOn prefill, `SGLANG_DISAGGREGATION_BOOTSTRAP_TIMEOUT` starts after the final\nprefill result, giving decode admission its own budget. On decode,\n`SGLANG_DISAGGREGATION_WAITING_TIMEOUT` bounds the wait for prefill completion,\nthen starts afresh for admission and again when destination indices are sent\nfor transfer.\n\nThe option does not support staging buffers, runtime PD role switching,\nencoder disaggregation, decoupled speculation, HiSparse, decode radix cache, decode\nHiCache, or non-DSA auxiliary state pools. Prefill HiCache is limited to L2 with\n`write_back` and no storage backend. Unsupported configurations fail validation.\n\nAll communicating workers must use the same revision and enable the same policy. This\nversion of the decode worker rejects policy or peer-layout mismatches before\ndestination registration. Older decode workers do not enforce this check. Keep\n`early` on both sides until every worker has been upgraded, then enable the new\npolicy on both sides.",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/docs/docs/advanced_features/pd_disaggregation.mdx#L23"
+            },
+            {
+              "anchor": "#### UCX device selection",
+              "interpretation": "Current documented precedence: explicit backend device_list overrides UCX_NET_DEVICES; nonempty UCX_NET_DEVICES bypasses disaggregation-ib-device, including per-GPU CLI mappings.",
+              "classification": "native_source_recheck",
+              "line": 592,
+              "matching_line_count": 1,
+              "excerpt_end_line": 600,
+              "excerpt": "#### UCX device selection\n\nFor NVIDIA CUDA and AMD ROCm deployments using NIXL UCX, `--disaggregation-ib-device` accepts a shared HCA list or a per-GPU JSON/file mapping. Mapping keys are process-visible GPU IDs; use HCA names without port suffixes, such as `mlx5_0`.\n\nA non-empty `UCX_NET_DEVICES` takes precedence over this CLI option. SGLang leaves the environment variable unchanged and skips the CLI mapping, including per-GPU mappings, with a warning. This preserves interfaces such as `lo` in an existing configuration like `rdma0:1,rdma4:1,lo`, which some RoCE hosts need for NIXL's self-endpoint.\n\nTo use per-GPU CLI selection, unset `UCX_NET_DEVICES`; keep it configured on hosts that require the loopback entry. An explicit `device_list` in `SGLANG_DISAGGREGATION_NIXL_BACKEND_PARAMS` is left unchanged and still overrides `UCX_NET_DEVICES`; do not set it if you rely on the environment's complete device list.\n\n## ASCEND",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/docs/docs/advanced_features/pd_disaggregation.mdx#L592"
+            }
+          ]
+        },
+        {
+          "path": "sgl-model-gateway/README.md",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/sgl-model-gateway/README.md",
+          "sha256": "58c37e4bfd0b44b0e972406c36091a0c3607ef70be479a2dfe76da74215ad876",
+          "git_blob_sha1": "89a3c8e1d263700cec8acc254b61acb2f0325e63",
+          "bytes": 49651,
+          "observations": [
+            {
+              "anchor": "### Prefill/Decode Disaggregation (PD)",
+              "interpretation": "The gateway supports separate prefill and decode routing policies. This example is not evidence of a supported live policy setter.",
+              "classification": "documented_routing_configuration",
+              "line": 138,
+              "matching_line_count": 1,
+              "excerpt_end_line": 149,
+              "excerpt": "### Prefill/Decode Disaggregation (PD)\n- **Rust binary**\n  ```bash\n  ./target/release/sgl-model-gateway \\\n    --pd-disaggregation \\\n    --prefill http://prefill1:30001 9001 \\\n    --prefill http://prefill2:30002 \\\n    --decode http://decode1:30011 \\\n    --decode http://decode2:30012 \\\n    --policy cache_aware \\\n    --prefill-policy cache_aware \\\n    --decode-policy power_of_two",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/sgl-model-gateway/README.md#L138"
+            },
+            {
+              "anchor": "## Load Balancing Policies",
+              "interpretation": "Cache-aware routing has cache/load thresholds; power_of_two uses observed worker load. The cache-aware tree is router metadata, not the engine KV eviction policy.",
+              "classification": "documented_routing_configuration",
+              "line": 738,
+              "matching_line_count": 1,
+              "excerpt_end_line": 743,
+              "excerpt": "## Load Balancing Policies\n- `random`: uniform random worker selection.\n- `round_robin`: sequential rotation with atomic counters.\n- `cache_aware`: maintains a prefix tree of prompts to route repeat traffic and evens load with configurable thresholds (`--cache-threshold`, `--balance-abs-threshold`, `--balance-rel-threshold`, `--eviction-interval`, `--max-tree-size`).\n- `power_of_two`: chooses the lighter worker among two random candidates; integrates with `LoadMonitor`.\n  Per-model overrides are available in PD mode (`--prefill-policy`, `--decode-policy`) and IGW mode via the worker registry.",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/sgl-model-gateway/README.md#L738"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/disaggregation/role_switch.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/role_switch.py",
+          "sha256": "2e2a8322df955c2a940ba5849c30ebfc616e06adac1ea9f6e393c9068a9d5c70",
+          "git_blob_sha1": "83a432390596e56ed432f1fdf0027d3271ed54ba",
+          "bytes": 11461,
+          "observations": [
+            {
+              "anchor": "def handle_pd_role_switch(",
+              "interpretation": "Native runtime role switching requires an idle instance; rebuild failure is fatal and has no in-place rollback.",
+              "classification": "restricted_runtime_role_switch",
+              "line": 43,
+              "matching_line_count": 1,
+              "excerpt_end_line": 47,
+              "excerpt": "def handle_pd_role_switch(\n    scheduler: Scheduler, recv_req: PdRoleSwitchReqInput\n) -> PdRoleSwitchReqOutput:\n    \"\"\"Flip the scheduler's disaggregation role at runtime. The instance must be\n    idle; rebuild failure is fatal to the instance (no in-place rollback).\"\"\"",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/role_switch.py#L43"
+            },
+            {
+              "anchor": "if not scheduler.is_fully_idle():",
+              "interpretation": "The role-switch handler rejects active work and checks headroom before a first decode graph capture. It does not migrate in-flight requests.",
+              "classification": "restricted_runtime_role_switch",
+              "line": 73,
+              "matching_line_count": 1,
+              "excerpt_end_line": 110,
+              "excerpt": "    if not scheduler.is_fully_idle():\n        return _fail(\n            \"instance is not idle; drain all requests before switching\",\n            safe_to_restore=True,\n        )\n\n    required_graph_gb = recv_req.decode_cuda_graph_memory_gb\n    # Same condition ensure_decode_cuda_graphs skips on, so the check cannot be\n    # bypassed while the capture still runs.\n    will_capture_graphs = (\n        new_role == \"decode\" and not scheduler.tp_worker.get_decode_cuda_graph_bs()\n    )\n    if will_capture_graphs and required_graph_gb is None:\n        return _fail(\n            \"decode_cuda_graph_memory_gb is required before capturing decode graphs\",\n            safe_to_restore=True,\n        )\n    if will_capture_graphs and required_graph_gb is not None:\n        if required_graph_gb < 0:\n            return _fail(\n                \"decode_cuda_graph_memory_gb must be non-negative\",\n                safe_to_restore=True,\n            )\n        try:\n            available_graph_gb = get_available_gpu_memory(\n                scheduler.device, get_device().gpu_id\n            )\n        except Exception as e:\n            return _fail(\n                f\"failed to check decode CUDA graph headroom: {e}\",\n                safe_to_restore=True,\n            )\n        if available_graph_gb < required_graph_gb:\n            return _fail(\n                \"insufficient decode CUDA graph headroom: \"\n                f\"required={required_graph_gb:.3f} GB, \"\n                f\"available={available_graph_gb:.3f} GB\",\n                safe_to_restore=True,",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/role_switch.py#L73"
+            },
+            {
+              "anchor": "teardown_disaggregation(scheduler)",
+              "interpretation": "A switch rebuilds role-specific structures; rebuild failure marks the instance unhealthy. Decode graphs are prepared when required.",
+              "classification": "restricted_runtime_role_switch",
+              "line": 130,
+              "matching_line_count": 1,
+              "excerpt_end_line": 154,
+              "excerpt": "            teardown_disaggregation(scheduler)\n            get_context().override(\"role_switch.flip\", disaggregation_mode=new_role)\n            scheduler.init_disaggregation()\n            scheduler._sync_disaggregation_mode_to_subcomponents()\n        except Exception as e:\n            scheduler._pd_role_switch_unhealthy = True\n            logger.critical(\n                \"PD role switch (%s -> %s) failed during teardown/rebuild; \"\n                \"instance unhealthy: %s\",\n                old_role,\n                new_role,\n                e,\n            )\n            return _fail(\n                f\"role switch failed; instance unhealthy, restart required: {e}\"\n            )\n\n        if new_role == \"decode\":\n            # Best-effort deferred capture; a failure only degrades to eager.\n            try:\n                scheduler.tp_worker.ensure_decode_cuda_graphs(\n                    recv_req.decode_cuda_graph_bs\n                )\n            except Exception:\n                logger.exception(\"Decode CUDA graph capture on role switch failed\")",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/role_switch.py#L130"
+            },
+            {
+              "anchor": "not sa.enable_pd_role_switch,",
+              "interpretation": "The feature must be enabled, the backend must support it, and staging buffers are excluded.",
+              "classification": "restricted_runtime_role_switch",
+              "line": 179,
+              "matching_line_count": 1,
+              "excerpt_end_line": 220,
+              "excerpt": "            not sa.enable_pd_role_switch,\n            True,\n            lambda: \"--enable-pd-role-switch is not set on this instance\",\n        ),\n        (\n            scheduler._pd_role_switch_unhealthy,\n            False,\n            lambda: (\n                \"instance is unhealthy after a failed role switch; restart required\"\n            ),\n        ),\n        (\n            scheduler._pd_role_switch_in_progress,\n            False,\n            lambda: \"another role switch is already in progress\",\n        ),\n        (\n            new_role not in (\"prefill\", \"decode\"),\n            True,\n            lambda: f\"invalid new_role={new_role!r}\",\n        ),\n        (\n            scheduler.disaggregation_mode == DisaggregationMode.NULL,\n            True,\n            lambda: \"instance is not running in PD disaggregation mode\",\n        ),\n        (\n            km is not None and not km.supports_role_switch,\n            True,\n            lambda: (\n                f\"transfer backend {get_disagg().disaggregation_transfer_backend!r} \"\n                \"does not support runtime role switch\"\n            ),\n        ),\n        (\n            getattr(km, \"enable_staging\", False),\n            True,\n            lambda: (\n                \"staging buffer (SGLANG_DISAGG_STAGING_BUFFER) is not \"\n                \"supported with runtime role switch\"\n            ),\n        ),",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/role_switch.py#L179"
+            },
+            {
+              "anchor": "if recv_req.prepare_only:",
+              "interpretation": "The native preparation mode checks readiness without teardown. Idle/headroom constraints still apply.",
+              "classification": "native_source_recheck",
+              "line": 113,
+              "matching_line_count": 1,
+              "excerpt_end_line": 122,
+              "excerpt": "    if recv_req.prepare_only:\n        # The tokenizer checks every DP worker before allowing any teardown.\n        return PdRoleSwitchReqOutput(\n            success=True,\n            message=\"ready\",\n            old_role=old_role,\n            new_role=new_role,\n            safe_to_restore=True,\n        )\n",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/role_switch.py#L113"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/managers/tokenizer_control_mixin.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/tokenizer_control_mixin.py",
+          "sha256": "768a0c85aa39f8b56c875f6440195d38d5ae8b3d6307fd532ac97dfc7042e0f1",
+          "git_blob_sha1": "218e62f999a5daebdbc95b475ad5d9ad132f8351",
+          "bytes": 44343,
+          "observations": [
+            {
+              "anchor": "async def pd_role_switch(",
+              "interpretation": "For multiple DP workers, readiness is checked across all workers before executing a role switch. The caller must drain ingress and serialize changes. This is not a general policy transaction or live migration protocol.",
+              "classification": "native_source_recheck",
+              "line": 921,
+              "matching_line_count": 1,
+              "excerpt_end_line": 970,
+              "excerpt": "    async def pd_role_switch(\n        self: TokenizerManager,\n        obj: PdRoleSwitchReqInput,\n        request: Optional[fastapi.Request] = None,\n    ) -> PdRoleSwitchReqOutput:\n        self.auto_create_handle_loop()\n        if not self.server_args.enable_pd_role_switch:\n            return PdRoleSwitchReqOutput(\n                success=False,\n                message=\"--enable-pd-role-switch is not set on this server\",\n                old_role=get_disagg().disaggregation_mode,\n                new_role=obj.new_role,\n                safe_to_restore=True,\n            )\n        # The caller must drain ingress and serialize role-switch requests.\n        # Check every DP worker before allowing any of them to tear down.\n        if get_parallel().num_dp_ranks > 1:\n            prepare_req = copy.copy(obj)\n            prepare_req.prepare_only = True\n            results = await self.pd_role_switch_communicator(prepare_req)\n            if results and all(r.success for r in results) and not obj.prepare_only:\n                results = await self.pd_role_switch_communicator(obj)\n        else:\n            results = await self.pd_role_switch_communicator(obj)\n        all_success = bool(results) and all(r.success for r in results)\n        safe_to_restore = bool(results) and all(r.safe_to_restore for r in results)\n        if all_success and not obj.prepare_only:\n            # Keep the tokenizer-manager's view of the role in sync so future\n            # control ops and bootstrap routing behave consistently.\n            self.record_config_updates(\n                \"tokenizer.pd_role_switch\", disaggregation_mode=obj.new_role\n            )\n            self.disaggregation_mode = DisaggregationMode(obj.new_role)\n            msg = \"ok\"\n        elif all_success:\n            msg = \"ready\"\n        else:\n            # Surface only the failing workers' messages.\n            msg = \"; \".join(r.message for r in results if not r.success)\n        return PdRoleSwitchReqOutput(\n            success=all_success,\n            message=msg,\n            old_role=results[0].old_role if results else \"\",\n            new_role=obj.new_role,\n            safe_to_restore=safe_to_restore,\n        )\n\n    async def get_internal_state(self: TokenizerManager) -> List[Dict[Any, Any]]:\n        self.auto_create_handle_loop()\n        req = GetInternalStateReq()",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/managers/tokenizer_control_mixin.py#L921"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/disaggregation/nixl/conn.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/nixl/conn.py",
+          "sha256": "0ba002bb839f39251fd37eec2b50af4c40d067a19d137f9f92e7f57d28440c03",
+          "git_blob_sha1": "74286d79c3923a74b752de4c6a398d0114017a5b",
+          "bytes": 150069,
+          "observations": [
+            {
+              "anchor": "if backend == \"UCX\" and self.kv_args.ib_device:",
+              "interpretation": "A nonempty UCX_NET_DEVICES skips the CLI HCA mapping. Without it, conflicting explicit backend device_list and CLI selections are rejected.",
+              "classification": "native_source_recheck",
+              "line": 568,
+              "matching_line_count": 1,
+              "excerpt_end_line": 598,
+              "excerpt": "        if backend == \"UCX\" and self.kv_args.ib_device:\n            if os.environ.get(\"UCX_NET_DEVICES\"):\n                logger.warning(\n                    \"UCX_NET_DEVICES is set; ignoring --disaggregation-ib-device \"\n                    \"for NIXL UCX. Per-GPU CLI device mappings will not be applied.\"\n                )\n            else:\n                device_list = _resolve_ucx_device_list(\n                    self.kv_args.ib_device, self.kv_args.gpu_id\n                )\n                if device_list is not None:\n                    existing = backend_params.get(\"device_list\")\n                    if (\n                        existing is not None\n                        and \", \".join(name.strip() for name in existing.split(\",\"))\n                        != device_list\n                    ):\n                        raise ValueError(\n                            \"Conflicting NIXL UCX device_list in \"\n                            \"SGLANG_DISAGGREGATION_NIXL_BACKEND_PARAMS and \"\n                            \"--disaggregation-ib-device. Configure only one \"\n                            \"device selection or make them agree.\"\n                        )\n                    backend_params[\"device_list\"] = device_list\n                    logger.info(\n                        \"NIXL UCX device binding: gpu_id=%s, engine_rank=%s, \"\n                        \"device_list=%s\",\n                        self.kv_args.gpu_id,\n                        self.kv_args.engine_rank,\n                        device_list,\n                    )",
+              "source_url": "https://github.com/sgl-project/sglang/blob/f77064f635779601c7b20258ce45ded3fa00ac82/python/sglang/srt/disaggregation/nixl/conn.py#L568"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "version_changes": [
+    "The first scheduler action consumers and SGLang internal-state allowlist retain their prior semantics.",
+    "SGLang adds prefill_decode_interval_min_bs and preserves no-decode/DP cadence distinctions.",
+    "SGLang NIXL documents and implements HCA mapping and UCX environment/backend-parameter precedence.",
+    "SGLang role switching adds prepare_only readiness checks across DP workers; target draining and failure constraints remain.",
+    "vLLM NIXL is now included in this audit: initialization controls, bidirectional reuse threshold, D TTL, and P lease state are examined separately from proposed live controls."
+  ],
+  "interpretation_limits": [
+    "Existing configuration or a per-step read is not evidence of a supported live setter.",
+    "The action schema, policy versions, online tuning controller, transfer admission budgets and their end-to-end evaluation remain proposed work.",
+    "Role switching and general hot-policy updates have different continuity contracts.",
+    "NIXL findings apply to the audited paths and do not establish identical capabilities across all vLLM connectors.",
+    "Historical audits are retained unchanged; the current proposal references this re-audit."
+  ]
+}
