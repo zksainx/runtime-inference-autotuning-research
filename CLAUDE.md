@@ -45,6 +45,8 @@ python3 scripts/validate_research.py
 - Two-layer design: a thin external control plane (action schema, validation, versioning, effect receipts, cost accounting) with per-engine adapters (vLLM `EngineCoreRequestType.UTILITY`, SGLang `/set_internal_state`), plus targeted changes inside native scheduler/cache/backend code. Do not reimplement an engine or wrap vLLM as a library.
 - Target scope covers scheduler, KV retention, and kernel routing, across vLLM and SGLang, with multi-rank support (§7 stages 1–6, §8 evidence requirements).
 
+- The optional MaaS discussion in §5.1 preserves the original plan and implementation stages. Optimizer inference may use the target service, an independent replica, or an external API; rules/BO are non-LLM baselines. Same-service inference remains a distinctive deployment option with confidentiality and capacity-reuse value, while external APIs remain supported; do not reduce that value to merely a benchmark variable or claim guaranteed savings. Candidate extensions concern low-overhead diagnosis and state-preserving policy/code updates, with privacy/cost benefits treated as hypotheses.
+
 ## Conventions that matter (evidence discipline)
 
 This project's whole value is provenance rigor. Preserve it:
