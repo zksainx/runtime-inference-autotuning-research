@@ -1,0 +1,845 @@
+Source: 19_FlashVector_arxiv_v1.pdf
+Pages: 9
+
+===== PDF PAGE 1 =====
+arXiv:2609.17391v1 [cs.AI] 15 Sep 2026
+FlashVector: Agent for Hierarchical Model Serving Stack
+Optimization
+Qi Wu1,2 Lohan Lemire2 Kai Meng2 Zhongmou Cai2 Raphael Bargues2
+Petr Zhitnikov2 Zeyuan Cao2 Yao Wang2 Shujun Bian2 Wei Chen2 Sean Sheng2
+1Stanford University 2Unity Vector AI Team
+are typically involved—Golang, C++, Python, and CUDA, among
+others.
+Abstract
+Model serving is one of the largest cost drivers in production rec-
+ommender systems. Maximizing its throughput requires navigat-
+ing a deeply layered hierarchy: GPU kernels, the ML-framework
+computation graph, the model server, and on-demand feature pro-
+cessing—each demanding specialized domain expertise. Such cross-
+layer expertise is inherently difficult to acquire, and does not scale
+with a workload that continuously grows and evolves, leaving signif-
+icant cost efficiency gains unrealized. While recent AI agents have
+demonstrated human expert level efficiency in standalone GPU ker-
+nel optimization, automated tuning and optimization for the rest of
+the serving stack remain largely unexplored. We present FlashVec-
+tor, an agentic system that optimizes performance across all layers
+of the model serving stack. The key contribution is an extensible
+framework to generalize the single kernel optimization agent para-
+digm to heterogeneous technical stacks, and to deliver performance
+improvements holistically. After deployment in Unity’s Vector ad-
+vertising platform, FlashVector achieved up to 2×throughput in-
+crease and up to 1.98×latency speedup on model server, and up
+to 1.6×throughput increase on feature store. These optimizations
+were discovered not only at the GPU kernel and computation graph
+levels, but also across the other components of the model serving
+stack, such as the model server (NVIDIA Triton’s C++ codebase)
+and the on-demand feature transformation service (Python code-
+base), demonstrating the extensibility of the framework to more
+complex system architectures.
+Feature Store
+Ondemand Feature
+Model Server
+ML Framework
+Ad Server
+GPU Kernels
+Figure 1: A typical model serving stack.
+1 Introduction
+Deep learning models are an essential component of modern recom-
+mender systems [11] [19]. At Unity’s Vector advertising platform,
+DNN models are used throughout the funnel to retrieve candidates,
+estimate probability of conversion, and predict the long term mon-
+etization value. As one of the leading mobile game advertising
+solutions, Vector operates at scale. It manages hundreds of DNN
+models, and serves hundreds of thousands of inference requests
+per second in production.
+Serving models at this scale (tens of thousands of GPU and CPU
+nodes) requires a complex distributed infrastructure, with data
+crossing multiple network hops, nodes, and devices. In a typical
+model serving architecture (e.g., Figure 1), clients split incoming
+requests into parallel calls to feature stores and model servers.
+Upon receiving feature-enriched requests, the model server em-
+ploys dynamic batching strategies and parallel inference to maxi-
+mize throughput. Once a batched request is generated, it is passed
+to an ML framework runtime (e.g., PyTorch), which traverses the
+execution graph and launches many GPU kernels that perform
+the mathematical operations. Multiple programming languages
+Optimizing this hierarchical serving stack has historically been
+challenging, as each layer demands distinct domain expertise. Client-
+side optimizations focus on request fan-out and parallelism. Within
+the model server, performance hinges on managing throughput-
+latency trade-offs through techniques such as dynamic batching
+and multi-process parallel inference, which interact directly with
+the ML framework runtime. Within the ML framework runtime,
+performance depends on proper computation graph configurations
+(e.g., PyTorch module structure, tensor layouts, operator selection,
+and minimizing host-device synchronization). Finally, low-level
+efficiency requires custom GPU kernel optimizations, such as ker-
+nel fusion, memory bandwidth tuning, and Tensor Core utilization.
+Without deep domain expertise across every layer, substantial cost
+efficiency gains often go unrealized.
+Recent progress offers a partial answer to this gap. The emer-
+gence of kernel design agents [23] has significantly improved auto-
+generated GPU kernel efficiency, enabling teams without deep ker-
+nel expertise to deploy custom CUDA code. This motivates a broader
+question: Can we extend LLM-driven optimization from standalone
+GPU kernels to the entire model serving stack? In our experience,
+non-kernel layers contain just as many—if not more—optimization
+opportunities. A more efficient implementation within the model
+server or a better tuned runtime parameter can tremendously in-
+crease serving throughput. However, holistic stack optimization
+introduces new engineering challenges: discovering efficient code
+implementations, tuning the runtime parameter spaces, and finding
+optimal co-designs across both code and parameters.
+
+===== PDF PAGE 2 =====
+In this paper, we present FlashVector, an agentic system that
+holistically optimizes the hierarchical model serving stack. This
+paper makes three contributions:
+• A layer agent abstraction. Each serving layer plugs into
+the same optimization loop by conforming to a standard
+optimizing-agent interface: Profile (domain-specific tool-
+ing — Nsight for GPU kernels, eBPF for the model server),
+Diagnose (bottlenecks against a layer-specific knowledge
+base), Optimize (generate and apply the corresponding
+code or configuration change), and Verify (check the result
+against production evidence), plus a post-run Refine stage
+that writes findings back to the knowledge base.
+• Optimize locally, verify globally. FlashVector proposes
+optimizations independently within each layer of the stack
+— GPU kernels, the computation graph, the model server,
+feature processing — so a bottleneck in any one of them can
+be found and fixed on its own. But a candidate is accepted
+only when it is shown to improve the system as a whole:
+every change is measured against replayed production traf-
+fic and load held at the production latency SLO, and kept
+only if the end-to-end gain exceeds the measurement noise.
+• An always-on optimization loop. Serving optimizations
+decay with every retrain, traffic shift, and hardware refresh.
+Each run starts from the model’s recorded history of ac-
+cepted and rejected changes and writes its own outcome
+back, and the loop re-triggers itself automatically rather
+than waiting to be invoked.
+The remainder of this paper is organized as follows. Section 2
+discusses related work. Section 3 outlines the key challenges in
+extending kernel optimization agents to full serving stacks. Sec-
+tion 4 details our system design and solution. Section 5 highlights
+several optimizations realized using FlashVector. Finally, Section 6
+discusses broader implications and concludes.
+2 Related Work
+Model Serving Systems. A substantial body of systems work tar-
+gets the model-serving layer itself, treating request routing, batch-
+ing, and resource allocation as the object of optimization rather
+than the model’s code. Clipper [1] introduced a general-purpose
+low-latency prediction-serving layer with adaptive batching; Ten-
+sorFlow Serving [22] established production-grade serving run-
+times still widely deployed today. Subsequent systems targeted
+specific bottlenecks: Nexus [25] schedules many models across a
+GPU cluster for video analytics, Clockwork [8] pursues predictable
+per-request latency through tight execution control, and Infer-
+Line [2] provisions and auto-scales multi-stage prediction pipelines
+end to end. More recently, serving systems for large generative
+models—Orca [29], vLLM [14], and AlpaServe [16]—introduced
+iteration-level scheduling, paged KV-cache memory management,
+and statistical multiplexing of model-parallel replicas, respectively.
+Closest to the on-demand feature-processing bottleneck in Sec-
+tion 5, Willump [13] optimizes end-to-end ML inference pipelines
+whose bottleneck lies in feature computation rather than model
+execution, using statistically-motivated approximations. These sys-
+tems share FlashVector’s premise that serving-layer inefficiency
+is a first-class optimization target, but each hand-designs a fixed
+policy or architecture for one bottleneck class; FlashVector instead
+uses an LLM agent to discover analogous fixes automatically across
+an arbitrary and evolving stack, without a new system having to
+be designed for each new bottleneck.
+Serving-time Autotuning. A parallel line of work automat-
+ically searches serving-time configuration spaces, closest to the
+parameter-tuning problem in Section 5.4. MArk [30] and Cock-
+tail [9] jointly select hardware tier, model variant, and autoscal-
+ing policy to meet cost and SLO targets; Morphling [27] uses
+meta-learning over historical configurations to converge on near-
+optimal resource and batch settings for a new model with few trials;
+GSLICE [5] and DVABatch [3] search GPU spatial-partitioning
+and batch-composition policies, respectively, to raise multi-tenant
+throughput at fixed latency. Like our Case 4, these systems treat
+throughput-at-SLO as a black-box objective over a configuration
+space, but each is a purpose-built search procedure over a hand-
+scoped parameter set along one axis of the stack (hardware tier,
+batching, or GPU sharing). FlashVector instead lets a single agent’s
+profile–diagnose–optimize–verify loop range over the same class
+of levers alongside code-level changes, and, as Section 4.2 describes,
+schedules itself continuously.
+Kernel Design Agent. Much work ([17], [20], [21], [7], [31],
+[12], [4], [10], [15], [6], [32], [24], [18]) have been exploring GPU
+kernel optimization as a task that large language model (LLM)
+agents can carry out largely autonomously. KernelBench [23] first
+proposed a standard suite of PyTorch programs to assess coding
+LLMs, and showed frontier models still fall short without more so-
+phisticated harness. KernelAgent [20] and KDA [32] are multi-agent
+systems that demonstrated the profile–diagnose–optimize–verify
+loop and showed superior performance than standard compilation.
+FlashVector is a direct extension of the profiling guided paradigm: it
+reuses the same profile–diagnose–optimize–verify loop, but applies
+it to layers where standalone kernel-agent techniques do not trans-
+fer as-is — a model server’s C++ request path, a feature-processing
+service’s Python runtime, and pure runtime configuration — each
+requiring its own profiling tool, diagnosis context, and correctness
+bar rather than a single kernel’s fixed input/output contract.
+3 Challenges
+Extending automated optimization beyond standalone kernels to
+the full serving stack introduces four fundamental challenges.
+To begin with, the fragmented tooling and heterogeneity across
+the stack mask true performance bottlenecks. Each layer of the
+serving stack operates in a distinct ecosystem with its own imple-
+mentation languages (e.g., Go/C++ in model servers vs. Python
+in framework runtime vs. CUDA/Triton in kernels) and special-
+ized profiling tools (e.g., eBPF, PyTorch Kineto, Nsight Systems).
+Because performance signals and "optimization dialects" are com-
+pletely fragmented across boundaries, few engineers possess the
+cross-layer domain expertise needed to localize the true bottleneck,
+let alone coordinate a fix across it.
+Second, non-kernel layers present a joint optimization prob-
+lem. Maximizing throughput requires simultaneously discovering
+efficient code (e.g., altering server-side serialization or graph struc-
+tures) and tuning multi-dimensional parameter spaces (e.g., dy-
+namic batching thresholds, thread pool allocations, and GPU queue
+
+===== PDF PAGE 3 =====
+Figure 2: The three-stage workflow of FlashVector.
+depths). Navigating this combined, high-dimensional search space
+requires co-optimizing discrete code changes alongside continuous
+parameters.
+Furthermore, standalone kernel generation tasks operate on lo-
+calized, single-file code snippets with predictable inputs and out-
+puts. In contrast, full stack optimization requires reasoning over
+a multi-repository codebase—spanning distributed microservices,
+feature store, and model server. These multi-file edits cannot be
+evaluated in isolation: unlike offline micro benchmarks, candidate
+configurations and code changes across the stack must strictly pre-
+serve production service-level agreements (SLAs), such as tight
+𝑝99 tail-latency budgets, without triggering cascading downstream
+failures.
+Performance optimization is also complicated by the fact that it
+is an inherently continuous, moving target rather than a static, one-
+off effort. Manual tuning relies on an iterative, slow cycle: capturing
+distributed traces, forming hypotheses, implementing code or pa-
+rameter changes, redeploying, and re-benchmarking under load. In
+production platforms like Unity Vector, these manual interventions
+quickly decay. Models are continuously retrained and re-exported,
+feature pipelines evolve, traffic patterns shift diurnally, and the un-
+derlying fleet infrastructure (GPU generations, driver versions, and
+framework runtimes) is updated regularly. A manual optimization
+validated on one model release or traffic profile frequently becomes
+suboptimal—or even detrimental—under the next. Because human
+engineering teams cannot indefinitely sustain the high operational
+tax of manually re-evaluating the entire 4-layer stack, optimizations
+expire, leaving significant efficiency gains unrealized over time.
+4 Core System
+A vanilla approach would feed an LLM official NVIDIA and PyTorch
+documentation, the source code of the models and model servers,
+and a high-level profiling report such as torch.profiler, then
+prompt it to produce optimizations in one shot. This does not work
+well, for two reasons.
+First, generic documentation and high-level reports are nec-
+essary but insufficient context: as Section 3 notes, each layer’s
+performance signals are fragmented across specialized tools and
+ecosystems, so feeding the agent generic material either wastes its
+context window on irrelevant detail or omits the domain-specific
+signal it actually needs. In practice this means precise kernel traces
+(nsys/ncu) instead of torch.profiler’s coarser summaries, exact
+tensor shapes and layouts to curb hallucination during roofline
+analysis, and business-logic context — e.g., whether a feature is
+request- or candidate-level — that lets the agent propose optimiza-
+tions that are difficult for traditional machine learning compiler to
+realize, such as model-level loop-invariant code motion.
+Second, even with the right context, an LLM rarely reaches
+the correct optimization in a single attempt: it can misattribute
+a bottleneck from its own profile. Reliable progress requires an
+iterative loop with a harness that checks each step, rather than
+a one-shot generation — which is what the rest of this section
+describes.
+At a high level, FlashVector has three stages, shown in Figure 2:
+Knowledge base loading, Iterative optimization, and Knowledge
+refinement. The agent first retrieves domain-specific knowledge
+from pre-compiled reference documents for the targeted serving
+layer. Then it creates a closed feedback loop to iteratively profile, di-
+agnose, optimize, and verify candidate setups. Finally, it updates the
+reference documents with the optimized full-stack configuration.
+4.1 Knowledge Base
+FlashVector maintains a knowledge base for the holistic model
+serving stack, covering all the major components:
+Business Logic. Detailed metrics and properties are specialized
+for Vector’s traffic patterns, which directly impact the model’s
+architecture. For example, the number of ad candidates per request,
+input feature structure, and how gamer-level features are different
+from candidate-level features.
+Model Server. Detailed architecture of the model server (NVIDIA
+Triton server) and runtime parameters (batch size, queue length,
+etc.).
+Feature Store. Detailed data types, lineage, and definitions of
+the input features to the model server.
+ML Model. The way in which ML models are implemented in
+code has a major impact on their inference efficiency. In many situ-
+ations, machine-learning engineers (MLEs) are unable to express
+the most hardware-efficient model designs using high-level Python
+and mainstream ML frameworks such as PyTorch. Therefore, it
+is crucial to capture and compile detailed model implementation
+information, such as architecture summary, parameter inventory,
+and serving configuration, so that an AI agent can identify alter-
+native modules or kernels and select more efficient replacement
+algorithms.
+Hardware. We primarily deploy models on NVIDIA GPUs. Hence,
+we maintain documentation that outlines standard procedures for
+profiling and optimizing machine learning programs running on
+NVIDIA GPUs.
+Optimization Cookbook. A curated set of optimization rules
+and best practices distilled from human experts. This resource is
+crucial for enabling an AI agent to identify optimization oppor-
+tunities more efficiently within a limited context window, while
+ensuring it avoids making erratic or unjustified decisions.
+
+===== PDF PAGE 4 =====
+Figure 3: The layer agent abstraction. Every layer implements the same four stages — Profile, Diagnose, Optimize, Verify — plus
+the post-run Refine that writes findings back to the knowledge base; the loop itself is identical across layers. Cell entries name
+the concrete instance each production layer implements today.
+4.2 Optimization Loop
+FlashVector uses a closed-loop workflow comprising four steps:
+profile, diagnose, optimize, and verify; each iteration samples a
+single layer and runs that layer’s own instance of the four steps,
+rather than sweeping every layer at once. The refine stage is not a
+loop step but runs once after the loop terminates, writing what was
+learned back into the knowledge base (the knowledge-refinement
+stage of Figure 2). The workflow is described in Algorithm 1.
+Profile Rather than focusing on a single GPU kernel optimiza-
+tion problem like most Kernel Design Agents [20], FlashVector
+collects performance profiles across the model serving stack: GPU
+kernels, the ML-framework computation graph, the model server,
+and on-demand feature processing. It runs profiles in environments
+of increasing complexity, ranging from a local simulated environ-
+ment (for GPU kernels) to a production-like model-serving load
+test (for model servers and on-demand feature processing).
+Concretely, this step launches a single process for the layer sam-
+pled this iteration and loads the agent skill customized for profiling
+within that layer’s technical domain. The GPU kernel optimiza-
+tion layer agent loads an agent skill specialized in GPU profiling
+(NVIDIA Nsight Systems and Nsight Compute), runs the bench-
+mark, and collects nsys/ncu reports. The model server optimiza-
+tion agent loads an agent skill specialized in CPU profiling of the
+inference model server (eBPF), runs the load tests, and collects
+Python/C++ profiles. Finally, the optimization agent emits a struc-
+tured report of the profiles.
+Diagnose The diagnose step reasons about the profile produced
+for the sampled layer and identifies its bottlenecks. Because each
+layer’s report differs in shape and vocabulary, this step invokes
+the agent and context customized for that layer: for a GPU kernel,
+the agent is given the knowledge base focused on GPU and CUDA;
+for the ML framework (e.g., computation-graph level), it is fed
+the model definition, the ML framework’s source (e.g., PyTorch),
+and the knowledge base focused on business logic; for the model
+server, it receives the model server’s source repositories and the
+knowledge base for the model server. Diagnosis ends by ranking
+the sampled layer’s own hypotheses: each candidate is scored by its
+share of total time multiplied by its expected gain, and one whose
+best possible gain is smaller than the measurement noise is skipped.
+The top-ranked candidate is handed to Optimize.
+Optimize (Plan & Apply) The optimization step generates
+candidate code modifications based on the bottlenecks identified
+
+===== PDF PAGE 5 =====
+Algorithm 1 FlashVector optimization loop
+Require: Target model serving stack 𝑆with layers L= {ℓ1,...,ℓ𝑛 }
+(GPU kernels, computation graph, model server, on-demand
+feature processing), workload definition 𝑊, evaluation harness
+𝐻, knowledge base 𝐾, noise floor 𝜖 estimated from repeated
+baseline runs
+Ensure: Optimized code/configuration 𝐶∗and updated knowledge
+base 𝐾∗
+1: 𝐶 ←Current source code/runtime configuration for 𝑆
+2: 𝐾𝑆 ←RetrieveContext(𝐾,𝑆)
+3: repeat
+4: ℓ ←SampleLayer(L) ⊲ pick one layer at random this
+iteration
+5: 𝑟 ←Profile(ℓ,𝐶,𝑊) ⊲ profile only ℓ
+6: 𝑑 ←Diagnose(𝑟,𝐾𝑆 [ℓ]) ⊲ rank ℓ’s own bottleneck
+hypotheses, return the top one
+7: Δ ←Plan(𝑑) ⊲ Optimize (i): propose an edit for ℓ
+8: 𝐶′←Apply(𝐶,Δ) ⊲ Optimize (ii): apply it
+9: (𝑜𝑘,𝑚)←Verify(𝐻,𝐶′) ⊲ correctness and
+latency/throughput/cost metrics for ℓ
+10: if 𝑜𝑘 and 𝑚improves on the incumbent by more than the
+measurement noise 𝜖 then
+11: (𝑜𝑘stack,𝑚stack)←FullStackLoadTest(𝐻,𝐶′) ⊲
+confirm no end-to-end regression across the full stack
+12: if 𝑜𝑘stack then
+13: 𝐶 ←𝐶′ ⊲ accept update
+14: else
+15: discard 𝐶′ ⊲ local gain regressed the full stack;
+revert
+16: end if
+17: else
+18: discard 𝐶′ ⊲ revert to the incumbent 𝐶
+19: end if
+20: until Maximum number of iterations reached or optimization
+criterion satisfied.
+21: 𝐶∗←𝐶
+22: 𝐾∗←RefineContext(𝐾,𝑆,𝐶∗) ⊲ Post-run refine stage
+23: return (𝐶∗,𝐾∗)
+during diagnosis. Depending on the layer where the bottleneck
+originates, FlashVector loads domain-specific agents that formulate
+an optimization plan and translate it into code changes. Although
+all layer-specific agents share a uniform integration interface, their
+implementation complexity varies significantly. For example, the
+GPU kernel agent is relatively straightforward, as it typically modi-
+fies a single file. Conversely, the model server agent is considerably
+more sophisticated, as it operates on larger repositories and man-
+ages complex server runtime. To simplify the model server agent
+implementation, we merged several repositories into a mono repo
+which is more agent friendly.
+Verify Performance improvements are only meaningful if predic-
+tion quality is preserved. Certain optimizations sacrifice accuracy
+in favor of performance, such as approximate algorithms or lossy
+compression. To protect against this, we verify that such changes re-
+main acceptable with respect to business metrics before proceeding
+to the next optimization round.
+Before the optimization loop, FlashVector records all inference-
+related artifacts, including model weights, representative input
+samples, and the corresponding prediction outputs. During verifi-
+cation, FlashVector reloads the recorded weights and inputs into
+the optimized stack and compares the resulting predictions against
+the recorded baseline. The bar depends on the class of change:
+• Deterministic rewrites (operation order and accumula-
+tion precision preserved): outputs must be exactly equal,
+element by element.
+• Reordering floating-point rewrites: end-to-end predic-
+tions must stay within 10−3 element-wise absolute devia-
+tion, with at most 0.1% of elements beyond 10−3 (one FP16
+ULP at unit scale; 10−4 for FP32 serving); non-finite outputs
+fail outright. The per-kernel verifier applies dtype-scaled
+bounds (10−3 FP32, 10−2 FP16) that a change may tighten
+but never loosen; accepted thresholds are written back to
+the model card.
+• Intentional approximations (outputs differ by design):
+gated on business metrics instead of output equality.
+• Configuration changes (predictions untouched by con-
+struction): gated by the shadow-traffic canary at a fixed
+latency SLO (Section 5.4).
+Correctness alone does not accept a change: its improvement
+must also exceed the noise floor 𝜖 of Algorithm 1, estimated from
+repeated no-op runs of the unmodified baseline (±6% end to end);
+improvements in the 2–6% band are re-measured at up to 8×the
+sample size, tightening the floor as 1/√𝑘 (2.1% at 8×).
+Because each iteration profiles and verifies only the sampled
+layer, a locally verified change could still regress the system once
+combined with the rest of the stack. Every candidate that clears
+both the correctness bar and the noise floor is therefore checked
+once more with a full-stack load test (FullStackLoadTest in Algo-
+rithm 1) before being committed, confirming end-to-end throughput
+and latency hold under production-representative load; a regression
+there discards the candidate even though it passed locally.
+Refine In the refinement stage, the system aggregates the modi-
+fications introduced over the course of the optimization run—such
+as updates to model implementations, model server configurations,
+and other changes—as well as revisions to the knowledge base de-
+scribed in Section 4.1. FlashVector also records a brief summary
+documenting these changes along with any performance improve-
+ments or regressions observed during the run.
+The refinement stage plays a crucial role in determining the
+work quality of FlashVector. By applying in-place updates to the
+knowledge base at the end of each run, FlashVector bounds the
+amount of memory the agent maintains. Compared with continually
+adding full optimization memories at each step, this strategy greatly
+reduces the size of the context window. In practice, it substantially
+mitigates catastrophic forgetting and hallucinations in FlashVector.
+Triggering. The loop runs without a person invoking it. The
+model serving stack is optimized whenever a new release enters
+the fleet, and also when it is still serving traffic but has not been
+analyzed in long enough that its configuration can no longer be
+
+===== PDF PAGE 6 =====
+assumed current. This keeps optimization from decaying between
+manual passes as models retrain, traffic shifts, and infrastructure
+changes (Section 3).
+5 Evaluation & Case Studies
+In this section, we share a few case studies of real world full stack
+optimizations that FlashVector delivered. Table 1 summarizes the
+resulting speedups at a glance. Not only is it able to find unusual
+GPU kernel optimizations but can also pinpoint bottlenecks that
+are not commonly looked at automatically and systematically.
+The baseline measurements and all subsequent profiling of opti-
+mized variants were carried out in the same environment to main-
+tain consistency and ensure fair comparison.
+Model Latency Speedup Throughput Increase
+Retrieval model 1.67× 1.10×
+Ranking model 1 1.36× 1.80×
+Ranking model 2 1.98× 2.00×
+Ranking model 3 1.30× 1.33×
+Ranking model 4 1.30× 1.35×
+Gamer model 1.34× 1.15×
+Table 1: Model Serving Stack optimizations delivered by
+FlashVector on production models.
+5.1 Case 1: Optimize Model Server
+For an early stage two-tower retrieval model, as we can see in Fig-
+ure 4, the FlashVector diagnosis step identified that the bottleneck
+lies in one step in the NVIDIA Triton Inference Server. The specific
+step is in converting the server inputs (Triton’s gRPC server re-
+ceived over the wire from the clients) into another format that the
+Triton Python backend (a separate parallel process) expects. How-
+ever, the conversion logic is implemented in Python’s less optimized
+deserialization module. As the model uses more string inputs, the
+slow down in converting these string inputs manifested as a major
+bottleneck. The FlashVector Optimize step hence suggests rewriting
+the logic in C++. The verification step confirmed the speed up to
+30×and presented the optimization for review. This case study
+illustrates that FlashVector can dynamically identify bottlenecks
+across the stack rather than just narrowly focusing on a specific
+area, and it can adapt as the workload shifts its bottlenecks. The fix
+was contributed back [26] to the NVIDIA Triton Inference server
+project.
+Figure 4: Input Serialization bottleneck found between Triton
+Server and its Python backend
+5.2 Case 2: Improve Model Inference Efficiency
+Another model is a multi-task recommendation model. Dense fea-
+tures pass through a feature-gating layer that adaptively adjusts
+their contributions, categorical features are represented through
+shared, learned embedding tables, and target-aware attention mod-
+ules condense the user’s past install and click sequences in relation
+to the candidate game. These feature representations are then fed
+into a stack of feature-interaction layers that capture higher-order
+relationships among all input signals. The combined representation
+is passed into a shared bottom MLP, which then splits into several
+task-specific output heads.
+5.2.1 Baseline setup. The baseline is AOT-compiled with PyTorch
+AOTInductor, FP16 quantized, and we use NVIDIA RTX PRO 6000
+Blackwell GPU to run all workloads. The model serving payload
+has batch size of 2000 per request.
+5.2.2 Optimization Highlight. Through an iterative optimization
+cycle, FlashVector introduced numerous improvements spanning
+the kernel and model. Here we highlight several of the most notable
+optimizations.
+Fused attention. Standard multi-layer perceptron (MLP) atten-
+tion layers are bottlenecked by GPU memory bandwidth. Evaluating
+every candidate–position pair layer-by-layer requires continuously
+writing and reading hundreds of megabytes of intermediate tensors
+to GPU memory. FlashVector eliminates this overhead by precom-
+puting candidate-only and position-only feature blocks prior to
+interaction, avoiding wide per-pair input matrices entirely.
+This structure enables consolidating six separate GPU kernels
+into a single kernel that maintains all intermediate working values
+within GPU registers (Figure 5). Because the fused kernel preserves
+the original operation order and accumulation precision, it gener-
+ates attention weights that are bit-identical to the baseline, which
+we verify by element-wise comparison. Overall, this transformation
+reduces the per-module memory traffic to roughly one-third, cutting
+the attention latency from 996.5 µs to 279.8 µs (a 3.56×speedup).
+Embedding Layer. FlashVector Diagnose stage finds that the
+embedding bag kernel consumed 28.1% of GPU time. Because Py-
+Torch mapped this operator to an opaque ATen dispatcher kernel,
+AOTInductor was unable to fuse it with adjacent reductions, lead-
+ing to unnecessary launch overhead and unoptimized subgraphs.
+FlashVector resolves this by decomposing masked-mean pooling
+
+===== PDF PAGE 7 =====
+Figure 5: Fused Attention Kernel
+Figure 6: Optimized Embedding Layer
+into fine-grained PyTorch primitives (F.embedding, masking, and
+summation). This exposes the entire lookup and reduction logic to
+the compiler, which fuses them into a single Triton kernel (Figure 6).
+Additionally, FlashVector Optimize Stage eliminates redundant
+computations by evaluating target and sequence semantic embed-
+dings once at the beginning of the forward pass, reusing the outputs
+across both dense and gating branches. Combined, these changes
+reduce the total GPU kernel time by 33.4%, cut forward-pass latency
+by 30.1%, and lower dispatcher overhead from 44.8% to 28.5%—shift-
+ing the primary execution bottleneck from embedding lookups to
+matrix multiplication (GEMM) kernels.
+5.3 Case 3: Optimize On-demand Feature
+Processing
+While Case 2 optimizes models deployed on GPUs, on-demand
+feature processing generates the inputs those models require. For
+every request, a CPU-only service converts raw request attributes
+into model input tensors — decoding and reshaping them, enriching
+them with additional metadata. This preprocessor is deployed as its
+own Nvidia Triton model through Python backend.
+FlashVector loads optimization agent for model on-demand fea-
+ture processing, of which the Diagnosis step reads eBPF profile
+directly from production that covers all the processes (Python run-
+time, Triton’s threads), then runs custom scripts to parse it into a
+structured report and identify the layer’s bottlenecks.
+5.3.1 Baseline setup. The system in question is a preprocessor
+that handles requests sequentially, where each request includes one
+context row and as many as 2000 candidate rows. In this experiment,
+a single pod is running 12 Python backend instances, each in its
+own process, and they handle requests in parallel across the pod’s
+14 vCPUs.
+5.3.2 Optimization highlight. Diagnosis partitioned the cost along
+the request’s own path — receiving the inputs, computing the fea-
+tures, and assembling the output tensors, and each stage wasted
+CPU in its own way.
+Receiving the inputs. Before any transformer runs, the Python
+backend materializes every request tensor as Python objects: the
+stock accessor copies the server’s buffer, and a string tensor be-
+comes one bytes object per element plus a decode loop. A produc-
+tion request carries 875 such inputs, most of them numeric and read
+only to be reassembled into tensors. FlashVector Optimize stage
+proposes several optimizations. Native view removes the copy: a
+numeric tensor is exposed as a read-only view onto the server’s
+own buffer, and a string tensor is walked once in C++ rather than
+one object per element plus a decode loop. Native mapping removes
+the read entirely where an input’s only consumer is a vocabulary
+lookup — C++ probes the shared-memory vocabulary and the text
+never reaches Python. Each input’s route is resolved once at ini-
+tialization from the feature graph, and any route that cannot be
+proven safe falls back to decoding. Section 5.1 removed the server’s
+own serialization of these inputs; this removes the backend’s mate-
+rialization of them.
+Computing the features. Where per-element work is too ir-
+regular for vectorized NumPy/pandas operations — ragged loops,
+per-row dictionaries, string handling — FlashVector’s Optimize
+stage replaces it with hand-written Cython kernels (see Table 2 for
+kernels it produced and speedups).
+Assembling the tensors. Turning per-feature values into the
+model’s input tensors runs in two passes and accounts for roughly
+20% of serving CPU. Both passes waste it the same way — allocating
+a small array per feature and then concatenating — and because
+the second pass begins by copying the first pass’s layout, this dou-
+bles across several hundred features. FlashVector’s Optimize stage
+instead allocates each destination once and lets every feature write
+directly into its own slice, eliminating both concatenations and the
+redundant copy.
+Python Functions Replaced Kernal speedup
+pd.to_datetime, once per request 350×
+one numpy assignment per feature 25.1×
+bytes →unicode per input 12.4×
+6 universal functions dispatches ×180 sites∼8×
+per-row dict for one membership query 4.4–5.8×
+Table 2: Native Cython kernels and the operations they re-
+place, with speedup at the call site
+
+===== PDF PAGE 8 =====
+Table 3: Throughput per preprocessor pod as each round of
+optimizations was tested in production environment. Each
+row is measured on top of the one above it.
+Stage RPS / pod vs. prev. vs. base
+Baseline 940 — —
++ native kernels, assembly∼1.2k +28% 1.3×
++ zero-copy request I/O∼1.5k +25% 1.6×
+5.3.3 Results. The three optimizations were implemented and eval-
+uated in different iterations — the Cython kernels and the assembly
+rewrite together, then zero-copy request I/O. Each iteration deliv-
+ered a double-digit gain, and because each is measured on top of the
+one before it, those gains compound. Table 3 tracks the throughput
+one preprocessor pod sustains at a fixed latency SLO: 940 requests
+per second at baseline, roughly 1.5k with all three in place — a 1.6×
+improvement. The sequence is the argument for running the loop
+repeatedly: each pass re-profiles a service the previous pass has al-
+ready changed, and surfaces whichever bottleneck now dominates.
+5.4 Case 4: Tune Serving Stack Parameters
+The first three cases show FlashVector discovering better code
+within a layer. This case shows a complementary capability: FlashVec-
+tor also adaptively retunes runtime configuration — dynamic batch-
+ing settings, the request queue policy, the number of model in-
+stances resident on a GPU, and more — whenever the surrounding
+stack changes, including after its own code optimizations land.
+Across the configurations measured for a single, already code-
+optimized model, sustained throughput at the same latency SLO
+varied by more than 2×, showing how much is left on the table
+when configuration isn’t retuned alongside code.
+5.4.1 Baseline setup. Each model server pod owns one GPU par-
+tition and the replica count is set by an autoscaler. The sweep is
+written to search an arbitrary set of levers; at present it varies two
+of them, instance count and dynamic batch size, with the queue
+policy derived from the SLO rather than searched. A request here is
+already a ragged batch of roughly a thousand ad candidates packed
+into one tensor, so a dynamic batch of 6 is a GPU batch of several
+thousand candidate rows. The hand-tuned baseline left the batch
+size at the framework default and scaled on a utilization target.
+5.4.2 The loop. This layer’s Profile step runs each candidate con-
+figuration under held load and records its sustained throughput
+at a fixed latency SLO. Diagnose ranks the trials and picks the
+best-performing configuration, or declines when nothing beats
+the incumbent by more than the measurement noise. Optimize
+applies that configuration by opening it as a pull request. Verify
+tests the change in production through a shadow-traffic canary,
+adopting it if the canary holds and discarding it if not, with either
+outcome recorded in the knowledge base. The loop repeats on the
+next model release. Fidelity comes from replaying real production
+requests rather than synthetic ones; for a two-stage model the
+paired preprocessor’s outputs are captured first and replayed as the
+model’s inputs, so the tensors are the ones production produces.
+The job runs isolated on a node of the production machine type.
+inst. / batch chosen trial
+Model SLO base tuned RPS 𝑝99
+Model A 250 7 / 64 6 / 6 1321 192
+Model B 250 10 / 64 7 / 3 736 271
+Model C 300 8 / 2 4 / 2 238 251
+Model D 400 12 / 3 3 / 1 139 285
+Table 4: Configurations selected by the agent from the sweep
+results. SLO and 𝑝99 in ms; RPS is the throughput the chosen
+trial sustained at the SLO.
+5.4.3 Results. Table 4 lists four production models tuned this way.
+Each run was launched, monitored, interpreted, and delivered as a
+reviewed pull request by the agent.
+6 Discussion and Conclusion
+We presented FlashVector, an agentic system that extends the re-
+cent success of LLM-driven GPU kernel optimization to the full
+hierarchical model-serving stack. Rather than treating each layer’s
+optimization as a bespoke, human-expert-driven effort, FlashVec-
+tor generalizes the profile–diagnose–optimize–verify loop through
+three mechanisms: a layer agent abstraction that lets a kernel, an
+ML framework, a model server, or a feature-processing service plug
+into the same closed loop by implementing the Profile, Diagnose,
+Optimize, and Verify steps of Figure 3 with its own tooling; optimize
+locally, verify globally, which proposes candidates independently
+within each layer but accepts one only when it is shown to improve
+the system as a whole—measured against replayed production traf-
+fic—and keeps it only when the gain clears the measurement noise;
+and an always-on optimization loop, which starts each run from the
+model’s recorded history of accepted and rejected changes, writes
+the run’s outcome back, and re-triggers itself automatically—so that
+discovered optimizations survive model retraining, traffic shifts,
+and hardware upgrades.
+Deployed on Unity’s Vector advertising platform, FlashVector
+delivered up to 2×throughput increase and up to 1.98×latency
+speedup on the model server, and up to 1.6×throughput increase on
+the feature store, with optimizations spanning GPU kernel fusion
+and embedding-layer restructuring (Section 5), model-server input
+serialization, CPU-bound on-demand feature processing, and online
+serving-parameter search. That this range of fixes was discovered
+by the same closed loop, without a new system being purpose-
+built for each layer, is the paper’s main lesson: cross-layer serving
+inefficiency is not merely a kernel problem in disguise, and the
+agentic paradigm that has proven effective for kernels generalizes
+to the heterogeneous, multi-language systems that surround them.
+The continuous configuration-tuning loop in Section 5.4 further
+shows that this generalization extends beyond individual code fixes
+to a loop that keeps running on its own, continuously, keeping pace
+with a fleet whose models, traffic, and infrastructure never stop
+changing.
+More broadly, modern system architectures show an increas-
+ingly distinct divide between reference and production languages.
+Although Python and PyTorch are preferred for algorithmic proto-
+typing owing to their developer velocity [28], production systems
+
+===== PDF PAGE 9 =====
+necessitate superior performance. FlashVector’s case studies are, in
+effect, instances of this divide being bridged automatically: parallel
+agent workflows translate reference implementations into opti-
+mized, lower-level code in CUDA and C/C++, or into equivalent
+low-level Python and Cython where a full language change is un-
+necessary, without requiring the engineering team to maintain
+two parallel implementations by hand. In this view, FlashVector
+is not only a serving-optimization tool but an early instance of a
+broader pattern: agentic systems as the connective layer between
+fast-moving reference code and the performance-critical systems it
+must eventually become.
+7 Acknowledgement
+We are grateful to our team members for their invaluable contribu-
+tions to the development of this work: Zhusong Mei, Philippe Reddy,
+Oscar Elfving, David Bellemare, Sam Hallam, Xianghao Chen, Ryan
+Ngo, Sonja Li.
+References
+[1] Crankshaw, D., Wang, X., Zhou, G., Franklin, M. J., Gonzalez, J. E., and Stoica,
+I. Clipper: A low-latency online prediction serving system. In 14th USENIX
+Symposium on Networked Systems Design and Implementation (NSDI 17), pp.
+613–627, 2017.
+[2] Crankshaw, D., Sela, G.-E., Mo, X., Zumar, C., Stoica, I., Gonzalez, J., and Tumanov,
+A. Inferline: latency-aware provisioning and scaling for prediction serving
+pipelines. In Proceedings of the 11th ACM Symposium on Cloud Computing, pp.
+477–491, 2020.
+[3] Cui, W., Zhao, H., Chen, Q., Wei, H., Li, Z., Zeng, D., Li, C., and Guo, M. Dvabatch:
+Diversity-aware multi-entry multi-exit batching for efficient processing of dnn
+services on gpus. In 2022 USENIX Annual Technical Conference (USENIX ATC 22),
+pp. 183–198, 2022.
+[4] Dai, W., Wu, H., Yu, Q., Gao, H.-a., Li, J., Jiang, C., Lou, W., Song, Y., Yu, H., Chen,
+J., et al. Cuda agent: Large-scale agentic rl for high-performance cuda kernel
+generation. arXiv preprint arXiv:2602.24286, 2026.
+[5] Dhakal, A., Kulkarni, S. G., and Ramakrishnan, K. Gslice: controlled spatial
+sharing of gpus for a scalable inference platform. In Proceedings of the 11th ACM
+Symposium on Cloud Computing, pp. 492–506, 2020.
+[6] Ding, Y., Han, R., Zhang, X., and Chen, X. Prompts: Performance optimization
+via multi-agent planning for llm training and serving. Proceedings of Machine
+Learning and Systems, 8:1010–1039, 2026.
+[7] Dong, K. S., Modi, S., Nikiforov, D., Damani, S., Lin, E., Hari, S. K. S., and Kozyrakis,
+C. Kernelblaster: Continual cross-task cuda optimization via memory-augmented
+in-context reinforcement learning. arXiv preprint arXiv:2602.14293, 2026.
+[8] Gujarati, A., Karimi, R., Alzayat, S., Hao, W., Kaufmann, A., Vigfusson, Y., and
+Mace, J. Serving dnns like clockwork: Performance predictability from the bottom
+up. In 14th USENIX Symposium on Operating Systems Design and Implementation
+(OSDI 20), pp. 443–462, 2020.
+[9] Gunasekaran, J. R., Mishra, C. S., Thinakaran, P., Sharma, B., Kandemir, M. T., and
+Das, C. R. Cocktail: A multidimensional optimization for model serving in cloud.
+In 19th USENIX Symposium on Networked Systems Design and Implementation
+(NSDI 22), pp. 1041–1057, 2022.
+[10] Guo, P., Zhu, C., Chen, S., Liu, F., Lin, X., Lu, Z., and Zhang, Q. Evoengineer:
+Mastering automated cuda kernel code evolution with large language models.
+arXiv preprint arXiv:2510.03760, 2025.
+[11] He, X., Pan, J., Jin, O., Xu, T., Liu, B., Xu, T., Shi, Y., Atallah, A., Herbrich, R.,
+Bowers, S., et al. Practical lessons from predicting clicks on ads at facebook.
+In Proceedings of the eighth international workshop on data mining for online
+advertising, pp. 1–9, 2014.
+[12] Hong, C., Bhatia, S., Cheung, A., and Shao, Y. S. Autocomp: A powerful and
+portable code optimizer for tensor accelerators. arXiv preprint arXiv:2505.18574,
+2025.
+[13] Kraft, P., Kang, D., Narayanan, D., Palkar, S., Bailis, P., and Zaharia, M. Willump:
+A statistically-aware end-to-end optimizer for machine learning inference. Pro-
+ceedings of Machine Learning and Systems, 2:147–159, 2020.
+[14] Kwon, W. vLLM: an efficient inference engine for large language models. University
+of California, Berkeley, 2025.
+[15] Li, S., Wang, Z., He, Y., Li, Y., Shi, Q., Li, J., Hu, Y., Che, W., Han, X., Liu, Z., et al.
+Autotriton: Automatic triton programming with reinforcement learning in llms.
+arXiv preprint arXiv:2507.05687, 2025.
+[16] Li, Z., Zheng, L., Zhong, Y., Liu, V., Sheng, Y., Jin, X., Huang, Y., Chen, Z., Zhang,
+H., Gonzalez, J. E., et al. Alpaserve: Statistical multiplexing with model parallelism
+for deep learning serving. In 17th USENIX Symposium on Operating Systems
+Design and Implementation (OSDI 23), pp. 663–679, 2023.
+[17] Liao, G., Qin, H., Wang, Y., Golden, A., Kuchnik, M., Yetim, Y., Ang, J. J., Fu, C.,
+He, Y., Hsia, S., Jiang, Z., Li, D., Pashkevich, U., Puvvada, V., Shi, F., Steiner, M.,
+Xiao, R., Li, L., Yan, N., Yu, X., Fang, Z., Levenstein, R., Ho, K., Zhu, H., Hammond,
+A., Li, R., Mathews, A., Gondkar, K., Zainul-Abedin, A., Singh, K., Yu, H., Chi,
+W., Huang, B., Zhang, S., Weller, N., Marine, Z., Cook, W., Wu, C.-J., and Liu, G.
+Kernelevolve: Scaling agentic kernel coding for heterogeneous ai accelerators at
+meta, 2026. URL https://arxiv.org/abs/2512.23236.
+[18] Liu, W., Xu, J., Li, Y., Zheng, L., Li, T., Liu, Q., and He, J. Dr. kernel: Reinforcement
+learning done right for triton kernel generations, 2026. URL https://arxiv.org/
+abs/2602.05885.
+[19] McMahan, H. B., Holt, G., Sculley, D., Young, M., Ebner, D., Grady, J., Nie, L.,
+Phillips, T., Davydov, E., Golovin, D., et al. Ad click prediction: a view from the
+trenches. In Proceedings of the 19th ACM SIGKDD international conference on
+Knowledge discovery and data mining, pp. 1222–1230, 2013.
+[20] Meta Platforms. KernelAgent: Multi-stage deep agent system for pytorch kernel
+optimization. https://github.com/meta-pytorch/KernelAgent, 2025. Accessed:
+2026-06-11.
+[21] Nagaitsev, K., Grbcic, L., Williams, S., and Iancu, C. Optimizing pytorch inference
+with llm-based multi-agent systems, 2025. URL https://arxiv.org/abs/2511.16964.
+[22] Olston, C., Fiedel, N., Gorovoy, K., Harmsen, J., Lao, L., Li, F., Rajashekhar, V.,
+Ramesh, S., and Soyke, J. Tensorflow-serving: Flexible, high-performance ml
+serving. arXiv preprint arXiv:1712.06139, 2017.
+[23] Ouyang, A., Guo, S., Arora, S., Zhang, A. L., Hu, W., Ré, C., and Mirhoseini, A.
+Kernelbench: Can llms write efficient gpu kernels?, 2025. URL https://arxiv.org/
+abs/2502.10517.
+[24] SGLang Team. Agent-assisted sglang development: An initial exploration. https://
+www.lmsys.org/blog/2026-07-02-agent-assisted-sglang-development, July 2026.
+[25] Shen, H., Chen, L., Jin, Y., Zhao, L., Kong, B., Philipose, M., Krishnamurthy,
+A., and Sundaram, R. Nexus: A gpu cluster engine for accelerating dnn-based
+video analysis. In Proceedings of the 27th ACM Symposium on Operating Systems
+Principles, pp. 322–337, 2019.
+[26] Triton Inference Server Developers. Issue #8348: [contribution to accelerate
+python backend latency]. https://github.com/triton-inference-server/server/
+issues/8348, 2025.
+[27] Wang, L., Yang, L., Yu, Y., Wang, W., Li, B., Sun, X., He, J., and Zhang, L. Mor-
+phling: Fast, near-optimal auto-configuration for cloud-native model serving. In
+Proceedings of the ACM Symposium on Cloud Computing, pp. 639–653, 2021.
+[28] Yang, E. Z. Pytorch: A reference language, July 2026. URL https://docs.pytorch.
+org/devlogs/compiler/2026-07-25-pytorch-a-reference-language/.
+[29] Yu, G.-I., Jeong, J. S., Kim, G.-W., Kim, S., and Chun, B.-G. Orca: A distributed
+serving system for transformer-based generative models. In 16th USENIX sym-
+posium on operating systems design and implementation (OSDI 22), pp. 521–538,
+2022.
+[30] Zhang, C., Yu, M., Wang, W., and Yan, F. Mark: Exploiting cloud services for
+cost-effective,slo-aware machine learning inference serving. In 2019 USENIX
+Annual Technical Conference (USENIX ATC 19), pp. 1049–1062, 2019.
+[31] Zhang, G., Zhu, S., Wei, A., Song, Z., Nie, A., Jia, Z., Vijaykumar, N., Wang, Y., and
+Olukotun, K. Accelopt: A self-improving llm agentic system for ai accelerator
+kernel optimization. Proceedings of Machine Learning and Systems, 8:541–568,
+2026.
+[32] Zou, D., Zhu, L., and Lab, M. H. Kernel design agents. https://github.com/mit-
+han-lab/kernel-design-agents, 2026.

@@ -269,5 +269,63 @@
     "downloaded_from": "https://www.microsoft.com/en-us/research/wp-content/uploads/2025/10/QoServe_CC_final_v2.pdf",
     "bytes": 2618094,
     "sha256": "6985bb3a55566a3d59ff1434834dfeeb98dc09abb93ad4ed013661e71721298d"
+  },
+  {
+    "id": "18",
+    "title": "Autopoiesis: A Self-Evolving System Paradigm for LLM Serving Under Runtime Dynamics",
+    "authors": [
+      "Jiang, Youhe",
+      "Yan, Ran",
+      "Peng, You",
+      "Li, Wenshuang",
+      "Wang, Taiyi",
+      "Fu, Fangcheng",
+      "Yuan, Binhang"
+    ],
+    "venue": "arXiv preprint (conference identity not verified)",
+    "venue_url": "",
+    "pdf_url": "https://arxiv.org/pdf/2604.07144v1",
+    "additional_url": "https://arxiv.org/abs/2604.07144v1",
+    "html_url": "https://arxiv.org/html/2604.07144v1",
+    "file": "18_Autopoiesis_arxiv_v1.pdf",
+    "status": "downloaded",
+    "access_date": "2026-11-04",
+    "publication_date": "2026-04-08",
+    "source_type": "author_arxiv_preprint",
+    "version_note": "Pinned author arXiv v1. Included as a close mechanism-level comparison, not counted among the 17 verified top-venue papers.",
+    "downloaded_from": "https://arxiv.org/pdf/2604.07144v1",
+    "bytes": 1144693,
+    "sha256": "8ded5eae81478eebbcb32de4d06519c170b95aca181742990b422b87cf3d959f"
+  },
+  {
+    "id": "19",
+    "title": "FlashVector: Agent for Hierarchical Model Serving Stack Optimization",
+    "authors": [
+      "Wu, Qi",
+      "Lemire, Lohan",
+      "Meng, Kai",
+      "Cai, Zhongmou",
+      "Bargues, Raphael",
+      "Zhitnikov, Petr",
+      "Cao, Zeyuan",
+      "Wang, Yao",
+      "Bian, Shujun",
+      "Chen, Wei",
+      "Sheng, Sean"
+    ],
+    "venue": "arXiv preprint (conference identity not verified)",
+    "venue_url": "",
+    "pdf_url": "https://arxiv.org/pdf/2609.17391v1",
+    "additional_url": "https://arxiv.org/abs/2609.17391v1",
+    "html_url": "https://arxiv.org/html/2609.17391v1",
+    "file": "19_FlashVector_arxiv_v1.pdf",
+    "status": "downloaded",
+    "access_date": "2026-11-04",
+    "publication_date": "2026-09-15",
+    "source_type": "author_arxiv_preprint",
+    "version_note": "Pinned author arXiv v1. Included as a close mechanism-level comparison, not counted among the 17 verified top-venue papers.",
+    "downloaded_from": "https://arxiv.org/pdf/2609.17391v1",
+    "bytes": 2045853,
+    "sha256": "a68ed302b06ee51087ca6b501a80bf748d073ae2f8c9aef29b8d89a5a15862af"
   }
 ]
