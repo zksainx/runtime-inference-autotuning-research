@@ -270,5 +270,108 @@
       }
     ],
     "interpretation_limits": "These traces establish that public production workloads record arrival times and length distributions (and, for Mooncake, block-level reuse). Phase-shift magnitude and its effect on optimal policy were not measured."
+  },
+  "self_evolving_serving_related_work": {
+    "checked_at": "2026-11-04",
+    "method": "arXiv abstract pages (citation meta tags and abstract block) and arXiv HTML full text downloaded and searched locally; HuggingFace model API, config.json and README fetched raw; GitHub READMEs fetched raw; TuxBot facts read from the local author PDF text. Paraphrased findings unless marked as quotation.",
+    "sources_queried": [
+      "arXiv API and abstract/HTML pages",
+      "HuggingFace model API",
+      "GitHub repository search API and raw READMEs",
+      "local paper-text/02_TuxBot_SOSP2026_arxiv_v2.txt"
+    ],
+    "entries": [
+      {
+        "name": "Autopoiesis: A Self-Evolving System Paradigm for LLM Serving Under Runtime Dynamics",
+        "type": "arXiv preprint",
+        "sources": [
+          "https://arxiv.org/abs/2604.07144",
+          "https://arxiv.org/html/2604.07144v1"
+        ],
+        "submitted": "2026-04-08",
+        "supports": "Online self-evolving serving: an LLM-driven program synthesis workflow rewrites the serving policy (should_reschedule and schedule, described as pure functions) during serving; asynchronous policy hot-swap from control plane to data plane at the next monitoring step (§6.2). Candidates are evaluated by trace replay on a serving simulator (§5.3, Appendix B). Policy governs workload assignment, resource allocation and parallelism plans. Evaluation metric is trace completion time consisting of scheduling, reconfiguration and serving time (§7). Synthesis LLM is GLM-4.7-Flash (§7). Appendix I: evolution relies on LLM API calls; current deployment uses open-source models; commercial API per-token cost may be prohibitive for continuous evolution. Clusters: 32 H100 (4 nodes), 64 mixed GPUs, elastic up to 64 A100. Served models Llama3.1-70B, Llama3.1-8B, Llama2-13B. Baselines DistServe, HexGen, SpotServe. Abstract: up to 53% and on average 34% improvement."
+      },
+      {
+        "name": "SEIS: Self-Evolving Inference Systems",
+        "type": "arXiv preprint",
+        "sources": [
+          "https://arxiv.org/abs/2610.04646",
+          "https://arxiv.org/html/2610.04646v1"
+        ],
+        "submitted": "2026-10-03",
+        "supports": "Agents (Claude Opus 5 via Claude Code; GPT-5.6 Sol via Codex, §3.4) rewrite the whole mini-sglang engine across sessions with a two-hour wall-clock limit (§3.3). Qwen3-0.6B on one H100; best engine reaches 3.27x vanilla mini-sglang throughput in the single-request workload. Correctness gates use numerical difference and downstream accuracy; one final engine (GPT Chain A) omitted about 39% of vocabulary rows while GSM8K accuracy stayed close, exposed only by code inspection (reward hacking)."
+      },
+      {
+        "name": "VibeServe: Can AI Agents Build Bespoke LLM Serving Systems?",
+        "type": "arXiv preprint",
+        "sources": [
+          "https://arxiv.org/abs/2605.06068"
+        ],
+        "submitted": "2026-05-07 (v2 2026-10-12)",
+        "supports": "Agentic loop generates entire serving stacks (outer planning loop, inner implement/check/measure loop); matches vLLM and SGLang on Llama-3.1-8B; 2.3x goodput of tuned SGLang for a 397B MoE model on four AMD MI300As."
+      },
+      {
+        "name": "InferenceBench: A Benchmark for Open-Ended LLM Inference Optimization by AI Agents",
+        "type": "arXiv preprint",
+        "sources": [
+          "https://arxiv.org/abs/2607.20468"
+        ],
+        "submitted": "2026-05-20",
+        "supports": "Agents get one H100 and two hours; across 15 agent configurations they reach up to 8.08x over a naive PyTorch baseline and 4.05x over default vLLM, but fall below a simple hyperparameter search under the same time budget (up to 11.53x); agents test few distinct configurations."
+      },
+      {
+        "name": "AutoTuneBench: Trustworthy Measurement for Agent Auto-Tuning of LLM Serving Engines",
+        "type": "arXiv preprint",
+        "sources": [
+          "https://arxiv.org/abs/2609.18123"
+        ],
+        "submitted": "2026-09-16",
+        "supports": "Four measurement failure modes (strawman baselines, non-transferable absolute times, saturated tasks, infrastructure defects); best kernel 10.6x against a naive baseline but 2.03x against an honest one; one configuration 1.174x on one machine and 1.0049x on another; vLLM and SGLang corpus released."
+      },
+      {
+        "name": "P-PAS: Prefill-Pressure Adaptive Scheduling for Long-Context LLM Serving",
+        "type": "arXiv preprint",
+        "sources": [
+          "https://arxiv.org/abs/2608.15171"
+        ],
+        "submitted": "2026-08-15 (v2 2026-10-09)",
+        "supports": "No single static vLLM max-num-batched-tokens is best across load regimes; P-PAS switches the budget by concurrent prefill/decode pressure; P-PAS+ reduces mean end-to-end latency by 3.0-3.1% relative to the best tested static token budget on mixed-shape workloads."
+      },
+      {
+        "name": "GLM-5.3 model card",
+        "type": "model release",
+        "sources": [
+          "https://huggingface.co/zai-org/GLM-5.3",
+          "https://huggingface.co/api/models/zai-org/GLM-5.3",
+          "https://huggingface.co/zai-org/GLM-5.3/raw/main/config.json",
+          "https://arxiv.org/abs/2602.15763"
+        ],
+        "supports": "Repository created 2026-08-25; safetensors total 753,329,940,480 parameters; tag fp8; model_type glm_moe_dsa; 78 layers, 256 routed experts with 8 per token, max_position_embeddings 1,048,576; same base model as GLM-5.2; README lists SGLang and vLLM deployment recipes. GLM-5 technical report arXiv 2602.15763 submitted 2026-02-17 states DSA adoption."
+      },
+      {
+        "name": "SummerTea/vllm-autotune",
+        "type": "GitHub repository",
+        "sources": [
+          "https://github.com/SummerTea/vllm-autotune"
+        ],
+        "supports": "External coding agent (Claude Code / Codex / opencode) edits a single config.yaml; bench.py starts the server remotely per trial and measures vllm bench serve goodput on a fixed workload; keep/discard by measured goodput."
+      },
+      {
+        "name": "novitalabs/autotuner",
+        "type": "GitHub repository",
+        "sources": [
+          "https://github.com/novitalabs/autotuner"
+        ],
+        "supports": "Automated parameter tuning for SGLang and vLLM under SLO and hardware constraints."
+      },
+      {
+        "name": "TuxBot LLM backend (local author PDF v2)",
+        "type": "local paper text",
+        "sources": [
+          "paper-text/02_TuxBot_SOSP2026_arxiv_v2.txt"
+        ],
+        "supports": "p8: supports OpenAI API, OpenRouter and Gemini backend-compatible models. p9: TuxBot (ST) uses Gemini 2.5 Flash as the Reasoning loop and Gemini 2.5 Flash-Lite as the Instant loop. p10/p16: about $0.20 per tuning session with Gemini 2.5 Flash."
+      }
+    ]
   }
 }
