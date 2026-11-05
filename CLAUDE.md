@@ -11,7 +11,7 @@ The two primary documents are written in **Chinese**; match that language when e
 ## Layout
 
 - `01_顶会论文调研.md` — literature survey: 17 verified top-venue papers in the main tables, plus a detailed Autopoiesis arXiv v1 close reading in §4 and other related preprints (self-evolving serving, agent tuning benchmarks) in §7. Each paper reference separates publication identity from the downloaded version.
-- `02_研究方案.md` — research proposal: what vLLM/SGLang natively support vs. what must be built for safe online (hot) parameter control. Ends with `[V1]`/`[S1]` reference-link definitions pinned to fixed upstream commits.
+- `02_研究方案.md` — research proposal: MaaS continuous self-optimization with production 1P1D, a rotating experiment node, runtime updates and offline candidate validation/rollout. Appendix A records audited framework capabilities. Ends with `[V1]`/`[S1]` reference-link definitions pinned to fixed upstream commits.
 - `papers.json` — manifest of record: per-paper id, venue, URLs, `file`, `status`, `bytes`, `sha256`, version notes. Ids 01–17 are verified top-venue papers; ids 18–19 (Autopoiesis, FlashVector) are pinned arXiv preprints kept for mechanism comparison, with `venue` marked as unverified. Failed download attempts are printed to stderr by the downloader, not stored.
 - `papers/` and `paper-text/` — downloaded PDFs and their PDFKit-extracted text (page-boundary-preserving, `NN_Name.pdf` ↔ `NN_Name.txt`).
 - `references.bib` — one BibTeX entry per paper (count must equal `papers.json`).
@@ -41,11 +41,13 @@ python3 scripts/validate_research.py
 
 ## Research direction (as settled in `02_研究方案.md`)
 
-- Fixed deployment (model, hardware, structural capacity = class C), non-stationary workload; the controller adjusts class A/B policies inside fixed capacity. The contribution is online switching inside a *stateful* production engine, with switching cost and cache history in the decision — not "more knobs + LLM search", which overlaps SCOOT/TuxBot.
-- Two-layer design: a thin external control plane (action schema, validation, versioning, effect receipts, cost accounting) with per-engine adapters (vLLM `EngineCoreRequestType.UTILITY`, SGLang `/set_internal_state`), plus targeted changes inside native scheduler/cache/backend code. Do not reimplement an engine or wrap vLLM as a library.
-- Target scope covers scheduler, KV retention, and kernel routing, across vLLM and SGLang, with multi-rank support (§7 stages 1–6, §8 evidence requirements).
-
-- The optional MaaS discussion in §5.1 preserves the original plan and implementation stages. Its initial deployment uses two nodes for production 1P1D and one rotating spare for candidate experiments, warmup and validation. Compatible changes may apply in place; deeper changes use gradual routing of new requests to a prepared replacement, while old requests drain on their original instance. Service-level continuity in this extension is separate from the main plan's same-instance continuity. Account for the spare and temporary extra capacity when evaluating gains. Optimizer inference may use the target service, an independent replica, or an external API; rules/BO are non-LLM baselines. Same-service inference retains confidentiality and capacity-reuse value, with benefits verified against complete costs and data boundaries.
+- The main plan is MaaS continuous self-optimization: two nodes serve production 1P1D over RDMA, while a third rotating node hosts experiments, candidate builds, validation and warmup. The current repository delivers the design and source audits; implementation and GPU/RDMA experiments follow the roadmap.
+- Service continuity means the ingress keeps accepting traffic, existing requests complete on their assigned instance, and new requests gradually move to a prepared replacement. After draining and an observation period, the old node becomes the next experiment node.
+- Two execution paths share diagnosis, candidate records, versions and cost accounting: compatible runtime updates apply at the owning component's safe boundary; deeper configuration/code changes run offline on the spare and enter production through validated rollout. Offline experiments run alongside the continuing production service.
+- Low-overhead summaries and triggered profiling guide bottleneck diagnosis across P, KV transfer, D and the router. Evaluate candidate replay validity, end-to-end readiness, rollout decisions and cumulative business SLO goodput.
+- The first prototype uses SGLang, Mooncake and D replacement; later stages add P replacement, runtime controls, deeper code/kernel/graph experiments and vLLM with the audited NIXL path. Appendix A retains fixed-commit source references and distinguishes native capabilities from proposed interfaces.
+- Optimizer inference may use the target service, an internal replica or an external API. Same-service inference retains confidentiality and capacity-reuse value; evaluate data boundaries, model capability, full resource costs and production interference. Rules/BO and budget-matched search use the same tools for comparison.
+- Account for all three nodes, temporary 1P2D/2P1D coexistence, cache warmup, drain, rollback and shared transport costs. Compare stable production capacity and direct use of the spare for serving when attributing optimization gains.
 
 ## Conventions that matter (evidence discipline)
 
