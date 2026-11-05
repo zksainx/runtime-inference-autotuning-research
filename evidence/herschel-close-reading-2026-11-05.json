@@ -1,0 +1,863 @@
+{
+  "checked_on": "2026-11-05",
+  "checked_at_utc": "2026-11-05T08:30:55.892691+00:00",
+  "timezone": "Asia/Shanghai",
+  "scope": "Full close reading of the pinned local author arXiv v1, 17 physical PDF pages including references, with selected figure/table visual checks. No GPU/inference experiments, upstream implementation audit or independent reproduction.",
+  "paper_id": "20",
+  "title": "Herschel: Continuous Optimization of Production LLM Inference through On-Demand Profiling",
+  "publication_identity": "Author arXiv preprint v1, dated 2026-09-30 on the PDF front page. Conference publication identity not verified.",
+  "primary_sources": [
+    "https://arxiv.org/abs/2609.40247v1",
+    "https://arxiv.org/pdf/2609.40247v1",
+    "https://arxiv.org/html/2609.40247v1"
+  ],
+  "artifacts": [
+    {
+      "file": "papers/20_Herschel_arxiv_v1.pdf",
+      "bytes": 568613,
+      "sha256": "ad30733229ae78ccd9a1f7703cfef0c515c5ecb1b93b14e53a97bfd2918542d0"
+    },
+    {
+      "file": "paper-text/20_Herschel_arxiv_v1.txt",
+      "bytes": 78786,
+      "sha256": "071023b03d6a08b1e1f1ce7a875c557959afa97529c5d956f6c68665463d9783"
+    }
+  ],
+  "physical_pdf_pages": 17,
+  "reading_coverage": {
+    "full_text_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+    ],
+    "main_text_and_conclusion_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+    ],
+    "reference_pages": [
+      13,
+      14,
+      15,
+      16,
+      17
+    ]
+  },
+  "method": "Read all page-preserving PDFKit text and inspect selected local PDFKit-rendered pages. Observations are paraphrases. Source locations use 1-based inclusive text lines and SHA-256 of each newline-normalized line block, avoiding extensive copied excerpts. PDF is authoritative for two-column reading order, figures and tables.",
+  "visually_reviewed_pages": [
+    4,
+    8,
+    9,
+    10,
+    11,
+    12
+  ],
+  "visual_checks": [
+    {
+      "pdf_page": 4,
+      "item": "Figure 3",
+      "finding": "Canary and rollout are explicitly outside Herschel."
+    },
+    {
+      "pdf_page": 8,
+      "item": "Figure 6 and Table 2",
+      "finding": "Figure 6 bars show maximum observed overhead and whiskers the observed range; nonpositive changes are shown at zero. Table 2 footprint units and intervals checked."
+    },
+    {
+      "pdf_page": 9,
+      "item": "Table 3",
+      "finding": "Deployment scopes and distinct outcome measures checked; DP upstream-port gain is labeled offline."
+    },
+    {
+      "pdf_page": 10,
+      "item": "Table 4",
+      "finding": "Final upstream-port runtime/test changes checked: 707/32 and 692/1 lines added/removed."
+    },
+    {
+      "pdf_page": 11,
+      "item": "Figure 10 and Figure 11",
+      "finding": "Original Hybrid patch 766/150 differs from upstream port. MTP 2/3 crossed out while first full forward remains."
+    },
+    {
+      "pdf_page": 12,
+      "item": "Figure 12",
+      "finding": "PA-specific layout change and combined end-to-end TPOT results are separate quantities."
+    }
+  ],
+  "observations": [
+    {
+      "id": "identity",
+      "paper_section": "front matter",
+      "classification": "paper_report",
+      "finding": "Pinned arXiv v1 dated 2026-09-30, Alibaba Group; authors and title read from the PDF. Conference publication identity is not established by this audit.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 5,
+          "line_end": 11,
+          "pdf_pages": [
+            1
+          ],
+          "line_block_sha256": "3dff51c531ac304821ff4358401d282e48a11509edde2d2d9a897348e5e7f00d"
+        }
+      ]
+    },
+    {
+      "id": "production_maas_scope",
+      "paper_section": "Abstract; 1; 4",
+      "classification": "paper_report",
+      "finding": "Production MaaS continuous optimization combines runtime-attached profiling, dependency/pattern analysis and agent-driven implementation experiments. It is a direct neighbor of the proposed project.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 12,
+          "line_end": 23,
+          "pdf_pages": [
+            1
+          ],
+          "line_block_sha256": "309abd6164cb28ebaa0329ae295b146041d6c9096aa8f865e8fe514d18360d77"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 409,
+          "line_end": 426,
+          "pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "203e5487edc88e79820daf36d57971ab0aafda38fb27da247aab9eeba4bb75cc"
+        }
+      ]
+    },
+    {
+      "id": "external_rollout_boundary",
+      "paper_section": "4, Figure 3; 7",
+      "classification": "paper_report",
+      "finding": "Experts review candidate changes; canary validation and staged rollout are explicitly outside the Herschel system in Figure 3. Serving-SLO and correctness monitoring gate wider rollout.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 423,
+          "line_end": 426,
+          "pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "ad8f60128d539086a605199a29b3fb82095f6d535ac7494e9c47dc13536fa2ed"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 471,
+          "line_end": 478,
+          "pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "3c01b93c2ccf70692d054bcf46cc9c567eb07e2955b78874ea523f43ff565f3d"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 837,
+          "line_end": 842,
+          "pdf_pages": [
+            7
+          ],
+          "line_block_sha256": "8b1bad4318148b6639ffb1c4b9762da709373f17eb57d1cd4ab9fc25eeeb6777"
+        }
+      ]
+    },
+    {
+      "id": "no_restart_scope",
+      "paper_section": "4; 5.1; 7",
+      "classification": "survey_interpretation",
+      "finding": "The no-engine-change/no-restart claim applies to profiler attachment. Runtime integration of a candidate implementation is followed by review and deployment; this text does not establish arbitrary in-place hot replacement of engine state.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 412,
+          "line_end": 415,
+          "pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "dc9b94fba4103251b8924c8800fa6df237a109c531f8b0020f3bfcdb51f86812"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 481,
+          "line_end": 490,
+          "pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "583a2c4d58f107c9b3663cde88417daae941718ed1eda55b5e553eb20d467875"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 835,
+          "line_end": 842,
+          "pdf_pages": [
+            7
+          ],
+          "line_block_sha256": "74735057ccb9b3ddbcfbcab92151be9d11bd5ec8a7c1397d40f6a1b99d9893a0"
+        }
+      ]
+    },
+    {
+      "id": "runtime_attachment",
+      "paper_section": "5.1",
+      "classification": "paper_report",
+      "finding": "Initial entry uses ptrace on a selected thread with stack exclusions, redirects pthread_create to a loader that calls dlopen, then restores the application thread before waiting. Later control uses a socket.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 481,
+          "line_end": 490,
+          "pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "583a2c4d58f107c9b3663cde88417daae941718ed1eda55b5e553eb20d467875"
+        }
+      ]
+    },
+    {
+      "id": "session_and_resource_lifecycle",
+      "paper_section": "5.1; 5.2",
+      "classification": "paper_report",
+      "finding": "Stop or lease expiry ends recording and drains output. Probe reclamation/reuse waits for safe callback/call lifetimes; CUDA transitions gate entry and drain tracked work.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 491,
+          "line_end": 502,
+          "pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "3538c36242b66655606dc4b4af7af871dbcfc7d3e61b6c3c5ee3b952a9da6b4b"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 585,
+          "line_end": 593,
+          "pdf_pages": [
+            5
+          ],
+          "line_block_sha256": "e3eb4db4fe2308e57f4298356fbbddc416ed352c90cad21330e3408d22961936"
+        }
+      ]
+    },
+    {
+      "id": "python_probe",
+      "paper_section": "5.2",
+      "classification": "paper_report",
+      "finding": "A resident CPython frame-evaluation router records selected call intervals and supported object fields. Intervals include native work and waiting; engine-specific readers capture dimensions and token counts.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 507,
+          "line_end": 510,
+          "pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "e278e4b5f06cfc01619c1f45cd3c6be04fc74e40205825398cba21d19e4fd29c"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 560,
+          "line_end": 570,
+          "pdf_pages": [
+            5
+          ],
+          "line_block_sha256": "1bc04c61aa75c39d8dffbf3971ea3dbf1359d0654b2d3596cb5bbd2d70f8ce3f"
+        }
+      ]
+    },
+    {
+      "id": "accelerator_probe",
+      "paper_section": "5.2",
+      "classification": "paper_report",
+      "finding": "CUPTI supplies CUDA Runtime intervals and device kernels, memory and synchronization activities. Correlation IDs and device/stream identifiers connect submissions to execution; vendor adapters cover other accelerators.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 571,
+          "line_end": 584,
+          "pdf_pages": [
+            5
+          ],
+          "line_block_sha256": "82584f8c5785d9ff6e0697c0bee96728493c39b8e1f2ad8eb47e21ec3febcfbb"
+        }
+      ]
+    },
+    {
+      "id": "bounded_fleet_collection",
+      "paper_section": "5.3",
+      "classification": "paper_report",
+      "finding": "The control plane samples instances and times by serving conditions, with canary collections and concurrency limits. Typical initial windows last 30 seconds; production samples contain at least ten complete inference steps, median over 700.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 540,
+          "line_end": 554,
+          "pdf_pages": [
+            5
+          ],
+          "line_block_sha256": "fe5e75796f7c73173d6a77e68ade5ba2dfe16aad8058ef1f6a52ab6757501697"
+        }
+      ]
+    },
+    {
+      "id": "execution_reconstruction_and_sol",
+      "paper_section": "6.1",
+      "classification": "paper_report",
+      "finding": "Analyzer reconstructs operator intervals/shapes, graph replay relationships and dependency paths. SOL uses max(MFU, MBU); graph padding and unresolved reconstruction are retained in the analysis.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 596,
+          "line_end": 624,
+          "pdf_pages": [
+            5
+          ],
+          "line_block_sha256": "57269057c0a8c2f4e3bd2afd6b2b54413ac11d5b953979ae1c0d87ea344b3b40"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 626,
+          "line_end": 686,
+          "pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "12644bacceaf35fc77d324593cb7cdfbca16e0867cecabe65cbfc2a8e3ca8375"
+        }
+      ]
+    },
+    {
+      "id": "cross_component_dependencies",
+      "paper_section": "6.1",
+      "classification": "paper_report",
+      "finding": "Analysis follows communication, control/synchronization, state reuse and output consumers, using object identity and code semantics to distinguish removable work from required state updates.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 687,
+          "line_end": 718,
+          "pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "8dfd8c3e507c0de2f0b3994623b0d1e8c8d8dcfe8fd5e0c80eb6d65bab74dde2"
+        }
+      ]
+    },
+    {
+      "id": "pattern_knowledge",
+      "paper_section": "6.2, Table 1",
+      "classification": "paper_report",
+      "finding": "More than 20,000 performance-related PR/CR records, expert knowledge and production investigations inform 35 patterns: 25 engine patterns in eight categories and ten operator patterns in three categories.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 719,
+          "line_end": 742,
+          "pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "830d8cfc3ce7dd1bf3032e212ce3548356efb155853161ea073cc71d9ea921e7"
+        }
+      ]
+    },
+    {
+      "id": "hotness",
+      "paper_section": "6.2",
+      "classification": "paper_report",
+      "finding": "Hotness ranks estimated recoverable critical-path fractions across shapes/workloads, weighted by fleet GPU-hours. This is an opportunity estimate, not a validated performance gain.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 753,
+          "line_end": 763,
+          "pdf_pages": [
+            7
+          ],
+          "line_block_sha256": "09726624b9c4dc1a002a7cb1163d52b4abb022a8074b67abc6a53d5fe9138f31"
+        }
+      ]
+    },
+    {
+      "id": "supplementary_evidence_and_fixes",
+      "paper_section": "6.2",
+      "classification": "paper_report",
+      "finding": "Missing evidence leaves a mechanism unresolved. Analyzer requests expert-approved supplementary collection and carries source, changes and applicability conditions of reference fixes into experiments.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 764,
+          "line_end": 789,
+          "pdf_pages": [
+            7
+          ],
+          "line_block_sha256": "d3643b9152af90b7150e140de81487667f9ae7188aa6e3884f1b7af5d1b15583"
+        }
+      ]
+    },
+    {
+      "id": "idle_pd_experiment_resources",
+      "paper_section": "7",
+      "classification": "paper_report",
+      "finding": "Controlled experiments typically use 8–32 idle or revocable accelerators, including P/D resources for disaggregated serving. Reduced scale must preserve triggering conditions/dependencies and expose the original issue; interrupted trials rerun after preemption.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 795,
+          "line_end": 806,
+          "pdf_pages": [
+            7
+          ],
+          "line_block_sha256": "31660f83f87e790dc60a85855c0506dd53aba74549eee98245e49863be6b6341"
+        }
+      ]
+    },
+    {
+      "id": "agent_experiment_loop",
+      "paper_section": "7",
+      "classification": "paper_report",
+      "finding": "Agents edit, build and test with correctness/performance feedback and a fixed baseline workload/settings. High-overhead profiling is disabled for comparisons. Budget, refuted hypotheses and stalled progress govern stopping.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 807,
+          "line_end": 819,
+          "pdf_pages": [
+            7
+          ],
+          "line_block_sha256": "d29e68507b4ca8087730bf79ec9b06e862aa81700a37eac988ac7aaf8863fb55"
+        }
+      ]
+    },
+    {
+      "id": "engine_and_kernel_changes",
+      "paper_section": "7",
+      "classification": "paper_report",
+      "finding": "Actions include KV-transfer overlap, valid state reuse, speculative-work pruning, asynchronous KV control and pre-dispatch DP metadata. Kernel agents optimize production shapes/dtypes/layouts, then reevaluate complete operators and serving workloads.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 820,
+          "line_end": 836,
+          "pdf_pages": [
+            7
+          ],
+          "line_block_sha256": "6dcccda923cc7cefe4350f6c198b1b72280bb87e551258ae4f7b912aaf9d4f92"
+        }
+      ]
+    },
+    {
+      "id": "profiling_testbed_workload",
+      "paper_section": "8.1",
+      "classification": "paper_report",
+      "finding": "Overhead hosts have 8 H20s, two 48-core Xeon 8469C CPUs and 1 TiB DRAM, CUDA 13, PyTorch 2.13 and vLLM 0.29. Latency tests colocate P/D and use BF16 Qwen3-32B TP2 / Qwen3-235B-A22B TP8, input 4096/8192, output 512 and concurrency 32/64.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 904,
+          "line_end": 928,
+          "pdf_pages": [
+            8
+          ],
+          "line_block_sha256": "d9254c9efd3cfd1053982ffa4904f2232722f42e0b86e84a3d8f36e7563ac781"
+        }
+      ]
+    },
+    {
+      "id": "active_collection_latency",
+      "paper_section": "8.1, Figure 6",
+      "classification": "paper_report",
+      "finding": "Hprof-full active-collection overhead is reported below 0.5% TTFT and 7% TPOT. Hprof-python without accelerator tracing reports median/P95 TPOT overhead below 1.5%. These are active-window measurements, not fleet-wide long-term overhead.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 929,
+          "line_end": 943,
+          "pdf_pages": [
+            8
+          ],
+          "line_block_sha256": "8266463b13f5dcafcd314ffb5f0f3c644bf599311da1f7a9f4b329b9110eb4db"
+        }
+      ]
+    },
+    {
+      "id": "host_footprint",
+      "paper_section": "8.1, Table 2",
+      "classification": "paper_report",
+      "finding": "Hprof-full reports 0.12–0.46 CPU cores, 2.3–2.8 GiB peak RSS and 1.5–8.8 MiB/s trace. At the highest measured rate a 30-second session produces approximately 265 MiB.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 944,
+          "line_end": 956,
+          "pdf_pages": [
+            8
+          ],
+          "line_block_sha256": "41dd2a578089f2339a8404493a35ec8549a74febd7717154359dd760dddfb4b7"
+        }
+      ]
+    },
+    {
+      "id": "record_fidelity",
+      "paper_section": "8.1",
+      "classification": "paper_report",
+      "finding": "On Qwen3.5-35B-A3B, Python call counts agree 99.2% and immediate-parent relations 99.98%; separate GPU timelines have identical kernel order with median/P95 relative duration difference 1.6%/10%. These are record-fidelity results, not diagnosis accuracy.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 957,
+          "line_end": 966,
+          "pdf_pages": [
+            8
+          ],
+          "line_block_sha256": "03e22dbff5389394850ebd5420225b367676742ae219211419b69b74f85bb162"
+        }
+      ]
+    },
+    {
+      "id": "lifecycle_test_scope",
+      "paper_section": "8.1",
+      "classification": "paper_report",
+      "finding": "Fifty attach–collect–detach cycles on Qwen3.5-35B-A3B show no observed worker hang or inference interruption in the monitored stages. This is a bounded empirical test.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 967,
+          "line_end": 970,
+          "pdf_pages": [
+            8
+          ],
+          "line_block_sha256": "db5d15b23e66999ce1bd733c32c960660a014f587f9eeb54fe1584c55405744c"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1027,
+          "line_end": 1027,
+          "pdf_pages": [
+            9
+          ],
+          "line_block_sha256": "608214fed047963022cf22a7b8cbc0e9dc8fcf373a4766ab18c739febf146fc2"
+        }
+      ]
+    },
+    {
+      "id": "production_trace_coverage",
+      "paper_section": "8.2",
+      "classification": "paper_report",
+      "finding": "Six months, approximately 17,000 traces, over 120 model variants, more than ten accelerator types and dozens of clusters. More than 3,900 / 23% of collected traces match at least one pattern; this is not a fleet improvement or diagnostic precision statistic.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1028,
+          "line_end": 1039,
+          "pdf_pages": [
+            9
+          ],
+          "line_block_sha256": "c346d289b61a02fbdfa5a4e35ac189141895346042292ccf4b1dd0978ccf8dc8"
+        }
+      ]
+    },
+    {
+      "id": "deployed_case_scopes",
+      "paper_section": "8.2, Table 3",
+      "classification": "paper_report",
+      "finding": "Four representative deployment scopes are approximately 50, 50, 100 and 30 deployments. The DP-coordination row explicitly labels the upstream-port throughput result as offline testing; cases have distinct measurement scopes.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 974,
+          "line_end": 999,
+          "pdf_pages": [
+            9
+          ],
+          "line_block_sha256": "656b70d85099cf0ce80c88998ec37352fe44a5e63fc5ea3a9398db927a181d02"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1012,
+          "line_end": 1019,
+          "pdf_pages": [
+            9
+          ],
+          "line_block_sha256": "55576b9c0010121b1511145fdb00db9cf424a84785928bb227f956af094498de"
+        }
+      ]
+    },
+    {
+      "id": "async_kv_case",
+      "paper_section": "9.1",
+      "classification": "paper_report",
+      "finding": "Supplementary EngineCore/workId evidence links delayed dispatch to synchronous KV-object creation. Creation is overlapped with model execution while saving still waits for success. Short-context prefill throughput improves 3.3% on GLM-5.2 and 3.3–5.7% including three Qwen models; change deployed.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1082,
+          "line_end": 1097,
+          "pdf_pages": [
+            9
+          ],
+          "line_block_sha256": "623d6f831574b99826e8e249782c15c10560dc1e96e88e2be3e79df01ff63e29"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1121,
+          "line_end": 1158,
+          "pdf_pages": [
+            10
+          ],
+          "line_block_sha256": "f34b3cb323a154b1d4260cfd3611552a4f37e6156db60c6792f0ca68ace59f5a"
+        }
+      ]
+    },
+    {
+      "id": "pd_handoff_tail_semantics",
+      "paper_section": "9.2",
+      "classification": "paper_report",
+      "finding": "Agent moves DP coordination ahead of Worker dispatch while distinguishing hybrid-attention PD handoff tails from equally sized ordinary prefill chunks, preserving recurrent state, tail sampling, idle ranks, target/draft plans and graph/fusion eligibility.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1159,
+          "line_end": 1170,
+          "pdf_pages": [
+            10
+          ],
+          "line_block_sha256": "9cb4b5fd653be959346e23b693735abf5652daf454724ad0b7ee0cc8d5870e53"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1196,
+          "line_end": 1213,
+          "pdf_pages": [
+            10
+          ],
+          "line_block_sha256": "bd269974fcd95959bc34fcc1814db18ee6a6fe10121fa1b69bf9fa8747a10a2e"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1265,
+          "line_end": 1272,
+          "pdf_pages": [
+            11
+          ],
+          "line_block_sha256": "84aeb2277c46d23e5159123b6657ad20db9146006c4c5c8e88ac68b5ab80da15"
+        }
+      ]
+    },
+    {
+      "id": "different_patch_revisions",
+      "paper_section": "9.2, Figure 10 and Table 4",
+      "classification": "paper_report",
+      "finding": "Figure 10 labels the original Hybrid adaptation +766/-150. The subsequent upstream port has a final runtime diff +707/-32 and tests +692/-1; they are separate revisions.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1214,
+          "line_end": 1232,
+          "pdf_pages": [
+            10
+          ],
+          "line_block_sha256": "2a2657b8f510726c5464739f4ae7fe249fee030a4242451fe201ede4c9eaca38"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1235,
+          "line_end": 1265,
+          "pdf_pages": [
+            11
+          ],
+          "line_block_sha256": "93e02e4cf382dae01d3d7d966dab62bb54b8fb9fff678d6fc6dcfec77dddd3a3"
+        }
+      ]
+    },
+    {
+      "id": "dp_port_measurement",
+      "paper_section": "9.2",
+      "classification": "paper_report",
+      "finding": "The original Hybrid patch is deployed. Subsequent-port offline tests on eight XPU-A devices report 6.0%, 4.8%, 2.5% throughput gains for 35B/122B/397B Qwen models, each the mean of two maximum observed paired gains at concurrency 32 and 128.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1273,
+          "line_end": 1278,
+          "pdf_pages": [
+            11
+          ],
+          "line_block_sha256": "dfa420f4aa8c2aab62dde57c8b56e08ca49191cce242ac729133887062e4d41d"
+        }
+      ]
+    },
+    {
+      "id": "prefill_mtp_pruning",
+      "paper_section": "9.3",
+      "classification": "paper_report",
+      "finding": "Prefill must build reusable target/drafter prefix/recurrent state. It removes later MTP 2/3 forwards while retaining the full first forward, because Decode drafts/verifies locally. Further intra-MTP1 prediction pruning remains an opportunity. Deployed typical short-context TTFT reduction is about 6%.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1282,
+          "line_end": 1286,
+          "pdf_pages": [
+            11
+          ],
+          "line_block_sha256": "1591feca11ccd4d31c98c5e2ae8fa71be4135bdb8bbeb9b30edc7af909165fe7"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1308,
+          "line_end": 1338,
+          "pdf_pages": [
+            11
+          ],
+          "line_block_sha256": "065368345d864ac59d8a6bec7935825e61515ecb8b518775bc7bc174841fca5d"
+        }
+      ]
+    },
+    {
+      "id": "pa_shape_and_fix",
+      "paper_section": "9.4",
+      "classification": "paper_report",
+      "finding": "At a production Qwen3-4B shape on XPU-C, repeated Q/K layout conversions motivate one-time Q conversion/reuse and compatible K loads. Measured PA operator time falls 60.9%, SOL rises 7.3% to 18.7%.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1410,
+          "line_end": 1432,
+          "pdf_pages": [
+            12
+          ],
+          "line_block_sha256": "ab1dadb91fbb5b8bdef38b519ed2f5fd8e5d3e6ee0691a435e22ed2127301da9"
+        }
+      ]
+    },
+    {
+      "id": "combined_e2e_tpot_result",
+      "paper_section": "9.4, Figure 12",
+      "classification": "paper_report",
+      "finding": "Roughly 8–32% lower end-to-end TPOT combines the PA fix with KV-preparation, intermediate-copy and host-submission changes; it is not attributable solely to the PA kernel.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1431,
+          "line_end": 1436,
+          "pdf_pages": [
+            12
+          ],
+          "line_block_sha256": "137d80215e864bae74e9951d2962273f7707c597882b0606d5c796ca29ec3f67"
+        }
+      ]
+    },
+    {
+      "id": "offline_detailed_profiling",
+      "paper_section": "10",
+      "classification": "paper_report",
+      "finding": "PC/PM sampling trials exceeded the online overhead budget; instruction-level analysis uses offline Nsight Compute.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1437,
+          "line_end": 1444,
+          "pdf_pages": [
+            12
+          ],
+          "line_block_sha256": "0d2f40e1476f08f51cd47d06863779f7f8bd8d2327f88b524dbf8e0276dfc968"
+        }
+      ]
+    },
+    {
+      "id": "negative_experiments_and_readers",
+      "paper_section": "10",
+      "classification": "paper_report",
+      "finding": "Detected overhead can yield no repeatable serving gain. Failed trials retain diagnosis/implementation/workload distinctions. Engine-object readers had five releases over six months as internal layouts changed.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1445,
+          "line_end": 1466,
+          "pdf_pages": [
+            12
+          ],
+          "line_block_sha256": "043b9cf6dfbbb28f05b04048a44978a0bb529468799ff4b22ef157980bb9b2f5"
+        }
+      ]
+    },
+    {
+      "id": "project_comparison_scope",
+      "paper_section": "4; 7; 8; 9",
+      "classification": "survey_interpretation",
+      "finding": "Production profiling, idle-capacity experiments and PD-aware agent changes already overlap the project. Proposed joint runtime/replacement action selection, explicit router/Mooncake publication/rotation and fixed-resource cumulative-goodput evaluation need their own implementation and comparison evidence.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 409,
+          "line_end": 426,
+          "pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "203e5487edc88e79820daf36d57971ab0aafda38fb27da247aab9eeba4bb75cc"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 795,
+          "line_end": 806,
+          "pdf_pages": [
+            7
+          ],
+          "line_block_sha256": "31660f83f87e790dc60a85855c0506dd53aba74549eee98245e49863be6b6341"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 837,
+          "line_end": 842,
+          "pdf_pages": [
+            7
+          ],
+          "line_block_sha256": "8b1bad4318148b6639ffb1c4b9762da709373f17eb57d1cd4ab9fc25eeeb6777"
+        },
+        {
+          "text_file": "paper-text/20_Herschel_arxiv_v1.txt",
+          "line_start": 1196,
+          "line_end": 1213,
+          "pdf_pages": [
+            10
+          ],
+          "line_block_sha256": "bd269974fcd95959bc34fcc1814db18ee6a6fe10121fa1b69bf9fa8747a10a2e"
+        }
+      ]
+    }
+  ],
+  "interpretation_limits": [
+    "Profiler attachment without engine restart is not evidence of arbitrary in-place deployment of optimized engine/kernel code.",
+    "Idle/revocable experiment capacity and disaggregated P/D resources are explicit; they must not be marked absent in a feature table.",
+    "Herschel covers concrete PD state semantics. Absence of an explicit router/Mooncake replacement protocol in this paper does not establish absence in uninspected implementation.",
+    "The paper does not specify a mandatory optimizer model/API endpoint or a contract that the optimized production service supplies its own agent inference. Do not infer backend restrictions or uniqueness from this omission.",
+    "Reported active-window overhead, fidelity agreement, trace-pattern hit rate, individual case gains and cumulative fleet business benefit are different metrics.",
+    "Agent iteration budgets are described, but this paper does not provide a fixed-three-node runtime-versus-replacement ablation or a complete longitudinal cost/goodput account for the proposed project.",
+    "PDF references are not independent verification of the publication identity or implementation claims of cited works.",
+    "Existing audit artifacts, framework source SHAs and the unimplemented status of this project remain unchanged."
+  ]
+}

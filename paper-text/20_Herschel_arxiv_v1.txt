@@ -1,0 +1,1887 @@
+Source: 20_Herschel_arxiv_v1.pdf
+Pages: 17
+
+===== PDF PAGE 1 =====
+arXiv:2609.40247v1 [cs.OS] 30 Sep 2026
+Herschel: Continuous Optimization of Production LLM Inference through
+On-Demand Profiling
+Luping Wang∗ , Weigao Chen, Yifei Wu, Yonghe Zhang, Rui Zhang
+Wenchao Wu, Jiyu Luo, Haoran Geng, Xin Yang, Chen Cao
+Yuemin Wu, Cheng Huang, Guodong Yang, Liping Zhang
+Alibaba Group
+Abstract
+Model-as-a-service platforms call for continuous optimization
+as complex serving conditions expose inefficiencies missed
+before deployment. Detailed always-on profiling can incur
+substantial overhead, while lightweight collection omits infor-
+mation needed for diagnosis. We present Herschel, a continu-
+ous optimization system for production large language model
+(LLM) inference. Our key insight is that adaptive, on-demand
+profiling can provide rich full-stack evidence without continu-
+ous collection. Herschel safely attaches to and detaches from
+selected running processes without engine changes or restarts,
+and adapts coverage as investigations reveal missing evidence.
+Model-I
+Model-I
+Model-IV
+Model-IV
+Normalized throughput (% of best achieved)
+100 Prefill
+100 Prefill
+Normalized throughput (%)
+50
+50
+0
+0
+100 Decode
+100 Decode
+50
+50
+0
+Model-II
+Model-II
+Model-V
+Model-V
+Model-III
+Model-III
+>500
+>500
+>200
+>200
+>100
+>100
+Text VLM Media Gen.
+Text VLM Media Gen.
+0–32K
+0–32K
+176–512K
+176–512K
+32–176K
+32–176K
+512K+
+512K+
+Model-V (text model)
+Model-V (text model)
+Herschel reconstructs operator executions and cross-process
+dependencies to identify inefficiency mechanisms and suggest
+solutions using applicable reference fixes. AI agents imple-
+ment and test engine and kernel changes under controlled
+conditions that preserve the triggering workload and depen-
+dencies, with expert review before deployment. Controlled
+tests show active-collection overhead below 0.5% for time to
+first token and 7% for time per output token. Bounded win-
+dows, typically 30 s, avoid the continuous cost of always-on
+tracing. Over six months, Herschel collected∼17,000 traces
+across over 120 model variants and more than 10 accelerator
+types, identifying inefficiency patterns in 23% of the traces.
+Representative findings guide widely deployed optimizations,
+including restructured synchronization, removal of unused
+computation, and improved operator implementations.
+1 Introduction
+Model-as-a-service (MaaS) platforms pursue day-one avail-
+ability, offering new models on their release day [6, 35]. Pre-
+deployment tuning covers selected workloads and can leave
+performance inefficiencies unaddressed. Figure 1a shows per-
+formance improvements across five of our flagship models
+over up to eight weeks after release. These post-release gains
+are achieved through repeated cycles of analysis, improve-
+ment, and validation—continuous optimization.
+Continuous optimization is challenging under complex
+serving conditions. MaaS spans many combinations of models
+and deployment configurations, each with varying workloads.
+600
+600
+# of models
+# of models
+& configs
+& configs
+300
+300
+0
+0
+Sample share (%)
+Sample share (%)
+15
+15
+10
+10
+5
+5
+0
+0
+0
+1 2 4 6 8
+1 2 4 6 8
+Since release (weeks)
+Since release (weeks)
+0 256K 512K 768K
+0 256K 512K 768K
+Mean input length (tokens)
+Mean input length (tokens)
+(a) Flagship model performance: 8
+weeks of post-release optimization.
+(b) Complexity in serving configura-
+tions and workloads.
+Figure 1: Continuous optimization under complex serving
+conditions on MaaS platforms.
+Figure 1b illustrates this diversity. Locating avoidable waits,
+missed communication–computation overlap, redundant state
+preparation, and unused computation can require examining
+dependencies among engine components. Operator efficiency
+also depends on matching data layouts and parallelism to in-
+put shapes and target GPU architectures. Moreover, the same
+inefficiency can be prominent in one workload yet negligible
+in another.
+Identifying these inefficiencies and assessing their signifi-
+cance requires full-stack online profiling, which remains chal-
+lenging with existing approaches. Anomaly-driven diagnosis
+may overlook persistent inefficiencies that do not deviate
+from historical baselines [79]. For always-on profiling, re-
+taining rich full-stack detail conflicts with limiting sustained
+collection overhead. Detailed tracing in PyTorch Profiler and
+Nsight Systems can incur substantial overhead [46,50], while
+lightweight collection restricts the calls and runtime state
+available for investigation. A cloud provider must also decou-
+ple collection from engine releases: remote triggering alone
+can still require launch-time support [34].
+To address these constraints, our first insight is that full-
+stack profiling can be adaptive without being always on. Run-
+time attachment enables on-demand profiling of running ser-
+vices without engine changes or restarts. Detailed recording
+∗Corresponding author: Luping Wang, chamu.wlp@alibaba-inc.com.
+1
+
+===== PDF PAGE 2 =====
+is limited to bounded windows, retaining rich full-stack evi-
+dence while avoiding the continuous cost of always-on tracing.
+Collection need not wait for anomalies; recording coverage
+can be adjusted in later windows to fill evidence gaps.
+Furthermore, turning profiling observations into deployable
+optimizations still requires substantial expert effort, both to
+pinpoint root causes across different serving conditions and to
+develop effective fixes. Our second insight is that inefficiency
+mechanisms and optimization strategies recur across serving
+conditions. These mechanisms guide root-cause identifica-
+tion, while reference fixes give AI agents a starting point for
+implementation and testing. Current evidence helps assess
+applicability and identify correctness constraints to validate.
+We present Herschel, a system for continuous optimization
+of production LLM inference with three components:
+• Hprof uses runtime-attached probes for on-demand pro-
+filing within bounded windows. On supported runtimes,
+it captures Python calls and supported object fields, ac-
+celerator API calls, and device activity from running ser-
+vices without application source-code changes or restarts.
+A fleet control plane selects processes and recording
+windows for serving conditions; investigations can adapt
+coverage as evidence needs change (§5).
+• Analyzer then reconstructs operator executions and
+cross-process dependencies from these records and
+checks the conditions of recurring engine and opera-
+tor inefficiency patterns. It uses confirmed mechanisms
+and applicable reference fixes to produce optimization
+opportunities with supporting evidence and suggested
+solutions. When evidence is insufficient to confirm a
+mechanism, Analyzer requests expert-approved supple-
+mentary profiling (§6).
+• Optimizer uses these opportunities to guide engine and
+kernel agents in implementing and validating candidate
+changes. Experiments use controlled deployment scales
+while retaining the workload conditions and dependen-
+cies that expose the problem. Correctness and perfor-
+mance feedback guide successive revisions; expert re-
+view determines which changes proceed to canary vali-
+dation and staged rollout (§7).
+We evaluate Herschel in controlled tests, where Hprof’s
+active-collection overhead stays below 0.5% for TTFT and
+below 7% for TPOT across the tested model sizes and work-
+loads. Bounded windows, typically 30 s, avoid the continuous
+cost of always-on tracing, with safe attachment and detach-
+ment. Our six-month production study spans over 120 model
+variants and more than 10 accelerator types, identifying in-
+efficiency patterns in 23% of approximately 17,000 traces.
+Findings include unused computation, repeated state prepara-
+tion, and operator inefficiencies at small input shapes. These
+findings guided optimizations that are now widely deployed
+after expert review and canary validation.
+2 Background
+Production MaaS inference. Model-as-a-service (MaaS)
+platforms serve language, reasoning, multimodal, and gener-
+ative models through APIs [4, 20]. MaaS platforms support
+diverse workloads with different performance requirements.
+Chat requires responsive replies; coding assistants process
+repository context; agents interleave model calls with sand-
+boxed tool execution [9]. Repeated calls can accumulate long,
+shared context, increasing input-processing and storage de-
+mands, while dependencies between calls make task com-
+pletion time sensitive to generation latency [70]. Fast modes
+prioritize per-request output tokens per second (TPS) [3, 8],
+whereas asynchronous batch services trade higher latency for
+lower prices [7]. Platforms also offer confidential inference
+for workloads requiring code and data protection [43].
+Inference workflow. Inference engines schedule requests
+and manage their state [28, 42, 71]. In autoregressive gener-
+ation, prefill processes prompts to produce the first output
+token. Standard attention layers also populate a key–value
+(KV) cache, retaining states for reuse. During decode, each
+step uses the latest token and cached states to generate the next
+token and extend the cache, until an end token or length limit
+is reached. Requests execute in batches, whose composition
+and computational load depend on arrivals [80].
+Maximizing inference efficiency. LLM service-level objec-
+tives (SLOs) cover latency and throughput. Latency require-
+ments bound time to first token (TTFT), from request arrival
+to first output, and time per output token (TPOT), the mean
+interval between consecutive output tokens [87]. Throughput
+requirements specify the minimum number of tokens pro-
+cessed per second across requests [27].
+MaaS providers seek to maximize token throughput per
+GPU under latency SLOs to improve serving cost-efficiency.
+They combine greater compute capability with advanced hard-
+ware architectures, such as rack-scale systems [44]. Engine
+optimizations include KV prefix reuse through distributed
+cache architectures [33, 52] and speculative decoding [29],
+while operator optimizations target specific hardware and
+input shapes (tensor dimension sizes) [17]. Serving archi-
+tectures separate prefill from decode (PD disaggregation),
+decouple attention from feed-forward computation (AFD), or
+share prefill capacity across clusters, enabling independent
+resource provisioning and flexible placement [53, 87, 89].
+3 Motivation
+Effective optimization after deployment requires understand-
+ing how execution and serving conditions affect performance.
+Production exposes cross-component inefficiencies. Iso-
+lated tuning can overlook engine coordination costs, redun-
+dant state preparation, and unused computation. In a GLM-
+5.2 [85, 86] deployment, an upstream KV-service operation
+2
+
+===== PDF PAGE 3 =====
+60.5%
+Supplementary profile
+KV service allocate KV
+metadata
+EngineCore
+schedule wait for
+allocation
+12.4% 12.1% 15.0%
+0.6 0.6 0.5 0.6
+sync RPC
+enqueue
+Query tokens t
+64
+256
+1K
+4K
+2.3 1.8 1.8 2.0
+7.1 6.2 7.2 6.5
+14.7% 15.7 19.7 18.1
+2.8%
+16.8%
+29.0%
+38.4%
+33.9 32.8 32.6 33.6
+Worker/GPU evidence
+workId
+Worker
+dequeue wait execute
+13.0%
+model
+4K 8K 16K 32K
+GPU
+GPU idle model
+Context length c SOL (%) · better →
+execution
+0 20 40
+(a) Cross-component waiting in the
+(b) Online distributions of GDN input
+KV-service blocking case.
+shapes and SOL attainment.
+Figure 2: Optimization depends on serving conditions.
+delays command dispatch, leaving Workers waiting and GPUs
+idle, as shown in Figure 2a. Such dependencies also gov-
+ern communication–computation overlap, state reuse, and
+dataflow across operator kernels.
+Optimization priorities depend on serving conditions.
+Separately, outer KV preparation occupied over 8% of a GLM-
+5.2 Worker’s active window with high KV reuse and short
+executions; another service with fewer hits spent under 1% of
+pooled capture time on this work. Traffic also determines
+frequent operator shapes (tensor dimensions) and request
+lengths. An operator with fast compute kernels can still incur
+costly preparation or result combination; layouts suited to one
+shape or device may be inefficient for another. In one deploy-
+ment, the most frequent Gated DeltaNet query-token/context-
+length bin reached only 14.7% of the compute/bandwidth
+SOL bound [24, 31], as shown in Figure 2b.
+The need for online profiling. Identifying optimization op-
+portunities requires execution evidence tied to LLM serving
+conditions. Online profiling captures dependencies and work-
+loads that isolated offline tests may miss.
+3.1 Existing Work and Challenges
+Existing profiling and diagnosis approaches address parts of
+continuous optimization; obtaining sufficient evidence and
+turning findings into improvements still pose four challenges.
+Anomaly-driven diagnosis. Anomaly detectors identify de-
+viations from expected behavior, so a persistent inefficiency
+may remain within their baselines. StriaTrace combines se-
+mantic spans and GPU activity for online diagnosis and also
+supports manual investigation of persistent degradation [79].
+Our concern is obtaining the evidence needed for an opti-
+mization investigation when relevant calls, object fields, or
+dependencies fall outside existing instrumentation.
+Challenge 1: Identify sustained performance inefficiencies
+without relying on outlier detection or being limited by prede-
+fined instrumentation coverage.
+Always-on profiling struggles to provide rich evidence at
+low overhead. Continuous collection must balance execution
+detail against online cost. PyTorch Profiler and Nsight Sys-
+tems capture detailed traces, including CUDA activity through
+CUPTI [39], but collecting these continuously can impose
+substantial overhead [46, 49, 50]. Lightweight approaches
+such as StriaTrace [79] reduce overhead through sampled
+stacks and selective semantic spans alongside GPU activity,
+omitting CUDA Runtime and Driver API records. Restricting
+collection further to regular py-spy stack samples leaves out
+invocation-specific object state and GPU execution [19]. Such
+restricted coverage can leave gaps in optimization evidence:
+assessing operator efficiency requires shapes, constituent ker-
+nels, and full invocation duration; dependency and overlap
+analysis requires cross-process relationships (§6.1).
+Challenge 2: Combine rich full-stack coverage with low over-
+head, a tradeoff existing always-on profiling cannot resolve.
+Engine-coupled instrumentation. Profiling diverse MaaS
+services cannot depend on application owners changing
+source code or startup configurations. PyTorch Profiler,
+Dynolog, and StriaTrace require application-side integration
+or predefined profiling support [34, 49, 50, 79]. As optimiza-
+tion questions change, new collectors or additional functions
+and fields may fall outside this support, requiring application
+changes or service relaunch.
+Challenge 3: Decouple profiling capabilities and coverage
+from engine releases and service deployment.
+Diagnosis alone does not improve performance. A finding
+does not directly determine a safe and effective modifica-
+tion. Diagnosis systems report suspected bottlenecks [13, 79],
+leaving implementation and validation to engineers. Across
+models, accelerators, and serving conditions, the same ineffi-
+ciency mechanism can require different implementations and
+tests. Experts cannot exhaustively reproduce and optimize all
+these combinations manually.
+Challenge 4: Translate inefficiency findings into deployable
+improvements without extensive expert intervention.
+3.2 Design Principles
+Key Insight 1: Complex serving conditions require adap-
+tive full-stack observation, not always-on collection. Pre-
+defined instrumentation probes can miss relevant state and
+dependencies; exhaustive always-on tracing can incur substan-
+tial online overhead. Full-stack optimization needs detailed
+observations whose scope can change with the investigation.
+Key Insight 2: Serving conditions vary, but inefficiency
+mechanisms and optimization strategies recur. LLM in-
+ference follows a common structure of scheduling, coordi-
+nation, and operator execution. Reference fixes in inference
+engines and operator implementations reveal recurring causes
+of avoidable cost and corresponding remedies, such as asyn-
+chronous execution to avoid unnecessary stalls, better opera-
+tor dataflow to reduce memory traffic, and implementations
+3
+
+===== PDF PAGE 4 =====
+suited to the target device (§6.2). The mechanism provides
+a basis for recognizing a current problem; the reference fix
+suggests how to address it.
+These insights motivate three design principles:
+(1) Runtime Attachment for On-Demand Profiling within
+Bounded Windows. Profiling should follow investigation
+needs without engine changes or restarts. Each session
+should collect the required full-stack detail, then stop;
+later sessions target unresolved questions.
+(2) Mechanism-Based Analysis and Suggested Solutions.
+Each pattern should associate required evidence and ap-
+plicability conditions with reference fixes, so suggestions
+depend on verified conditions in the current execution.
+(3) Agent-Driven Optimization with Controlled Experiments.
+Agent-driven experiments should preserve triggering
+conditions and dependencies at reduced scale, with it-
+erative implementation and testing followed by expert
+review of correctness and deployment applicability.
+4 Herschel Overview
+Herschel implements these design principles for LLM infer-
+ence on NVIDIA GPUs and in-house accelerator devices.
+Figure 3 shows its architecture. Hprof attaches probes to
+running processes to collect selected Python and accelerator
+execution records without LLM engine changes or service
+restarts. The control plane specifies target processes and
+collection windows across the fleet; machine-local Hprof dae-
+mons execute these plans (§5). From these records, Analyzer
+reconstructs executions and dependencies to check the condi-
+tions of inefficiency patterns (§6). Unresolved dependencies
+lead to an expert-approved plan for supplementary profiling,
+while confirmed patterns are combined with supporting evi-
+dence and suggested solutions to form optimization opportuni-
+ties for Optimizer (§7). Its agents iteratively develop and test
+changes through an autoresearch-style loop [25]. Expert re-
+view determines which changes proceed to canary validation
+and staged rollout outside Herschel.
+5 Hprof: Fleet-Wide On-Demand Profiling
+Hprof collects Python calls, runtime object fields, host API
+calls, and accelerator activities. It attaches probes at runtime
+and manages their lifecycle through an in-process controller.
+5.1 Runtime-Attached Profiling
+The control plane converts collection requests into process-
+specific plans (§5.3). Each plan specifies probes, selected
+calls, supported object fields, and a recording window. A
+Hprof daemon process runs on each machine and invokes the
+CLI to execute these plans. In Figure 4, the CLI establishes
+Control Plane
+Processes + fields
+Supplementary Investigation
+EngineCore
+Python probe
+Hprof daemon
+Hprof
+Runtime-attached profiling
+On-demand Attachment
+Fleet-wide Profiling Models·Engines·Accelerators
+Deployment A
+Deployment B
+Deployment C
+Worker
+Python probe
+Accelerator probe
+Replica
+Replica
+Replica
+daemon
+daemon
+daemon
+Replica
+Replica
+Replica
+daemon
+daemon
+daemon
+NVIDIA GPUs
+XPU-C
+XPU-C
+PROFILING RECORDS
+Analyzer Inefficiency Patterns
+Reference Fixes
+OPTIMIZATION OPPORTUNITIES
+Optimizer Agent-driven
+Optimization loop
+Expert
+Review
+Canary and Rollout
+outside Herschel
+Figure 3: Herschel overview.
+an in-process controller and sends it commands; the controller
+configures and operates probes through Probe control.
+Attachment. Hprof uses thread redirection only for initial
+entry into a worker process; subsequent collection commands
+reach the controller through Socket control. As shown in
+Figure 4, the CLI pauses a selected thread with ptrace and in-
+spects its stack, excluding known allocator, loader, and thread-
+ing contexts that could hold locks needed by injected calls.
+It temporarily redirects the thread to call pthread_create,
+creating a loader thread that loads the in-process controller
+library with dlopen. The CLI restores the application thread
+and releases ptrace before waiting for loading to finish.
+Session control. Through Probe control, the controller ap-
+plies each session plan’s probe configuration and starts record-
+ing, which proceeds independently of command processing.
+A stop request or session-lease expiry stops recording and
+starts draining queued records. §5.2 details probe-specific
+collection and stopping.
+Resource reclamation and reuse. Probe resources can out-
+live a recording session: outstanding calls or callbacks may
+still reach their code. Each probe therefore reports whether its
+resources are safe to reclaim or reuse. The controller unloads
+a probe only when reclamation is safe and permits reuse only
+when the retained state is reusable.
+5.2 Cross-Layer Profiling Collection
+In Figure 4, the Python probe records selected engine calls
+and supported object fields; the accelerator probe records host
+API calls and device activity.
+Python calls and object fields. The Python probe uses a res-
+ident router to intercept CPython frame evaluation. Callbacks
+around the default evaluator record a selected call’s function,
+native thread, and entry/return times; entry callbacks also
+4
+
+===== PDF PAGE 5 =====
+Hprof daemon
+(CLI)
+Output
+Python + fields Host APIs GPU + context
+ptrace
+spawn
+Application thread Loader thread
+dlopen
+Worker process
+Socket control
+Python CPython
+eval_frame
+return
+hook
+In-process controller
+Probe control
+Profiling libraries
+NVIDIA
+CUPTI
+XPU-C
+Library
+XPU-C
+Library
+Library control
+Accelerator probe
+filtering separates windows despite delayed delivery.
+5.3 Fleet-Wide Profiling Coordination
+Fleet-wide coordination. Collection requests specify the
+serving conditions to investigate (§3). The control plane
+applies deployment-specific sampling policies to select in-
+stances and recording times across models and accelerator
+types. Hprof daemons report process identities, roles, and de-
+vice associations before the control plane dispatches plans to
+selected processes. Canary collections and concurrency limits
+constrain collection across instances.
+Bounded collection window. For initial investigations of
+sustained inefficiencies, Hprof typically collects for 30 s. In
+production traces from our typical workloads, each window
+captured at least ten complete inference steps, with a me-
+dian of over 700. This supports observing repeated execution
+behavior within a short collection session.
+Resident router
+default eval
+Python probe callbacks
+pre (t0) post (t1)
+Figure 4: Hprof collection and delivery.
+capture supported object fields. The interval includes native
+execution and waiting, not just interpreter CPU time. Engine-
+specific readers extract tensor dimensions and token counts to
+distinguish batches at the same model-forward entry, retain-
+ing links to the originating calls. New object layouts require
+updating the corresponding Hprof reader, independent of the
+engine release. Early filtering and shared symbol definitions
+reduce per-call work; bounded queues defer output. Field
+readers preserve exception state and suppress profiling during
+field extraction. Recording resumes for normal application
+execution, including nested calls.
+Host API calls and device activity. Accelerator probes use
+vendor profiling libraries. On NVIDIA, CUPTI (CUDA Pro-
+filing Tools Interface) [39] reports CUDA Runtime API inter-
+vals and activity for kernels, memory operations, and synchro-
+nization. Host records describe submissions and waits; device
+records describe work that can continue after the enclosing
+call returns. correlation id associates submissions with
+device activity; device and stream identifiers locate the work.
+Heterogeneous Devices Beyond NVIDIA. Hprof connects
+vendor tracing libraries to its common probe interface
+through adapters. The AMD backend, for example, uses ROC-
+Tracer [1], while the in-house XPU-C backend uses CUPTI-
+like APIs. Supporting a new device may require targeted
+updates to the relevant adapter, reader, or reconstruction rule.
+Session transitions. The resident router keeps in-flight re-
+turns outside unloadable probe code. Stopping closes its call-
+back entry and restores the interpreter hook. Admitted default-
+evaluator calls return through the router; callbacks run only
+for active originating sessions. Completed NVIDIA activity
+buffers enter a bounded writer queue. Collection transitions
+block CUDA API entry, drain tracked calls, switch state, and
+release callers. The Library control gate excludes recording;
+resources stay resident pending CUPTI finalization. Start-time
+6 Analyzer: From Runtime Evidence to Opti-
+mization Opportunities
+Analyzer recovers executions from Hprof profiles, structures
+performance observations, and associates reference fixes with
+confirmed mechanisms. Together, these results form optimiza-
+tion opportunities that guide Optimizer’s experiments.
+6.1 Deriving Performance Observations
+Figure 5 summarizes Analyzer’s operator measurements and
+observations of execution progress and state.
+Operator execution and efficiency. Measuring operator
+efficiency requires real inputs and a complete execution.
+Implementation-specific rules recover each invocation’s ker-
+nel composition from call-to-kernel links (§5.2). Because
+CUDA Graph replay hides operator calls, graph identities and
+launch correlations separate replays; model-specific rules re-
+cover operators along the layer sequence, and submission time
+binds current inputs. Missing composition or inputs leave the
+measurement unresolved.
+In Figure 5a, Top spans the first kernel start to the last com-
+pletion. Analyzer recovers shapes and request lengths from
+Python object fields, model configuration, and sharding. With
+data types and semantics, these yield theoretical operation
+counts and logical data volumes; Graph padding is tracked
+separately. Normalizing both by Top and the corresponding de-
+vice peaks gives model FLOPs utilization (MFU) and model
+bandwidth utilization (MBU) [2]. We report speed-of-light
+(SOL) attainment against the compute/bandwidth bound as
+SOLop = max(MFU, MBU) [24, 31, 78].
+Efficient execution can still produce unneeded results. The
+5
+
+===== PDF PAGE 6 =====
+Python
+calls
+Host API
+calls
+GPU
+kernels
+Operator
+CPU submission time
+correlation id
+Shape
+Op. semantics
+dtype
+FLOPs
+and bytes
+Materialized?
+Op. A Tensor
+version Op. B
+prep
+Compute
+Comm.
+/ IO
+API
+HW peaks
+k1 k2 kn
+Kernel span
+MFU / MBU
+(a) Operator execution and efficiency.
+overlap
+Other
+kernels kernels
+consumers?
+Exposed time
+(b) Operator dataflow.
+(c) Overlap and exposed
+work.
+Figure 5: Key performance observations.
+Table 1: Inefficiency patterns and historical PR/CR counts.
+Python
+Host API
+calls
+GPU s0
+GPU s1
+wait
+k1
+k2
+Critical path
+(d) Critical path.
+use
+Engine
+Core
+RPC
+svc.
+Worker
+blocked
+publish
+call
+RPC
+command
+wait run
+(e) Cross-process
+blocking.
+Category Inefficiency patterns # historical PRs/CRs
+from open-source projects [17, 42, 71, 74]
+Inference engines 8 categories, 25 patterns
+Host supply & scheduling Late submission; repeated input preparation; eligible engine mode rejected Synchronization Early/repeated readback; spin waits; DP synchronization 276
+Graph capture/replay Uncaptured eligible work; capture/compile breaks; excess padding State reuse Missed KV-prefix reuse; repeated construction of metadata, plans, or Graphs KV & runtime memory Failed/repeated allocation; capacity mismatch Data movement & remote KV KV-transfer waits; blocking host staging; synchronous KV metadata allocation Comm. & placement Uncovered collective time; collectives blocking scheduling; unsuitable rank placement Speculation & unused work Unsuitable draft count; zero token acceptance; outputs with no consumers 1, 090
+1, 954
+886
+1, 146
+1, 826
+1, 798
+375
+Operator implementations 3 categories, 10 patterns
+Shape-dependent efficiency Implementation selection Operator dataflow Low SOLop versus reference efficiency; limited launch parallelism Unused eligible specialized paths; library limits; poor algorithm choices Costly reduction/combine kernels; missed fusion within/across operators 1, 389
+195
+1, 461
+dataflow in Figure 5b, verified against executed code and sup-
+plemented by available object identities, exposes material-
+ization and external uses [48], constraining which work later
+optimization may remove.
+Execution progress and state. Local measurements alone do
+not explain step delays. From phase timings and GPU activity,
+Analyzer separates communication hidden by computation
+from exposed time, as shown in Figure 5c [22]. Submission,
+execution-order, and synchronization dependencies identify
+the critical path in Figure 5d; missing dependencies leave
+delay contributions unresolved [23]. Shared call nesting can
+trace the cross-process wait in Figure 5e to synchronous RPCs
+delaying dispatch [79]. For untraced services, only caller-side
+activity is visible. Retaining state may avoid repeated work
+at the cost of memory. Analyzer checks state validity and
+actual state reuse; allocation, use, and release establish GPU
+memory lifetimes, showing memory held between uses.
+6.2 Characterizing Inefficiency Patterns
+Recurring inefficiency patterns. As noted in Key Insight 2
+(§3.2), inefficiency mechanisms and optimization strategies
+recur despite changing serving conditions. To capture this
+reusable knowledge, we examined over 20,000 performance-
+related PR/CR records from open-source projects [17, 42,
+71, 74]. Drawing on these records, expert knowledge, and
+production investigations, we grouped recurring causes by
+mechanism and associated them with reference fixes. Table 1
+summarizes 35 patterns: 25 engine patterns across eight cate-
+gories and 10 operator patterns across three categories.
+Inefficiencies in inference engines. For waits, Analyzer
+compares readiness, dispatch, and first use: unfinished pre-
+requisites direct investigation upstream, whereas ready work
+dispatched late implicates submission. Ready, independent
+stages executed serially suggest overlap. For repeated work,
+state identity and validity determine whether reconstruction
+could have reused a compatible result. An output without a
+consumer may be removable, but its computation can still per-
+form a required state update. Speculative decoding is assessed
+by combined drafting and verification cost per generated to-
+ken, not acceptance alone. Optimizer tests whether a change
+saves time after accounting for contention, retained memory,
+and Graph-padding costs.
+Inefficiency patterns in operator implementations. Opera-
+tor efficiency can vary sharply with input dimensions, even
+for an implementation tuned offline. We therefore compare
+the recovered operator SOLop with state-of-the-art (SOTA)
+reference targets matched for semantics, precision, and shapes.
+Targets come from workload-specific benchmarks [31, 83],
+operator leaderboards [16, 41], or optimized libraries [38, 40].
+6
+
+===== PDF PAGE 7 =====
+For new accelerators, a well-optimized reference GPU sup-
+plies an initial SOLop target. A gap directs attention to imple-
+mentation selection and unnecessary data movement. Fusion
+can avoid materialization; splitting can expose parallelism.
+Both require comparing complete operators, including their
+added or removed stages. To compute Hotness, we weight
+each shape’s estimated recoverable fraction at the reference
+target by its share of the workload’s critical-path time and sum
+these contributions within each workload. We then weight the
+workload totals by their shares of fleet GPU-hours over the
+same period. It ranks opportunities, not validated gains.
+Matching observations and supplementary profiling. A
+pattern specifies the conditions under which an observed be-
+havior incurs avoidable cost. Matching relates the pattern’s
+calls, objects, and dependencies to current executions. Object
+identities and code semantics establish whether the work is
+required and when its results or state updates are needed. A
+conflicting condition rejects the match. Missing required evi-
+dence leaves the mechanism unresolved; supplementary pro-
+filing targets relationships that additional runtime records can
+establish. For example, we revisit the KV case in Figure 2a,
+where Workers wait for execution commands while GPUs
+remain idle. The initial evidence locates the wait but does not
+explain EngineCore’s delayed dispatch. Analyzer therefore
+requests EngineCore calls and shared work IDs through an
+expert-approved plan. Hprof collects these records in another
+bounded window, linking the Worker wait to synchronous
+object creation before dispatch (§9.1).
+Reference fixes. A confirmed mechanism provides a basis
+for selecting a reference fix; the current execution determines
+how it can be applied. Analyzer retains the fix’s source, code
+changes, and applicability, and passes suggested solutions
+with the supporting evidence to Optimizer. An asynchronous
+KV-creation fix, for example, must ensure that object cre-
+ation completes before KV saving. Optimizer implements the
+change and tests correctness and serving performance under
+current serving conditions.
+7 Optimizer: Agent-Driven Optimization
+Optimizer turns evidence-supported opportunities into con-
+trolled experiments. Its agents use execution evidence and
+suggested fixes to implement and test candidate changes. Ex-
+pert reviews select changes for canary validation and rollout.
+Controlled-Scale Experiments on Idle GPUs. Each experi-
+ment defines correctness checks, a performance objective, and
+iteration budgets. Reduced deployments must retain workload
+conditions and dependencies that expose the implicated work
+or dependency in the unchanged baseline without a masking
+bottleneck; hardware-dependent hypotheses require the target
+device. Experiments typically use 8–32 accelerators on idle or
+revocable capacity [30,72], including prefill/decode resources
+for disaggregated serving. Completed code and measurements
+persist across preemption; interrupted experiments are rerun.
+Results establish effects at the tested scale; expert review and
+canary validation precede wider rollout.
+Agent-Driven Auto-Optimization Loop. The agent uses
+available reference fixes and current evidence to propose a
+change, then edits, builds, and tests it [25]. Build failures, in-
+correct results, and performance measurements guide further
+revisions or lead the agent to abandon an approach. To mea-
+sure gains, it compares the candidate with the baseline under
+identical workloads and settings, with high-overhead profil-
+ing disabled. Unresolved performance questions can prompt
+detailed offline profiling [45]. The loop stops when a hypoth-
+esis is refuted and no other lead remains, when the budget is
+exhausted, or when progress stalls. It returns the best tested
+change meeting correctness and performance requirements,
+or a report of failed trials, with evidence and open questions.
+For the inference-engine optimizations in Table 1, candi-
+date changes include overlapping serialized prefill-to-decode
+KV transfers with independent computation; reusing valid
+KV prefixes, metadata, and pre-allocated buffers; and tuning
+draft counts or pruning unused speculative computation while
+preserving required state updates. The agent can also make
+blocking KV control calls asynchronous and coordinate DP
+metadata before dispatching model work to Workers.
+For operator optimizations, our internal kernel agent gen-
+erates or specializes implementations using an iterative work-
+flow similar to those of recent open-source agents [11,77,83].
+It targets production shapes, data types, layouts, and hardware,
+using shape frequencies and the baseline to guide optimiza-
+tion. Comparisons cover complete operators or fusion groups,
+including preparation and combination, across relevant shapes.
+Promising implementations are integrated into the runtime
+and reevaluated under the serving workload.
+Expert review and deployment. Experts examine the re-
+turned code and results for semantic correctness and applica-
+bility to the intended deployment. Negative results can redi-
+rect an unsuccessful investigation. Approved changes enter
+canary validation. Correctness and serving-SLO monitoring
+govern wider rollout, with regressions stopping expansion.
+8 Evaluation
+Our evaluation separates collection behavior from the op-
+timization investigations it supports. We measure Hprof’s
+overhead, lifecycle behavior, and record fidelity in the tested
+configurations (§8.1), then report recurring production find-
+ings (§8.2). The case studies in §9 show which records sup-
+ported an analysis, what additional evidence was needed, and
+how the resulting constraints guided a tested modification.
+7
+
+===== PDF PAGE 8 =====
+Hprof-python Hprof-full py-spy PyTorch-lite PyTorch-full
+TTFT tail (P95)
+TPOT median
+TTFT median
+Qwen3-32B (TP2)
+TPOT tail (P95)
+Latency overhead (%)
+0.6
+0.3
+0
+1.2
+0.9
+0.6
+0.3
+0
+(4K, 32) (4K, 64) (8K, 32)
+Qwen3-235B-A22B (TP8)
+0.6
+0.3
+0
+1.2
+0.9
+0.6
+0.3
+0
+(4K, 32) (4K, 64) (8K, 32)
+4
+2
+0
+9
+6
+3
+0
+(4K, 32) (4K, 64) (8K, 32)
+4
+2
+0
+9
+6
+3
+0
+(4K, 32) (4K, 64) (8K, 32)
+(4K, 32) (4K, 64) (8K, 32)
+(4K, 32) (4K, 64) (8K, 32)
+(4K, 32) (4K, 64) (8K, 32)
+Workload (input tokens, concurrency): 4K = short, 8K = long
+(4K, 32) (4K, 64) (8K, 32)
+Configuration CPU (cores) Peak RSS (GiB) Trace rate (MiB/s)
+Figure 6: Hprof collection overhead on median and tail (P95) latency for Qwen3-32B [57] and Qwen3-235B-A22B [56]. Each
+bar shows the maximum observed overhead; its whiskers span the observed range, with non-positive changes plotted as zero.
+8.1 Profiling Overhead, Safety, and Fidelity
+Testbed and Baseline. Each evaluation host has eight
+NVIDIA H20 GPUs, two 48-core Intel Xeon Platinum 8469C
+processors (192 hardware threads), and 1 TiB of DRAM. The
+software stack comprises NVIDIA driver 580.105.08, CUDA
+13.0, PyTorch 2.13.0, and vLLM 0.29.0 [28].
+We compare Hprof with baselines representing two profil-
+ing approaches, using unprofiled runs as the latency reference:
+1. Out-of-process stack sampling. We use standalone py-
+spy [19] to sample Python call stacks and GIL state from
+outside the target process, at 100 Hz in blocking mode.
+2. Framework-integrated profiling. We use PyTorch Pro-
+filer [49, 50] to record framework operators and
+CPU/CUDA activities. PyTorch-lite [50] disables shape
+and stack recording; PyTorch-full [50] enables both.
+Workloads. We colocate prefill and decode in the same
+vLLM instance. The latency experiments cover Qwen3-
+32B [81] with TP2 and Qwen3-235B-A22B [81] with TP8,
+both in BF16. Short and long inputs contain 4,096 (4K) and
+8,192 (8K) tokens, respectively; all requests generate 512 out-
+put tokens. Inference concurrency is 32 or 64 for short inputs
+and 32 for long inputs.
+Configurations. We evaluate two Hprof configurations.
+Hprof-python records Python calls and tensor shapes. Hprof-
+full adds accelerator API calls and GPU activity (§5.2).
+Inference latency overhead. Hprof-full has controllable
+overhead: below 0.5% for TTFT and 7% for TPOT, as shown
+in Figure 6. With prefill and decode colocated, the impact is
+more pronounced on TPOT, particularly for the larger 235B
+model. Even there, TPOT overhead is about 20–30% lower
+than that of PyTorch-full across the tested workloads. Note
+that these measurements cover active collection; bounded win-
+dows, typically 30 s, avoid the continuous cost of always-on
+tracing (§5.3). Furthermore, we attribute most of the TPOT
+overhead on large models such as Qwen3-235B-A22B [56]
+to CUPTI-based accelerator tracing [39]. Disabling it leaves
+both median and P95 TPOT overhead below 1.5%. We also
+noticed that Hprof-python incurs lower overhead on TPOT
+than py-spy’s out-of-process stack sampling, while providing
+richer records of individual call intervals and tensor shapes.
+Resource usage and trace generation. Table 2 shows
+Hprof’s low CPU usage, memory footprint, and trace gen-
+eration rate. Across the tested workloads, both configurations
+stay below 0.5 CPU cores, 3 GiB of peak RSS, and 10 MiB/s
+of trace output. We also consider the total trace volume: at
+Hprof-full’s highest observed rate, a 30 s collection window
+produces approximately 265 MiB of trace data.
+Table 2: Host footprint and trace production.
+Hprof-python 0.099–0.41 2.2–2.8 0.36–2.3
+Hprof-full 0.12–0.46 2.3–2.8 1.5–8.8
+py-spy [19] 0.69–1.2 2.4–2.7 0.01–0.02
+PyTorch-lite [50] 0.093–0.41 3.8–6.1 8.5–42
+PyTorch-full [50] 0.095–0.44 5.0–9.3 17–87
+Profiling Fidelity. We compare Hprof with PyTorch Pro-
+filer [50] on Qwen3.5-35B-A3B [63]. Simultaneous col-
+lection with Hprof-python and PyTorch Profiler yields
+99.2% agreement in per-symbol call counts and 99.98% in
+immediate-parent relationships. For GPU timelines, separate
+runs of Hprof and PyTorch Profiler on the same workload
+yield identical kernel execution order. Kernel durations span
+0.5µs to several milliseconds; absolute differences are ap-
+proximately 50–150 ns. Normalizing these differences by the
+reference durations gives a median of 1.6% and a P95 of 10%.
+Lifecycle Safety. We evaluated Hprof’s lifecycle safety over
+50 attach–collect–detach cycles on Qwen3.5-35B-A3B. Mon-
+itoring covered execution during attachment, active collec-
+tion, detachment, and subsequent inference. We observed no
+8
+
+===== PDF PAGE 9 =====
+Table 3: Production optimization outcomes.
+Optimization Deployment scope Measured impact
+Overlap KV creation
+with execution (§9.1)
+GLM/Qwen
+KV-backed prefill
+across ∼50
+deployments
+3.3–5.7% higher prefill
+throughput with short
+contexts
+Coordinate DP
+before Worker
+dispatch (§9.2)
+Original Hybrid patch:
+∼50 deployments
+Upstream port: 2.5–6.0%
+higher token throughput in
+offline tests
+Prune unused prefill
+speculation (§9.3)
+Hybrid-attention
+models across∼100
+deployments (prefill)
+∼6.0% TTFT reduction in
+short-context scenarios
+motivates architecture-specific implementations and shape-
+aware tiling or splitting; comparisons include conversion and
+partial-result combination costs.
+Production Outcomes. Guided by these findings, we worked
+with domain expert teams to evaluate optimizations under
+production workloads through canary deployments before
+broader rollout. Several are now widely deployed. Table 3
+summarizes four representative optimizations, their deploy-
+ment scope, and measured impact; §9 presents the correspond-
+ing analyses and implementation changes.
+worker0
+/
+Optimize Paged
+Attention data
+layouts (§9.4)
+Small dense models
+on XPU-C across∼30
+deployments
+∼61% lower PA duration;
+8–32% lower TPOT
+Python
+CUDA API
+MessageQueue.dequeue() 46 ms
+execute_
+model()
+GPU 0
+GPU idle
+worker hangs or inference interruptions during these stages.
+8.2 Herschel in Production
+Over six months, we collected∼17,000 production traces
+from over 120 model variants across dozens of clusters and
+more than 10 accelerator types, including NVIDIA GPUs and
+in-house accelerators.
+Representative Production Findings. Of the∼17,000 col-
+lected traces, over 3,900 (23%) matched at least one inef-
+ficiency pattern. The collected traces expose issues in host
+submission, coordination, and state reuse, alongside operator
+inefficiencies tied to input shapes and implementation choices.
+The following findings describe the serving conditions in
+which these issues arise.
+Speculation needs to be judged by useful output. In PD-
+disaggregated hybrid-attention services [65–67], some of the
+Prefill draft proposals never reach Decode, and extra KV en-
+tries extend beyond the accepted prefix. Pruning must pre-
+serve reusable prefix state (§9.3).
+Submission gaps accompany fragmented execution. Dense
+models below 10B parameters [55, 58, 59] show submis-
+sion gaps and separate small-kernel launches; Qwen vision-
+language profiles show similar gaps [62]. Video profiles con-
+tain copies, conversions, and layout changes around communi-
+cation, motivating fusion and tiled transposes. Broader CUDA
+Graph capture can reduce submissions, subject to capture va-
+lidity and padding costs.
+State reuse must account for preparation and capacity. Re-
+peated planning, tuning, compilation, and Graph construction
+offer reuse opportunities. Attention plans provide reusable
+metadata for compatible layers [18]. For KV reuse, savings
+from cache-aware routing and shared storage must exceed
+lookup, transfer, and retained-memory costs.
+Operator implementations must fit online shapes. Some atten-
+tion calls on newer GPUs use older-architecture compatibility
+paths; small shapes launch fewer threadblocks than SMs. This
+EngineCore
+Python EngineCoreProc.step() /
+Scheduler.schedule()
+· · · KV connector· · ·
+Client.create()· 26 ms create()
+post()
+enqueue
+workId
+getresponse()
+synchronous RPC call
+Remote KV allocation process (not profiled)
+Figure 7: Supplementary profiling links EngineCore and
+Worker activity.
+9 Case Studies
+The following four case studies trace how runtime evidence
+supports tested optimizations: identifying an inefficiency
+mechanism (§9.1), adapting a reference fix to the current exe-
+cution constraints (§9.2), separating unused GPU work from
+required state preparation (§9.3), and optimizing an operator
+for production input shapes (§9.4).
+9.1 From Profiling to Inefficiency Mechanisms
+We revisit the GLM-5.2 [85, 86] prefill service in Figure 2a,
+where Workers wait for execution commands while GPUs
+remain idle. The profiled vLLM instance uses four of our
+in-house accelerator devices (XPU-A1) with TP4.
+Initial profiling and observation. Hprof’s GPU activity
+records reveal idle intervals in a 25-s window. Analyzer
+uses host CUDA API records to associate GPU execution
+with the Worker’s Python calls, then finds that waits in
+MessageQueue.dequeue coincide with 13.8 s of GPU idle.
+Our AI agent inspects the source-code and confirms that this
+call receives EngineCore’s model-execution commands and
+that command receipt gates model execution. Together, these
+1We use XPU as a desensitized name for non-NVIDIA GPUs.
+9
+
+===== PDF PAGE 10 =====
+Before (sync)
+RPC
+Wait KV obj.
+creation Dispatch Exec. KV
+save
+Worker Dequeue
+& GPU Idle
+After (async)
+Submit
+create Dispatch Exec. KV
+save
+batch id
+async
+RPC
+KV obj.
+creation
+Initial profiling
+Python ↔CUDA API:
+PID/TID + call intervals
+CUDA API ↔GPU activity:
+correlation id
+Code: dequeue must return
+before model execution.
+Worker awaits a command; GPU idle.
+Sender delay remains unresolved.
+Supplementary profiling of the sender
+workId: send ↔receive
+Both create calls lack workId;
+they nest in schedule on one thread
+and return before enqueue.
+Code: objects needed only at KV save.
+Creation blocks dispatch too early.
+(a) Asynchronous object creation.
+(b) Profiling and code evidence.
+Figure 8: Schematic KV investigation and asynchronous cre-
+ation, with readiness enforced at KV saving.
+observations support the Worker message-dequeue wait pat-
+tern. As Figure 8b summarizes, the remaining question con-
+cerns the sender: what delays EngineCore’s command?
+Supplementary profiling. In the next profiling window, we
+extend Hprof’s coverage to EngineCore scheduling and KV-
+connector calls. We also collect framework events carrying
+workId, which is used to link command publication to Worker
+execution. Same-thread call nesting places two synchronous
+object-creation calls within the schedule, before command
+publication, as shown in Figure 7. Code inspection explains
+why this ordering is inefficient: the objects hold KV after
+computation and are not prerequisites for computation itself.
+EngineCore nevertheless waits for creation before dispatch-
+ing, delaying work the Workers could already execute.
+Fix and impact. The reference fix runs KV-hit lookup con-
+currently with work on other ready requests [51]. We apply
+the same overlap principle to object creation: EngineCore
+starts creation asynchronously and dispatches model execu-
+tion while creation proceeds. KV saving still waits for suc-
+cessful creation, as shown in Figure 8a. This optimization
+increases short-context prefill throughput by 3.3% for GLM-
+5.2. Across this model and three Qwen models [56, 63, 64],
+the gains range from 3.3% to 5.7%. The change is deployed
+in these services on our production MaaS platform.
+9.2 Agent-Driven Optimization
+Applying reference fixes still depends on serving conditions.
+Here the agent adapts synchronization to Hybrid Attention
+and prefill/decode (P/D) handoff.
+Problem and Mechanism. Our MoE deployment uses data
+parallelism (DP), requiring ranks to coordinate token counts,
+padding, and execution modes. A typical implementation uses
+Worker-side NCCL, followed by blocking GPU-to-CPU read-
+back. We observe delayed multi-token prediction (MTP) [15]
+submissions, as shown in Figure 9a. As shown in Figure 10a,
+the matched reference fix [88] adds six lines to select CPU/-
+Gloo instead. However, Workers still wait for coordination
+EngineCore Schedule Plan
+Target
+Worker
+DP metadata sync
+cudaStreamSynchronize
+GPU
+forward
+Accept/reject
++ sampling
+NCCL
+all-reduce Idle MTP ×3
+Verification Next drafts
+(a) Worker-side DP metadata synchronization.
+EngineCore Schedule CPU DP sync
+(Gloo) Coordinated plan
+Worker
+GPU Target
+forward
+Accept/reject
++ sampling MTP ×3
+Verification Next drafts
+(b) EngineCore DP metadata pre-synchronization.
+Target/sampling launch Prepare draft inputs DP metadata sync MTP launch
+Figure 9: DP coordination before and after adaptation; plan-
+ning and execution are not time-aligned.
+before submitting GPU work.
+Agent Adaptation Challenge. Moving coordination before
+Worker dispatch requires EngineCore to distinguish prefill
+from decode execution. This is challenging in our Qwen-
+family deployment with Hybrid Attention [64]. After P/D
+handoff, the decode instance still processes a few prompt to-
+kens. The Worker handles this tail through the decode path to
+continue transferred recurrent state. An ordinary prefill chunk
+can contain just as many tokens, however, so EngineCore’s
+token-count test cannot distinguish them.
+Agent-driven Optimization Loop. The agent recovers re-
+quest boundaries and progress so that EngineCore can dis-
+tinguish a handoff tail from an ordinary prefill chunk with
+the same token count. EngineCore then prepares the coor-
+dinated execution plan before Worker dispatch, as shown in
+Figure 10b. The plan supplies metadata for target and draft
+execution, moving coordination out of the target-to-draft sub-
+mission path shown in Figure 9b. The Worker retains tail
+Upstream port: context and revision
+Runtime
++/−
+Tests
++/−
+Construct the plan. Pre-dispatch coordination,
+plan validation, and metadata reuse.
+688/32 647/1
+Extend communication support. After
+inspecting the backend, the agent replaces a
+blanket expert-parallel exclusion with a specific
+applicability check.
+17/3 22/0
+Repair activation. Execution logs expose stale
+width checks; both producer and consumer use
+actual draft counts.
+13/8 23/0
+Final diff from upstream 707/32 692/1
+Table 4: Agent-driven Optimization Stages.
+10
+
+===== PDF PAGE 11 =====
+(a) Reference fix: CPU backend (+6 lines)
+1 # Added configuration rule
+2 if async_scheduling:
+3 disable_nccl_for_dp_synchronization = True
+4 # Reused Worker CPU path
+5 meta = zeros(4, DP, on=CPU)
+6 meta[:, rank] = [tokens, padded, ubatch, pad]
+7 all_reduce(meta, group=Gloo, op=SUM)
+8 plan = read_padding_and_ubatch(meta)
+9 launch_model(plan)
+(b) Agent adaptation: Hybrid (+766/−150 lines)
+1 # EngineCore: recover request semantics
+2 local = classify(restore(batch), PD_tail_rule)
+3 # Agree on modes, widths, and limits
+4 meta = Gloo_collect(local) # 13 fields
+5 plan = agree_target_modes_and_widths(meta)
+6 plan.draft = any(meta.draft) and
+all(meta.length_ok)
+7 dispatch(batch, plan)
+8 # Worker: keep tail and idle-rank rules
+9 target_or_dummy(plan)
+10 if has_PD_tail(batch): sample_tail_once()
+11 first, later = derive_draft_plans(plan)
+12 # Keep graph eligibility; guard MTP fusion
+13 graphs = draft_graphs(stage_maxima(first, later))
+14 fused = old_eligible and plan.uniform \
+15 and graphs.later == FULL \
+16 and all_ranks_have_requests(plan)
+17 draft_if_enabled(first, later, graphs, fused)
+Figure 10: Reference CPU path and agent adaptation.
+sampling, derives first/later draft plans for active and idle
+ranks, and checks graph and fusion eligibility. Table 4 details
+the subsequent upstream port. Backend inspection identifies
+where communication support can be broadened, while ex-
+ecution logs reveal stale draft-width checks that prevent the
+plan from taking effect. The agent updates the producer and
+consumer checks to use actual draft counts and retests.
+Validation and Deployment. The original Hybrid patch is
+deployed. Offline tests of the subsequent upstream port on
+eight XPU-A devices yield throughput gains of 6.0%, 4.8%,
+and 2.5% for the 35B, 122B, and 397B Qwen models, re-
+spectively. Each value is the mean of two maximum observed
+paired gains, one at 32 concurrent requests and one at 128.
+9.3 Inefficiency Beyond GPU Idle Time
+Herschel goes beyond idle-time analysis to uncover wasted
+GPU work that hurts serving efficiency even on busy GPUs.
+Problem and Profiling Observation. In our production ser-
+vices for Qwen-family models [56,61,64], we study a hybrid-
+attention model combining full attention with Gated DeltaNet
+(GDN) layers [84]. Prefill prepares the target model’s pre-
+fix KV and recurrent state for Decode. It also builds the
+Prefill Worker (before fix)
+Sampling + MTP drafting
+0 20 280 320 360
+Python calls Time (ms)
+execute. . .
+_model. . .
+Model. . .
+Graph. . .
+execute_model
+sample_tokens
+_model_forward
+propose_draft. . .
+Model.forward
+EagleProposer. . .
+GraphModule.forward
+MTP 1 MTP 2 MTP 3
+Prediction computation
+CUDA API
+GPU stream 7
+Figure 11: Prefill trace: crosses mark removed forwards;
+hatching marks the prediction path retained within MTP 1.
+multi-token prediction (MTP) drafter’s own prompt-prefix
+KV cache, which Decode loads to resume drafting. Decode
+generates and verifies candidates locally. Prefill nevertheless
+continues proposing tokens after this cache is ready, keep-
+ing the GPU busy with work Decode does not use. Hprof’s
+Python timings show that sampling and drafting take an aver-
+age of 39.1 ms per Prefill-worker step; drafting alone accounts
+for 8.8% of the combined model-forward and sampling time.
+Figure 11 shows GPU work across three draft forwards.
+Wasted Computation Despite GPU Activity. Our AI agent
+inspects the code and confirms that Prefill neither transfers
+speculative candidates to Decode nor verifies them locally.
+Later draft forwards—MTP 2–3 in this profile—therefore
+extend only a local prediction chain and write cache entries
+beyond the prefix accepted by Decode. Once MTP 1 has con-
+structed the reusable prefix state, these later forwards have
+no consumer or required side effect. In contrast, MTP 1 con-
+structs the transferred prefix state but also produces a pre-
+diction unused by Decode. Its prediction path, marked by
+hatching in Figure 11, may be pruned only if every opera-
+tion needed to construct the transferred state remains. This
+intra-forward pruning remains an optimization opportunity.
+Pattern and Optimization. The unused candidate-
+generation path satisfies Unconsumed output without required
+side effects, a Speculation / unused work pattern. Reference
+fixes preserve draft-cache updates and suppress subsequent
+proposal expansion [47, 75, 76]. Optimizer’s agent similarly
+removes the two later MTP forwards while retaining the first
+full forward for state preparation. This optimization is widely
+deployed across our Qwen-family Prefill instances and
+reduces TTFT by∼6% in typical short-context scenarios.
+9.4 Optimizing Operator Implementations
+At XPU-C’s initial release, expert assessment and offline tun-
+ing suggested that its performance was comparable to that of
+NVIDIA H20. Results for large models [54, 60] supported
+that expectation, while smaller dense Qwen3 models showed
+11
+
+===== PDF PAGE 12 =====
+(c) Kernel implementation
+Before Repeated per KV tile
+GMEM
+144
+11.2
+12.6
+14
+8.8
+Q reg.
+#blk
+SMEM
+Q reg.
+#dot_op(0)
+write read
+K reg.
+SMEM
+#blk
+K reg.
+#dot_op(1)
+After Q conversion once
+Q load Q reg.
+#blk1 SMEM Q reg.
+#linear1
+reuse Q
+For each KV tile Q reg.
+#dot_op(0)
+K load K reg.
+#blk2
+MFMA
+MFMA
+layout
+MFMA
+K reg.
+#dot_op(1)
+(a) Normalized perf. (%)
+Qwen model size
+H20
+0.6B 4B 63
+66
+14B 94
+235B MoE 72B VL 112
+0 50 100 150
+(b) E2E TPOT reduction
+on Qwen3-4B
+%
+32
+30
+27.9
+23.2
+20
+10
+0
+1
+2
+4
+8
+16
+32
+Request concurrency
+64
+Dashed: no data movement
+Figure 12: Operator implementation efficiency on XPU-C.
+remaining gaps, as illustrated in Figure 12a.
+Comparing operator executions. We examine PagedAtten-
+tion (PA) in Qwen3-4B [58] at a production input shape.
+Analyzer links Hprof’s Python calls and input fields to host
+API submissions and GPU activity, recovering the operator’s
+shape and execution interval. It compares PA’s speed-of-light
+(SOL) attainment [24, 31, 78] on XPU-C with that on H20.
+For the profiled shape, the inputs imply 2.36 GFLOPs and
+0.59 GB of logical traffic across PA calls per decode token.
+Using the normalization in §6.1, we obtain 0.76% MFU and
+7.32% MBU, hence 7.3% SOL on XPU-C. H20 exceeds 17%
+SOL at the same shape and precision. The Low SOL vs. refer-
+ence efficiency check therefore directs attention to the operator
+implementation used for this shape.
+Optimization and impact. Inspection of the executed imple-
+mentation reveals repeated Q/K layout conversions through
+shared memory in preparation for matrix fused multiply-add
+(MFMA) instructions, which multiply matrix tiles and ac-
+cumulate results [5]. Optimizer supplies this diagnosis and
+the recovered shape to the Triton kernel agent. The fix in
+Figure 12c converts Q once for reuse and loads K in a com-
+patible layout, avoiding K’s shared-memory round trip [69].
+For the measured shape, this optimization reduces PA op-
+erator time by 60.9% and raises SOL to 18.7%, a 155% im-
+provement. Figure 12b shows roughly 8–32% lower end-to-
+end TPOT on Qwen3-4B across request concurrency levels
+after combining this fix with optimizations to KV preparation,
+intermediate copies, and host submission.
+10 Experience
+Online profiling locates work; deeper analysis explains its
+cost. Online timelines and runtime state expose submission
+gaps, dependencies that cause waiting, repeated work, and
+shape-dependent operator costs. Our program-counter (PC)
+and performance-monitor (PM) sampling trials exceeded the
+online overhead budget, so we reserve instruction-level analy-
+sis for offline profiling with Nsight Compute [45].
+Removing detected overhead does not guarantee a perfor-
+mance gain. We encountered misdiagnosed bottlenecks and
+genuine overheads whose proposed fixes yielded no measur-
+able gain. Experiments must retain the arrival patterns, shapes,
+and dependencies that expose the problem; adoption requires
+repeatable service gains under correctness and latency con-
+straints. Rejecting one implementation under one workload
+does not invalidate the optimization direction.
+Successful fixes are fast to review; failures are not. Our
+agents were effective at removing explicit overheads and
+adapting known techniques. Successful changes were quicker
+to review because confirmed mechanisms and controlled tests
+narrowed what experts needed to check. Failures take longer:
+the negative result may reflect a wrong diagnosis, a flawed
+implementation, or masking workload conditions. Retaining
+failed trials helps experts locate the breakdown.
+Profiler-side adaptation to engine evolution. Hprof’s
+object-field readers must track changes to engine-internal
+layouts. Updating these readers requires no engine source-
+code changes, restarts, or profiling support in the engine. Over
+six months we released five reader versions to cover layout
+changes across engine updates.
+11 Related Work
+Production profiling. GWP [68] established fleet-wide CPU
+profiling, while Strobelight and Zoomer [36, 37] support pro-
+filing and performance analysis across production services.
+Hprof supports inference analysis with runtime attachment
+and dynamically configurable, on-demand collection.
+Training and inference analysis. Training diagnosis sys-
+tems correlate signals across the execution stack [73] or ex-
+ploit repeated execution to locate performance problems [13,
+21]. For inference, eInfer and ProfInfer [12, 90] provide fine-
+grained eBPF-based tracing. Herschel complements this anal-
+ysis with collection whose coverage can expand in running
+services as an investigation exposes missing evidence. It then
+uses the resulting execution observations to assess inefficiency
+mechanisms and the applicability of reference fixes.
+Profile-guided and agent-driven optimization. Production
+profiles also guide modifications: AutoFDO [10] informs
+compiler optimizations, and DMon [26] repairs data-locality
+problems through selective profiling. ECO [32] combines
+continuous CPU profiles with mined anti-patterns to develop
+LLM-generated optimizations. Code agents [82] and kernel
+agents [11,14,77] automate implementation and testing. Like
+ECO, Herschel derives suggested solutions from reference
+fixes.
+12
+
+===== PDF PAGE 13 =====
+12 Conclusion
+We presented Herschel, a continuous optimization system
+for production LLM inference. Runtime attachment enables
+rich full-stack profiling on demand within bounded windows,
+with coverage refined as investigations progress. Analyzer
+reconstructs execution relationships to identify inefficiencies,
+and Optimizer guides AI agents through implementation and
+controlled validation, with expert review before deployment.
+Our production investigations connect execution evidence to
+engine and operator changes across diverse serving condi-
+tions.
+References
+[1] Advanced Micro Devices. ROCTracer library
+specification. https://rocm.docs.amd.com/
+projects/roctracer/en/latest/reference/
+roctracer-spec.html. Accessed 2026-09-16.
+[2] Megha Agarwal, Asfandyar Qureshi, Nikhil Sardana,
+Linden Li, Julian Quevedo, and Daya Khudia. LLM
+inference performance engineering: Best practices.
+Databricks Blog, October 2023.
+[3] Alibaba Cloud. Alibaba Cloud Model Studio: Fast
+mode. https://www.alibabacloud.com/help/en/
+model-studio/fast-mode, 2026. Updated 2026-09-
+11; accessed 2026-09-12.
+[4] Alibaba Cloud. Alibaba Cloud Model Studio: Mod-
+els. https://www.alibabacloud.com/help/en/
+model-studio/models, 2026. Accessed 2026-09-12.
+[5] AMD. AMD Matrix Instruction Calcula-
+tor. https://github.com/ROCm/amd_matrix_
+instruction_calculator. Accessed September 14,
+2026.
+[6] Anthropic. Claude 3.7 Sonnet and Claude Code. https:
+//www.anthropic.com/news/claude-3-7-sonnet,
+February 2025. Published February 24, 2025. Accessed
+September 11, 2026.
+[7] Anthropic. Batch processing. https://platform.
+claude.com/docs/en/build-with-claude/
+batch-processing, 2026. Accessed 2026-09-07.
+[8] Anthropic. Fast mode (research preview).
+https://platform.claude.com/docs/en/
+build-with-claude/fast-mode, 2026. Accessed
+2026-09-07.
+[9] Anthropic. Scaling managed agents: Decoupling the
+brain from the hands. https://www.anthropic.com/
+engineering/managed-agents, April 2026. Pub-
+lished 2026-04-08; accessed 2026-09-12.
+[10] Dehao Chen, David Xinliang Li, and Tipp Moseley. Aut-
+oFDO: Automatic feedback-directed optimization for
+warehouse-scale applications. In Proceedings of the
+2016 International Symposium on Code Generation and
+Optimization, CGO ’16, pages 12–23. Association for
+Computing Machinery, 2016.
+[11] Kaiming Cheng, Laura Wang, Jack Khuu, Mark
+Saroufim, Wenyuan Chi, Jiannan Wang, and Joe Isaac-
+son. KernelAgent: Hardware-guided GPU kernel opti-
+mization via multi-agent orchestration. PyTorch Blog,
+March 2026. Published March 6, 2026.
+[12] Kexin Chu, Jianchang Su, Yifan Zhang, Chenxingyu
+Zhao, Yiwei Yang, Yusheng Zheng, Shengkai Lin,
+Shizhen Zhao, and Wei Zhang. eInfer: Unlocking
+fine-grained tracing for distributed LLM inference with
+eBPF. In Proceedings of the 3rd Workshop on eBPF and
+Kernel Extensions (eBPF@SIGCOMM). ACM, 2025.
+[13] Weihao Cui, Ji Zhang, Han Zhao, Chao Liu, Jian Sha,
+Bo Sang, Bingsheng He, Minyi Guo, and Quan Chen.
+Flare: Anomaly diagnostics for divergent LLM training
+in GPU clusters of thousand-plus scale. In NSDI, 2026.
+Verified from PDF front page, 2026-08-02.
+[14] Weinan Dai, Hanlin Wu, Qiying Yu, Huan ang Gao,
+Jiahao Li, Chengquan Jiang, Weiqiang Lou, Yufan
+Song, Hongli Yu, Jiaze Chen, Wei-Ying Ma, Ya-Qin
+Zhang, Jingjing Liu, Mingxuan Wang, Xin Liu, and
+Hao Zhou. CUDA Agent: Large-scale agentic RL for
+high-performance CUDA kernel generation. https:
+//arxiv.org/abs/2602.24286, 2026.
+[15] DeepSeek-AI. DeepSeek-V3 technical report, 2024.
+[16] FlashInfer Contributors. FlashInfer-Bench: Oper-
+ator and workload leaderboard. https://bench.
+flashinfer.ai/. Accessed 2026-09-15.
+[17] FlashInfer Contributors. FlashInfer: High-performance
+GPU kernels for inference. https://github.com/
+flashinfer-ai/flashinfer.
+[18] FlashInfer Contributors. FlashInfer attention kernels,
+2026. Accessed September 14, 2026.
+[19] Ben Frederickson. py-spy: Sampling profiler for python
+programs. Software repository. Accessed 2026-09-05.
+[20] Google Cloud. Overview of Model Gar-
+den. https://docs.cloud.google.com/
+gemini-enterprise-agent-platform/models/
+model-garden/explore-models, 2026. Accessed
+2026-09-07.
+[21] Yu Guan, Zhiyu Yin, Haoyu Chen, Sheng Cheng, Chao-
+jie Yang, Kun Qian, Tianyin Xu, Yang Zhang, Hanyu
+13
+
+===== PDF PAGE 14 =====
+Zhao, Yong Li, Wei Lin, Dennis Cai, and Ennan Zhai.
+Eroica: Online troubleshooting for large-scale gpu train-
+ing clusters. In NSDI, 2026. Formerly PerfTracker
+(arXiv 2025); same paper, renamed at publication. Au-
+thor list carried over from the arXiv version. VERIFY
+title/pages against the NSDI’26 camera-ready.
+[22] Holistic Trace Analysis Contributors. Holis-
+tic Trace Analysis. https://github.com/
+facebookresearch/HolisticTraceAnalysis.
+Accessed 2026-09-08.
+[23] Holistic Trace Analysis Contributors. Lightweight
+critical path analysis. https://hta.readthedocs.
+io/en/latest/source/features/lightweight_
+critical_path_analysis.html. Accessed 2026-09-
+08.
+[24] Qijing Huang, Sana Damani, Zhifan Ye, Athinagoras
+Skiadopoulos, Siva Kumar Sastry Hari, Jason Clemons,
+Sahil Modi, Jingquan Wang, Aditya Kane, Edward C
+Lin, Humphrey Shi, and Christos Kozyrakis. SO-
+LAR: AI-powered speed-of-light performance analysis.
+arXiv:2606.26383, 2026.
+[25] Andrej Karpathy. autoresearch: AI agents run-
+ning research on single-GPU nanochat training
+automatically. https://github.com/karpathy/
+autoresearch, 2026. Accessed September 10, 2026.
+[26] Tanvir Ahmed Khan, Ian Neal, Gilles Pokam, Barzan
+Mozafari, and Baris Kasikci. DMon: Efficient detection
+and correction of data locality problems using selective
+profiling. In 15th USENIX Symposium on Operating
+Systems Design and Implementation (OSDI 21), pages
+163–181. USENIX Association, July 2021.
+[27] Jinwoo Kim, Kihyun Kim, Hyunsun Chung, Jihoon
+Yang, James J. Kim, Dong Li, and Youngjae Kim. LLM-
+PILOT: SLO-aware and cost-efficient LLM serving on
+public cloud VM clusters via offloading. In CCGrid,
+pages 136–146, 2026.
+[28] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying
+Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gonza-
+lez, Hao Zhang, and Ion Stoica. Efficient memory man-
+agement for large language model serving with pagedat-
+tention. In SOSP, 2023.
+[29] Yaniv Leviathan, Matan Kalman, and Yossi Matias. Fast
+inference from transformers via speculative decoding.
+In Proceedings of the 40th International Conference on
+Machine Learning, 2023.
+[30] Suyi Li, Lingyun Yang, Haoxuan Yu, Sheng Yao,
+Tianyuan Wu, Xiaoxiao Jiang, Hanfeng Lu, Kangjin
+Wang, Chenhao Wang, Shenglin Xu, Lun Wang,
+Qingyang Duan, Shenghao Liang, Xiu Lin, Meng Zhang,
+Wenchao Wu, Yinghao Yu, Guodong Yang, Liping
+Zhang, and Wei Wang. Heterogeneity at hyperscale:
+Characterization and scheduling of large production
+AI clusters at alibaba (operational systems). In 20th
+USENIX Symposium on Operating Systems Design and
+Implementation (OSDI 26), pages 2187–2203. USENIX
+Association, 2026.
+[31] Edward Lin, Sahil Modi, Siva Kumar Sastry Hari,
+et al. SOL-ExecBench: Speed-of-light benchmarking
+for real-world GPU kernels against hardware limits.
+arXiv:2603.19173, 2026.
+[32] Hannah Lin et al. ECO: An AI-driven code efficiency
+optimizer for warehouse scale computers. In OSDI,
+pages 589–625, 2026.
+[33] Yuhan Liu, Yihua Cheng, Jiayi Yao, Yuwei An, Xiaokun
+Chen, Shaoting Feng, Yuyang Huang, Samuel Shen, Rui
+Zhang, Kuntai Du, and Junchen Jiang. LMCache: An
+efficient KV cache layer for enterprise-scale LLM infer-
+ence. arXiv preprint arXiv:2510.09665, 2025.
+[34] Meta. Dynolog: Open-source observability dae-
+mon. https://github.com/facebookincubator/
+dynolog. Accessed 2026-08.
+[35] Meta. Introducing Llama 3.1: Our most capa-
+ble models to date. https://ai.meta.com/blog/
+meta-llama-3-1/, July 2024. Published July 23, 2024.
+Accessed September 11, 2026.
+[36] Meta Engineering. Strobelight: A profiling service built
+on open source technology. Engineering at Meta, Jan-
+uary 2025. Accessed 2026-09-06.
+[37] Meta Engineering. Zoomer: Powering AI performance
+at Meta’s scale through intelligent debugging and opti-
+mization. Engineering at Meta, November 2025. Ac-
+cessed 2026-09-06.
+[38] NVIDIA. cuBLAS library. https://docs.nvidia.
+com/cuda/cublas/index.html. Accessed 2026-09-
+14.
+[39] NVIDIA. CUPTI: CUDA profiling tools interface.
+https://docs.nvidia.com/cupti/. Accessed 2026-
+09-16.
+[40] NVIDIA. Efficient GEMM in CUDA.
+https://docs.nvidia.com/cutlass/latest/
+media/docs/cpp/efficient_gemm.html. Paral-
+lelized Reductions. Accessed 2026-09-08.
+[41] NVIDIA. SOL-ExecBench: GPU kernel performance
+leaderboards. https://research.nvidia.com/
+benchmarks/sol-execbench/leaderboard. Ac-
+cessed 2026-09-15.
+14
+
+===== PDF PAGE 15 =====
+[42] NVIDIA. TensorRT LLM. https://github.com/
+NVIDIA/TensorRT-LLM.
+[43] NVIDIA. NVIDIA secure AI with Blackwell
+and Hopper GPUs. Technical Report WP-12554-
+001, version 1.3, NVIDIA, August 2025. https:
+//docs.nvidia.com/nvidia-secure-ai-with-
+blackwell-and-hopper-gpus-whitepaper.pdf.
+[44] NVIDIA. NVIDIA Vera Rubin POD: Seven chips,
+five rack-scale systems, one AI supercomputer.
+https://developer.nvidia.com/blog/nvidia-
+vera-rubin-pod-seven-chips-five-rack-
+scale-systems-one-ai-supercomputer/, March
+2026. Published 2026-03-16; accessed 2026-09-12.
+[45] NVIDIA Corporation. NVIDIA Nsight Compute
+profiling guide. https://docs.nvidia.com/
+nsight-compute/ProfilingGuide/index.html.
+Online documentation. Accessed September 9, 2026.
+[46] NVIDIA Corporation. NVIDIA Nsight Sys-
+tems user guide. https://docs.nvidia.com/
+nsight-systems/UserGuide/index.html. Online
+documentation. Accessed September 12, 2026.
+[47] NVIDIA TensorRT-LLM contributors. [TRTLLM-
+6453][feat] Support chunked prefill on spec decode
+2 model. GitHub pull request #6104. https:
+//github.com/NVIDIA/TensorRT-LLM/pull/6104,
+2025. Merged July 25, 2025; accessed September 9,
+2026.
+[48] OpenXLA. XLA:GPU architecture overview. https:
+//openxla.org/xla/gpu_architecture, 2025. Ac-
+cessed September 8, 2026.
+[49] PyTorch. Kineto: CPU+GPU profiling library, 2025.
+https://github.com/pytorch/kineto.
+[50] PyTorch. torch.profiler: PyTorch Profiler. PyTorch
+Documentation, 2026. Accessed 2026-09-05.
+[51] Yifan Qiao, Nick Hill, and contributors. [KV
+connector][mooncake] async lookup to reduce sched-
+uler overhead. vLLM pull request 45659. https:
+//github.com/vllm-project/vllm/pull/45659,
+2026. Merged 2026-06-18; accessed 2026-09-06.
+[52] Ruoyu Qin et al. Mooncake: Trading more storage for
+less computation—a KVCache-centric architecture for
+serving LLM chatbot. In FAST, 2025.
+[53] Ruoyu Qin, Weiran He, Yaoyu Wang, Zheming Li,
+Xinran Xu, Yongwei Wu, Weimin Zheng, and Mingx-
+ing Zhang. Prefill-as-a-service: KVCache of next-
+generation models could go cross-datacenter. arXiv
+preprint arXiv:2604.15039, 2026.
+[54] Qwen Team. Qwen2.5-VL-72B-Instruct. Hugging Face
+model card. https://huggingface.co/Qwen/Qwen2.
+5-VL-72B-Instruct, 2025. Accessed September 14,
+2026.
+[55] Qwen Team. Qwen3-0.6B model card. Hugging Face,
+2025. Accessed September 14, 2026.
+[56] Qwen Team. Qwen3-235B-A22B. Hugging
+Face model card. https://huggingface.co/Qwen/
+Qwen3-235B-A22B, 2025. Accessed 2026-09-16.
+[57] Qwen Team. Qwen3-32B. Hugging Face model
+card. https://huggingface.co/Qwen/Qwen3-32B,
+2025. Accessed 2026-09-17.
+[58] Qwen Team. Qwen3-4B. Hugging Face model card.
+https://huggingface.co/Qwen/Qwen3-4B, 2025.
+Accessed 2026-09-06.
+[59] Qwen Team. Qwen3-8B model card. Hugging Face,
+2025. Accessed September 14, 2026.
+[60] Qwen Team. Qwen3 model family. Hug-
+ging Face collection. https://huggingface.co/
+collections/Qwen/qwen3, 2025. Accessed Septem-
+ber 14, 2026.
+[61] Qwen Team. Qwen3-Next-80B-A3B-Instruct. Hugging
+Face model card. https://huggingface.co/Qwen/
+Qwen3-Next-80B-A3B-Instruct, 2025. Accessed
+2026-09-16.
+[62] Qwen Team. Qwen3-VL-30B-A3B-Instruct model card.
+Hugging Face, 2025. Accessed September 14, 2026.
+[63] Qwen Team. Qwen3.5-35B-A3B. Hugging Face
+model card. https://huggingface.co/Qwen/Qwen3.
+5-35B-A3B, 2026. Accessed 2026-09-17.
+[64] Qwen Team. Qwen3.5-397B-A17B. Hugging Face
+model card. https://huggingface.co/Qwen/Qwen3.
+5-397B-A17B, 2026. Accessed 2026-09-06.
+[65] Qwen Team. Qwen3.8-2.4T-A95B model card. Hugging
+Face, 2026. Accessed September 14, 2026.
+[66] Qwen Team. Qwen3.8-Flash-Next: A new architecture,
+towards ultimate cost-efficiency, August 2026.
+[67] Qwen Team. Qwen3.8-Flash-Next model card. Hugging
+Face, 2026. Accessed September 14, 2026.
+[68] Gang Ren, Eric Tune, Tipp Moseley, Yixin Shi, Silvius
+Rus, and Robert Hundt. Google-wide profiling: A con-
+tinuous profiling infrastructure for data centers. IEEE
+Micro, 30(4):65–79, 2010.
+15
+
+===== PDF PAGE 16 =====
+[69] RTP-LLM Contributors. Optimize low concurrency
+Paged Attention. Pull request 580. https://github.
+com/alibaba/rtp-llm/pull/580, 2026.
+[70] SemiAnalysis. AgentX–InferenceXv3: Does
+CUDA moat hold up in agentic inferencing?
+https://newsletter.semianalysis.com/p/
+agentx-inferencexv3-does-cuda-moat, August
+2026. Published 2026-08-24; accessed 2026-09-07.
+[71] SGLang Contributors. SGLang: A high-
+performance serving framework. https:
+//github.com/sgl-project/sglang.
+[72] John Thorpe, Pengzhan Zhao, Jonathan Eyolfson, Yi-
+fan Qiao, Zhihao Jia, Minjia Zhang, Ravi Netravali, and
+Guoqing Harry Xu. Bamboo: Making preemptible in-
+stances resilient for affordable training of large DNNs.
+In 20th USENIX Symposium on Networked Systems De-
+sign and Implementation (NSDI 23), pages 497–513.
+USENIX Association, 2023.
+[73] VERIFY. Sysom-ai: Cross-layer observability for large
+gpu training clusters, 2026. VERIFY.
+[74] vLLM Contributors. vLLM: Inference and Serving
+Engine. https://github.com/vllm-project/vllm.
+Accessed September 8, 2026.
+[75] vLLM contributors. [Core][PD] Role-aware op-
+timizations for Spec decoding. GitHub pull re-
+quest #45280. https://github.com/vllm-project/
+vllm/pull/45280, 2026. Opened June 11, 2026; un-
+merged in the September 9, 2026 source snapshot.
+[76] vLLM contributors. [Model Runner V2] Skip draft
+propose for disagg prefill instance. GitHub pull re-
+quest #39266. https://github.com/vllm-project/
+vllm/pull/39266, 2026. Opened April 8, 2026; draft
+and unmerged in the September 9, 2026 source snapshot.
+[77] Jianghui Wang, Vinay Joshi, Saptarshi Majumder,
+Xu Chao, Bin Ding, Ziqiong Liu, Pratik Prabhanjan
+Brahma, Dong Li, Zicheng Liu, and Emad Barsoum.
+Geak: Introducing Triton kernel AI agent & evaluation
+benchmarks. https://arxiv.org/abs/2507.23194,
+2025.
+[78] Samuel Webb Williams, Andrew Waterman, and
+David A. Patterson. Roofline: An insightful visual per-
+formance model for floating-point programs and multi-
+core architectures. Technical Report UCB/EECS-2008-
+134, EECS Department, University of California, Berke-
+ley, October 2008.
+[79] Haonan Wu, Yanqing Chen, Kun Qian, Xue Li, Jingbo
+Xu, Erci Xu, Ennan Zhai, Wenyuan Yu, Guangtao Xue,
+and Jingren Zhou. StriaTrace: Efficient tracing and di-
+agnosis for online LLM inference (operational systems).
+In 20th USENIX Symposium on Operating Systems De-
+sign and Implementation (OSDI 26), pages 627–645,
+Seattle, WA, July 2026. USENIX Association.
+[80] Yuxing Xiang, Xue Li, Kun Qian, Yan Zhang, Wenyuan
+Yu, Ennan Zhai, Xin Jin, and Jingren Zhou. ServeGen:
+Workload characterization and generation of large lan-
+guage model serving in production. In NSDI, 2026.
+[81] An Yang et al. Qwen3 technical report. arXiv preprint
+arXiv:2505.09388, 2025.
+[82] John Yang, Carlos E. Jimenez, Alexander Wettig, Kilian
+Lieret, Shunyu Yao, Karthik R. Narasimhan, and Ofir
+Press. SWE-agent: Agent-computer interfaces enable
+automated software engineering. In Advances in Neural
+Information Processing Systems, 2024.
+[83] Lingyun Yang, Yuxiao Wang, Shenghao Liang, Lin-
+feng Yang, Daocheng Ying, Chunbo You, Rui Zhang,
+Luping Wang, Yinghao Yu, Guodong Yang, and Liping
+Zhang. Are LLM-generated GPU kernels production-
+ready? a trace-driven benchmark and optimization agent.
+arXiv:2607.14541, 2026.
+[84] Songlin Yang, Jan Kautz, and Ali Hatamizadeh. Gated
+Delta Networks: Improving Mamba2 with delta rule. In
+International Conference on Learning Representations,
+2025. https://arxiv.org/abs/2412.06464.
+[85] Z.ai. GLM-5.2. Official Hugging Face model card,
+2026. Accessed 2026-09-09.
+[86] Z.ai. GLM-5.2: Built for long-horizon tasks. Official
+Hugging Face blog, June 2026. Published June 17, 2026;
+accessed 2026-09-09.
+[87] Yinmin Zhong et al. Distserve: Disaggregating pre-
+fill and decoding for goodput-optimized large language
+model serving. In OSDI, 2024.
+[88] Haoran Zhu and contributors. Use CPU all-reduce
+to avoid synchronization with asynchronous schedul-
+ing and data parallelism. vLLM pull request
+29311. https://github.com/vllm-project/vllm/
+pull/29311, 2025. Merged 2025-11-25; accessed
+2026-09-05.
+[89] Ruidong Zhu, Ziheng Jiang, Chao Jin, Peng Wu, Cesar A.
+Stuardo, Dongyang Wang, Xinlei Zhang, Huaping Zhou,
+Haoran Wei, Yang Cheng, Jianzhe Xiao, Xinyi Zhang,
+Lingjun Liu, Haibin Lin, Li-Wen Chang, Jianxi Ye, Xiao
+Yu, Xuanzhe Liu, Xin Jin, and Xin Liu. MegaScale-
+Infer: Efficient mixture-of-experts model serving with
+disaggregated expert parallelism. In Proceedings of
+the ACM SIGCOMM 2025 Conference, pages 592–608.
+Association for Computing Machinery, 2025.
+16
+
+===== PDF PAGE 17 =====
+[90] Bohua Zou, Debayan Roy, Dhimankumar Yogesh Airao,
+Weihao Xu, Binqi Sun, Yutao Liu, and Haibo Chen.
+ProfInfer: An eBPF-based fine-grained LLM inference
+profiler. In A. Chowdhery and Z. Jia, editors, Proceed-
+ings of Machine Learning and Systems, volume 8, pages
+437–450. MLSys, 2026.
+17

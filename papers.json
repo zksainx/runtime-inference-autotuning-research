@@ -327,5 +327,39 @@
     "downloaded_from": "https://arxiv.org/pdf/2609.17391v1",
     "bytes": 2045853,
     "sha256": "a68ed302b06ee51087ca6b501a80bf748d073ae2f8c9aef29b8d89a5a15862af"
+  },
+  {
+    "id": "20",
+    "title": "Herschel: Continuous Optimization of Production LLM Inference through On-Demand Profiling",
+    "authors": [
+      "Wang, Luping",
+      "Chen, Weigao",
+      "Wu, Yifei",
+      "Zhang, Yonghe",
+      "Zhang, Rui",
+      "Wu, Wenchao",
+      "Luo, Jiyu",
+      "Geng, Haoran",
+      "Yang, Xin",
+      "Cao, Chen",
+      "Wu, Yuemin",
+      "Huang, Cheng",
+      "Yang, Guodong",
+      "Zhang, Liping"
+    ],
+    "venue": "arXiv preprint (conference identity not verified)",
+    "venue_url": "",
+    "pdf_url": "https://arxiv.org/pdf/2609.40247v1",
+    "additional_url": "https://arxiv.org/abs/2609.40247v1",
+    "html_url": "https://arxiv.org/html/2609.40247v1",
+    "file": "20_Herschel_arxiv_v1.pdf",
+    "status": "downloaded",
+    "access_date": "2026-11-05",
+    "publication_date": "2026-09-30",
+    "source_type": "author_arxiv_preprint",
+    "version_note": "Pinned author arXiv v1, 17 physical PDF pages. Close comparison for production MaaS profiling, agent optimization and controlled PD experiments; not counted among the 17 verified top-venue papers.",
+    "downloaded_from": "https://arxiv.org/pdf/2609.40247v1",
+    "bytes": 568613,
+    "sha256": "ad30733229ae78ccd9a1f7703cfef0c515c5ecb1b93b14e53a97bfd2918542d0"
   }
 ]

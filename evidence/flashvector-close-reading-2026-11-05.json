@@ -1,0 +1,267 @@
+{
+  "checked_on": "2026-11-05",
+  "checked_at_utc": "2026-11-05T08:41:05.884571+00:00",
+  "timezone": "Asia/Shanghai",
+  "paper_id": "19",
+  "title": "FlashVector: Agent for Hierarchical Model Serving Stack Optimization",
+  "scope": "Reread all nine physical PDF pages including references to correct comparison coverage, with visual inspection of Algorithm 1 and Tables 3/4. No GPU execution, code audit or independent reproduction.",
+  "publication_identity": "Author arXiv preprint v1 dated 2026-09-15; conference publication identity not verified.",
+  "primary_sources": [
+    "https://arxiv.org/abs/2609.17391v1",
+    "https://arxiv.org/pdf/2609.17391v1"
+  ],
+  "artifacts": [
+    {
+      "file": "papers/19_FlashVector_arxiv_v1.pdf",
+      "bytes": 2045853,
+      "sha256": "a68ed302b06ee51087ca6b501a80bf748d073ae2f8c9aef29b8d89a5a15862af"
+    },
+    {
+      "file": "paper-text/19_FlashVector_arxiv_v1.txt",
+      "bytes": 49906,
+      "sha256": "d1e2f04fda5d8e5c45c83b952a332c48db116827e0e2d8bb12c45d5e346befe2"
+    }
+  ],
+  "physical_pdf_pages": 9,
+  "method": "Page-preserving PDFKit text, complete reread, with visual checks. Findings paraphrased; each 1-based inclusive source-line block is pinned by SHA-256 after joining lines with a terminal newline.",
+  "visually_reviewed_pages": [
+    5,
+    8
+  ],
+  "observations": [
+    {
+      "id": "identity_and_domain",
+      "paper_section": "front matter; Abstract; 1",
+      "finding": "Pinned author arXiv v1 dated 2026-09-15, Stanford/Unity, nine physical pages. Optimizes production recommender serving at Unity Vector, across GPU kernels, framework graphs, NVIDIA Triton model server and feature processing.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 5,
+          "line_end": 10,
+          "pdf_pages": [
+            1
+          ],
+          "line_block_sha256": "c54727285e343f3839af93969c301c6016ca6b49ea81608107c512d402c3ea60"
+        },
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 13,
+          "line_end": 38,
+          "pdf_pages": [
+            1
+          ],
+          "line_block_sha256": "3f38d05a973d8545eba8dccab71065271b999fb6e2916ca1b0d656346a432e86"
+        },
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 47,
+          "line_end": 65,
+          "pdf_pages": [
+            1
+          ],
+          "line_block_sha256": "2191c9dafaec9c452da01036fad6cc883d794996f8622444a299eed74e634702"
+        }
+      ]
+    },
+    {
+      "id": "layer_agents",
+      "paper_section": "4.1; 4.2",
+      "finding": "A common layer-specific Profile/Diagnose/Optimize/Verify interface plus post-run Refine. Algorithm 1 randomly samples one layer per iteration, ranks that layer's own hypotheses and tests a candidate; local acceptance is followed by full-stack validation.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 260,
+          "line_end": 298,
+          "pdf_pages": [
+            3
+          ],
+          "line_block_sha256": "e791603ff99c1df017c65fc08772ead19c97d47142f5d88a658fe25e62ae96fe"
+        },
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 304,
+          "line_end": 343,
+          "pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "24b0978e1aa713501a8fe2e4c45b6f420a66fa9cb2f15385c7e16fbcae614a1c"
+        },
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 348,
+          "line_end": 385,
+          "pdf_pages": [
+            5
+          ],
+          "line_block_sha256": "538983d5fec4aefe824e3cdd2c1537bd41bccf062ac4eac6d0174a94c772f2db"
+        }
+      ]
+    },
+    {
+      "id": "correctness_and_noise",
+      "paper_section": "4.2",
+      "finding": "Verification preserves recorded model inputs/outputs, with change-specific equality/numeric/business checks. Repeated no-op runs estimate a stated ±6% end-to-end noise floor; 2–6% gains use up to 8x samples. Locally passing changes can be rejected by full-stack load tests.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 397,
+          "line_end": 437,
+          "pdf_pages": [
+            5
+          ],
+          "line_block_sha256": "22da0a5fe5a9bbf6a51f735b2e8c93912d9e3503cdb9a87ce56b8c236d375d1e"
+        }
+      ]
+    },
+    {
+      "id": "automatic_triggers_and_history",
+      "paper_section": "4.2",
+      "finding": "Refine updates the knowledge base after the loop. New model releases and sufficiently old analyses retrigger optimization without manual invocation; both accepted and rejected history inform subsequent runs.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 438,
+          "line_end": 460,
+          "pdf_pages": [
+            5,
+            6
+          ],
+          "line_block_sha256": "143e89ff3b99033e1550dfa9fd7f5a843a55d21ea33768f417251e1112d9e23d"
+        }
+      ]
+    },
+    {
+      "id": "case_attribution",
+      "paper_section": "5, Table 1; 5.1; 5.2; 5.3",
+      "finding": "Table 1 model-server outcomes reach 2x throughput and 1.98x latency speedup; 30x is a serialization-step result, 3.56x an attention-module result. Feature-pod throughput grows 940 to about 1500 RPS at fixed latency SLO, about 1.6x, through sequential combined changes.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 470,
+          "line_end": 496,
+          "pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "1c581900c899b835228da44f3d0eedd2ad98c6edd9146e03e88e1da0de318862"
+        },
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 510,
+          "line_end": 532,
+          "pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "be4945dbdd83fe302def3310724d42360f6f09d9cde2aa070e0987134a5bca5a"
+        },
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 543,
+          "line_end": 553,
+          "pdf_pages": [
+            7
+          ],
+          "line_block_sha256": "3dea68bbb74b3c15238110dd560127ac0efcb9b8302d5080da1ca57d625cbf6c"
+        },
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 618,
+          "line_end": 634,
+          "pdf_pages": [
+            8
+          ],
+          "line_block_sha256": "237e76095bcdbd699e67bbf5d0e8b23815141cf2e5c4bccdc06c80a61247e99c"
+        }
+      ]
+    },
+    {
+      "id": "parameter_search_scope",
+      "paper_section": "5.4.1",
+      "finding": "Current configuration sweep varies instance count and dynamic batch size; queue policy is derived from SLO rather than searched. Replica count is autoscaler-managed. More than 2x variation across trials is not a measured 2x gain over the baseline for every model.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 635,
+          "line_end": 654,
+          "pdf_pages": [
+            8
+          ],
+          "line_block_sha256": "b1c4ee5dcfd017794a7fe1bf39dbd0cd74c41d259364b280273cdb98a80e7b86"
+        }
+      ]
+    },
+    {
+      "id": "isolated_replay_pr_and_canary",
+      "paper_section": "5.4.2; 5.4.3",
+      "finding": "Trials replay actual production requests on an isolated node of the production machine type, including captured preprocessor outputs for two-stage models. Optimize opens a PR; Verify uses a shadow-traffic canary before adopting or discarding it. The loop repeats at the next model release.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 655,
+          "line_end": 668,
+          "pdf_pages": [
+            8
+          ],
+          "line_block_sha256": "36376630219d6b05973e5d3a35451a0d396a4908a8e69ce67f98bb63763480ef"
+        },
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 678,
+          "line_end": 680,
+          "pdf_pages": [
+            8
+          ],
+          "line_block_sha256": "eba4a7d4b7bed38b57549dd09ebbec23a486650145b79d204c3fcc64fdff647e"
+        }
+      ]
+    },
+    {
+      "id": "table_4_slo_mismatch",
+      "paper_section": "5.4, Table 4",
+      "finding": "Visual inspection confirms Model B SLO 250 ms but chosen-trial p99 271 ms. Table caption describes throughput sustained at the SLO; do not claim all four rows independently demonstrate satisfying their stated SLO.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 669,
+          "line_end": 677,
+          "pdf_pages": [
+            8
+          ],
+          "line_block_sha256": "20bca4d5cf7357c6173d13027efbef026d233c2b454b9b642f918c62ca5c7b6d"
+        }
+      ]
+    },
+    {
+      "id": "project_comparison",
+      "paper_section": "4.2; 5.4",
+      "finding": "Isolated-node experiments, production replay, automatic retriggering, code/configuration changes and canary adoption already have explicit coverage. This paper's recommender workload does not itself establish a specific LLM PD router/KV-session replacement mechanism.",
+      "source_locations": [
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 452,
+          "line_end": 460,
+          "pdf_pages": [
+            5,
+            6
+          ],
+          "line_block_sha256": "6777433043681cc0e1a4c1fca2e98c688f41780535354677569ba9dc3bf22a34"
+        },
+        {
+          "text_file": "paper-text/19_FlashVector_arxiv_v1.txt",
+          "line_start": 635,
+          "line_end": 668,
+          "pdf_pages": [
+            8
+          ],
+          "line_block_sha256": "500655e5b93a390327b81d32fdfd10b69fd93f85e8daa641d67331a0edae4729"
+        }
+      ]
+    }
+  ],
+  "interpretation_limits": [
+    "Opening a PR, modifying runtime configuration and being continuously triggered do not establish in-place engine hot-swap.",
+    "The documented sweep currently searches two parameters; distinguish these from other supported levers and SLO-derived queue policy.",
+    "Model-server, serialization-step, attention-module and feature-pod speedups have different denominators.",
+    "Table 4 Model B has a literal p99/SLO mismatch. Preserve values rather than silently correcting or treating all configurations as SLO compliant.",
+    "Absence of LLM PD replacement detail in this paper does not establish absence in unpublished implementation."
+  ]
+}
