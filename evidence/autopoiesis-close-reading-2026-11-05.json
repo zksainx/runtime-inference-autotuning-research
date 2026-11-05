@@ -1,0 +1,623 @@
+{
+  "checked_on": "2026-11-05",
+  "timezone": "Asia/Shanghai",
+  "scope": "Close reading of the entire pinned local author arXiv v1 (34 physical pages, references included), plus visual inspection of selected rendered pages. No inference, simulator execution, upstream code audit or independent reproduction.",
+  "paper_id": "18",
+  "title": "Autopoiesis: A Self-Evolving System Paradigm for LLM Serving Under Runtime Dynamics",
+  "publication_identity": "Author arXiv preprint v1, submitted 2026-04-08; conference identity not verified here.",
+  "primary_sources": [
+    "https://arxiv.org/abs/2604.07144v1",
+    "https://arxiv.org/pdf/2604.07144v1",
+    "https://arxiv.org/html/2604.07144v1"
+  ],
+  "artifacts": [
+    {
+      "file": "papers/18_Autopoiesis_arxiv_v1.pdf",
+      "bytes": 1144693,
+      "sha256": "8ded5eae81478eebbcb32de4d06519c170b95aca181742990b422b87cf3d959f"
+    },
+    {
+      "file": "paper-text/18_Autopoiesis_arxiv_v1.txt",
+      "bytes": 126739,
+      "sha256": "e3cc5025d28ac0ababc98b5f290ea72064645fbecc361ebe3f7b8afede88f8a4"
+    }
+  ],
+  "physical_pdf_pages": 34,
+  "method": "Read page-preserving PDFKit text; review formula/figures/tables from local PDFKit-rendered images. Excerpts below normalize whitespace only. Existing 2026-11-04 web-verification record remains unchanged.",
+  "visually_reviewed_pages": [
+    8,
+    13,
+    14,
+    15,
+    23,
+    25
+  ],
+  "observations": [
+    {
+      "id": "policy_vs_plan",
+      "paper_section": "2.1",
+      "pdf_pages": [
+        3,
+        4
+      ],
+      "finding": "The evolved artifact is policy code that produces plans, not just a new plan or fixed configuration.",
+      "text_evidence": [
+        {
+          "pdf_page": 3,
+          "normalized_excerpt": "ing plan represents a static snapshot of cluster execution, a serving policy constitutes the active algorithmic logic that continually evaluates and updates this plan. A serving policy comprises two primary components: (i) Scheduling algorithm, which serves as the core optimiz"
+        }
+      ]
+    },
+    {
+      "id": "two_planes",
+      "paper_section": "4",
+      "pdf_pages": [
+        6,
+        7
+      ],
+      "finding": "Data plane executes policies; asynchronous control plane evolves them from recent traces.",
+      "text_evidence": [
+        {
+          "pdf_page": 6,
+          "normalized_excerpt": " - Policy Unchanged Time Figure 3 Overview of AUTOPOIESIS’s two-plane system architecture. The data plane executes the serving policy and transmits snapshotted runtime trace to the control plane, while the control plane continuously evolves the poli"
+        }
+      ]
+    },
+    {
+      "id": "two_functions",
+      "paper_section": "5.1",
+      "pdf_pages": [
+        7
+      ],
+      "finding": "should_reschedule controls triggering; schedule returns a plan. Both receive observed workload, cluster state, and current plan.",
+      "text_evidence": [
+        {
+          "pdf_page": 7,
+          "normalized_excerpt": " to reschedule and how to reschedule. We formalize these as a pair of co-evolved functions that together constitute the serving policy: • should_reschedule(ctx) →{0,1}, the rescheduling strategy that determines whether current condi- tions "
+        }
+      ]
+    },
+    {
+      "id": "continuous_execution",
+      "paper_section": "5.1",
+      "pdf_pages": [
+        7
+      ],
+      "finding": "Author execution contract: old/overlapping plans continue serving during scheduling and reconfiguration.",
+      "text_evidence": [
+        {
+          "pdf_page": 7,
+          "normalized_excerpt": " LLM serving [2, 11, 12], the system operates continuously: It does not pause during scheduling or reconfiguration. When a rescheduling event is triggered, the scheduler computes a new serving plan while the cluster continues serving under the previous (now stale) plan. Onc"
+        }
+      ]
+    },
+    {
+      "id": "timeline_cost",
+      "paper_section": "5.1 / Equation (1) / Figure 4",
+      "pdf_pages": [
+        8
+      ],
+      "finding": "Initial scheduling/serve time plus subsequent stale, reconfiguration and serve periods. Do not add subsequent full scheduling time again to the same stale interval.",
+      "text_evidence": [
+        {
+          "pdf_page": 8,
+          "normalized_excerpt": "he workload-plan mismatch. The stale serving cost tstale(i) corresponds to this scheduling period on the timeline. • Phase 2: Reconfiguration. The system transitions from plani−1 to plani; meanwhile, the overlapping portion of the serving plan continues serving at reduced "
+        }
+      ]
+    },
+    {
+      "id": "selection",
+      "paper_section": "5.2",
+      "pdf_pages": [
+        9
+      ],
+      "finding": "MAP-Elites-inspired selection with island population management; stops on convergence or budget exhaustion.",
+      "text_evidence": [
+        {
+          "pdf_page": 9,
+          "normalized_excerpt": ": Selection and iteration. The synthesis workflow employs a MAP-Elites-inspired [23, 33] candidate selection mechanism combined with island-based population management [36] to retain high-performing candidates while maintaining population "
+        }
+      ]
+    },
+    {
+      "id": "candidate_evaluator",
+      "paper_section": "5.3",
+      "pdf_pages": [
+        10
+      ],
+      "finding": "Candidate schedule time is measured; simulator estimates serving/reconfiguration terms while replaying snapshotted runtime trace.",
+      "text_evidence": [
+        {
+          "pdf_page": 10,
+          "normalized_excerpt": "’s schedule function produces a new plan, and the evaluator records its wall-clock scheduling time as tsched. The evaluator then invokes the serving simulator to compute the remaining cost components for the triggered interval. (iii) Aggregation: The per-int"
+        }
+      ]
+    },
+    {
+      "id": "evaluator_feedback",
+      "paper_section": "5.3",
+      "pdf_pages": [
+        10
+      ],
+      "finding": "Feedback includes trigger count and accumulated stale/reconfiguration/serving terms, not just scalar total.",
+      "text_evidence": [
+        {
+          "pdf_page": 10,
+          "normalized_excerpt": "d the scalar fitness score Ttotal, the evaluator produces a structured cost breakdown as artifact feedback to the synthesis configuration, which drives the LLM-based population mutation (Step 2). As shown in Table 1, for each evaluated candidate"
+        }
+      ]
+    },
+    {
+      "id": "prompt_guidance",
+      "paper_section": "5.4",
+      "pdf_pages": [
+        11
+      ],
+      "finding": "System prompt supplies cost/trade-off structure; iteration feedback includes parent/child artifacts and population context.",
+      "text_evidence": [
+        {
+          "pdf_page": 11,
+          "normalized_excerpt": "plementary sources of guidance into the mutation process: • Formal structure of runtime trade-offs. This trade-off structure provides the LLM with a persistent understanding of the optimization landscape. The system prompt encodes (i) the execution model str"
+        }
+      ]
+    },
+    {
+      "id": "warm_start",
+      "paper_section": "6.1",
+      "pdf_pages": [
+        11
+      ],
+      "finding": "Next evolution cycle reuses prior high-performing candidates and mutations.",
+      "text_evidence": [
+        {
+          "pdf_page": 11,
+          "normalized_excerpt": "e 3), the control plane initializes the population with the top-performing candidates from ei-1 along with their mutations. This both accelerates convergence, as the LLM applies targeted refinements rather than re-exploring the trade-off space from s"
+        }
+      ]
+    },
+    {
+      "id": "timeouts",
+      "paper_section": "6.1",
+      "pdf_pages": [
+        11
+      ],
+      "finding": "Evolution and candidate timeouts limit wasted computation; they do not establish full semantic correctness.",
+      "text_evidence": [
+        {
+          "pdf_page": 11,
+          "normalized_excerpt": "s, AUTOPOIESIS employs a multi- level timeout hierarchy. An evolution-level timeout bounds the total wall-clock time of each evolution cycle, ensuring the control plane delivers an updated policy within a predictable latency. A candidate-level"
+        }
+      ]
+    },
+    {
+      "id": "hot_swap",
+      "paper_section": "6.2",
+      "pdf_pages": [
+        12
+      ],
+      "finding": "New policy code is staged and loaded at the next monitoring step; subsequent function calls use it without disrupting in-flight plans.",
+      "text_evidence": [
+        {
+          "pdf_page": 12,
+          "normalized_excerpt": "m, as shown in Figure 6 (left). Since the serving policy is a pair of pure functions (schedule and should_reschedule), swapping the policy reduces to a lightweight code replacement with negligible overhead. When the control plane produces a sup"
+        }
+      ]
+    },
+    {
+      "id": "snapshot",
+      "paper_section": "6.2",
+      "pdf_pages": [
+        12
+      ],
+      "finding": "Periodic state logging and sliding-window snapshot transfer on a background thread. Snapshot requested when an evolution cycle finishes; windows may overlap.",
+      "text_evidence": [
+        {
+          "pdf_page": 12,
+          "normalized_excerpt": "iodic monitoring time steps, appending each time point to a fixed-size circular buffer. In the transmission stage, when the control plane signals for a new snapshot (i.e., upon completion of the current evolution process), the data plane extracts"
+        }
+      ]
+    },
+    {
+      "id": "deployment",
+      "paper_section": "7",
+      "pdf_pages": [
+        12
+      ],
+      "finding": "Author-declared homogeneous 32 H100 across 4 nodes; heterogeneous 64 GPUs; elastic 24-64 A100. These are reported environments, not independently reproduced by this repository.",
+      "text_evidence": [
+        {
+          "pdf_page": 12,
+          "normalized_excerpt": "ider three cluster configurations: (i) Homogeneous cluster: 32 NVIDIA H100-80G GPUs across 4 nodes (8 GPUs/node), NVLink at 300 GB/s intra-node, InfiniBand at 50 GB/s inter-node. Workload fluctuation is the primary source of runtime dynamics. "
+        }
+      ]
+    },
+    {
+      "id": "traces",
+      "paper_section": "7",
+      "pdf_pages": [
+        13
+      ],
+      "finding": "Workload source data is subsampled and synthetically augmented; do not label it an unmodified live customer request stream.",
+      "text_evidence": [
+        {
+          "pdf_page": 13,
+          "normalized_excerpt": "bined with ShareGPT workload traces for request generation. All traces are augmented with synthetic workload fluctuation patterns, following standard practice in LLM serving evaluation [1, 2], to stress-test policy adaptation under shifting runtime conditions (trace information in Appendi"
+        }
+      ]
+    },
+    {
+      "id": "served_models",
+      "paper_section": "7",
+      "pdf_pages": [
+        13
+      ],
+      "finding": "Served model is 70B on homogeneous/elastic; heterogeneous additionally serves Llama3.1-8B and Llama2-13B.",
+      "text_evidence": [
+        {
+          "pdf_page": 13,
+          "normalized_excerpt": "ions (trace information in Appendix H). Models and metrics. We deploy Llama3.1-70B as the served model on homogeneous and elastic cloud clusters, and additionally deploy Llama3.1-8B and Llama2-13B on the heterogeneous cluster. For evaluation,"
+        }
+      ]
+    },
+    {
+      "id": "main_synthesis_model",
+      "paper_section": "7",
+      "pdf_pages": [
+        13
+      ],
+      "finding": "Main text identifies the synthesis model as GLM-4.7-Flash.",
+      "text_evidence": [
+        {
+          "pdf_page": 13,
+          "normalized_excerpt": "esis LLM. The LLM-driven program synthesis workflow (§5) is powered by GLM-4.7-Flash [42]. Our framework is model-agnostic and can be driven by any capable LLM. 7.1 End-to-end Evaluation Evaluation on homogeneous cluster with DistServe. Figure "
+        }
+      ]
+    },
+    {
+      "id": "distserve_result_wording",
+      "paper_section": "7.1",
+      "pdf_pages": [
+        13
+      ],
+      "finding": "Main text claims up to 31%, average 27% reduction; Figure 7 ratios are 1.23/1.31 with Autopoiesis normalized to 1.00.",
+      "text_evidence": [
+        {
+          "pdf_page": 13,
+          "normalized_excerpt": "ntative traces. Overall, AUTOPOIESIS achieves up to 31% and on average 27% reduction in total execution time. During volatile workload periods that require frequent plan adaptation, AUTOPOIESIS reduces scheduling and reconfiguration overhead by"
+        }
+      ]
+    },
+    {
+      "id": "hexgen_result_wording",
+      "paper_section": "7.1",
+      "pdf_pages": [
+        13
+      ],
+      "finding": "Main text claims up to 33%, average 30% reduction; Figure 7 ratios are 1.27/1.33.",
+      "text_evidence": [
+        {
+          "pdf_page": 13,
+          "normalized_excerpt": "wn in Figure 7 (middle), AUTOPOIESIS achieves up to 33% and on average 30% reduction in end-to-end execution time compared to HexGen on a heterogeneous cluster. On heterogeneous clusters, the scheduling search becomes a critical bottleneck—HexG"
+        }
+      ]
+    },
+    {
+      "id": "spotserve_result_wording",
+      "paper_section": "7.1",
+      "pdf_pages": [
+        14
+      ],
+      "finding": "Main text claims up to 53%, average 44% reduction; Figure 7 ratios are 1.35/1.53. Ratios and fractional time reductions differ.",
+      "text_evidence": [
+        {
+          "pdf_page": 14,
+          "normalized_excerpt": "n elastic cloud cluster. AUTOPOIESIS achieves up to 53% and on average 44% reduction in total execution time. Unlike previous scenarios, the dominant runtime trade-off in elastic cloud clusters is between reconfiguration time and serving perfor"
+        }
+      ]
+    },
+    {
+      "id": "evolved_policy",
+      "paper_section": "7.2",
+      "pdf_pages": [
+        14
+      ],
+      "finding": "Example changes include intra-node TP search, candidate granularity, group constraints, GPU suitability and a weighted secondary objective.",
+      "text_evidence": [
+        {
+          "pdf_page": 14,
+          "normalized_excerpt": "hrough several scenario-specific scheduling principles: (i) Bounding tensor parallelism communication within intra-machine to prune low-performance candidates (learned from evolution experience that inter-machine tensor parallelism introduces significant communication"
+        }
+      ]
+    },
+    {
+      "id": "evolution_latency",
+      "paper_section": "7.3",
+      "pdf_pages": [
+        14
+      ],
+      "finding": "Author reports volatile/stable convergence at about 80/60 iterations (<10/<8 minutes); up to 8x speedup with 10 evaluation threads.",
+      "text_evidence": [
+        {
+          "pdf_page": 14,
+          "normalized_excerpt": "lution converges within approximately 80 and 60 iterations (less than 10 and 8 minutes), respectively. Both settings reach a stable plateau, confirming that the evolutionary process reliably discovers high-quality policies regardless of workload "
+        }
+      ]
+    },
+    {
+      "id": "warm_start_limit",
+      "paper_section": "7.3 / Figure 9",
+      "pdf_pages": [
+        15
+      ],
+      "finding": "Figure 9 contains 82%, 71%, 0%, 83% reductions in order. Main text average 79% is not used as the average over all four snapshots.",
+      "text_evidence": [
+        {
+          "pdf_page": 15,
+          "normalized_excerpt": "ation offers no reusable structure, the warm-started search converges no faster than a cold start. Overall, warm-start re-evolution enables AUTOPOIESIS to allocate its evolutionary budget more efficiently, avoiding redundant exploration when runtime conditi"
+        }
+      ]
+    },
+    {
+      "id": "workload_case",
+      "paper_section": "8.1",
+      "pdf_pages": [
+        16
+      ],
+      "finding": "Evolved policy triggers 9 times under volatile trace and twice under stable trace.",
+      "text_evidence": [
+        {
+          "pdf_page": 16,
+          "normalized_excerpt": " to the workload’s volatility: Under the volatile trace, it reschedules 9 times to keep plans fresh; under the stable trace, it reschedules only twice, avoiding overhead with minimal latency impact. Insight 2: Scheduling algorithm and resc"
+        }
+      ]
+    },
+    {
+      "id": "elastic_case",
+      "paper_section": "8.2",
+      "pdf_pages": [
+        16,
+        17
+      ],
+      "finding": "Elastic case compares full and minimal migration; migration aggressiveness/cost already belongs to this prior work.",
+      "text_evidence": [
+        {
+          "pdf_page": 16,
+          "normalized_excerpt": "x H). Baselines. We compare against two static baselines: A full-migration policy optimized for serving performance by always reconfiguring to the globally optimal plan, and a minimal-migration policy optimized for reconfiguration 16"
+        },
+        {
+          "pdf_page": 17,
+          "normalized_excerpt": "reconfiguration aggressiveness and serving performance. The full-migration policy achieves the highest plan quality on both traces at the cost of heavy scheduling and reconfiguration overhead (14.9s + 108.8s on volatile, 9.6s + 67.9s on stab"
+        }
+      ]
+    },
+    {
+      "id": "request_case",
+      "paper_section": "8.3",
+      "pdf_pages": [
+        17
+      ],
+      "finding": "Agentic case includes request-to-GPU assignment and local queue ordering; no between-round model migration or parallelism reconfiguration.",
+      "text_evidence": [
+        {
+          "pdf_page": 17,
+          "normalized_excerpt": "level deployment granularity, scheduling decisions here are made round by round, and the objective is to minimize end-to-end request processing time. The core trade-off is therefore direct: Scheduling computation time competes with request"
+        }
+      ]
+    },
+    {
+      "id": "roofline",
+      "paper_section": "Appendix B",
+      "pdf_pages": [
+        22
+      ],
+      "finding": "Analytical compute/HBM latency plus TP all-reduce model; model structure is explicit, not per-candidate empirical GPU profiling.",
+      "text_evidence": [
+        {
+          "pdf_page": 22,
+          "normalized_excerpt": "g Simulator We present the concrete cost models used in our roofline-based simulator to instantiate SERVE-COST, RECONFIG-COST, and Ttotal. Each GPU type g∈G has per-device HBM capacity mg, peak FP16 throughput Fg (FLOPs/s), HBM bandwidth Bg (by"
+        }
+      ]
+    },
+    {
+      "id": "memory_model",
+      "paper_section": "Appendix B / Equation (7)",
+      "pdf_pages": [
+        23
+      ],
+      "finding": "Memory feasibility checks weight shard against 80% HBM capacity, reserving headroom for KV rather than specifying full active KV state.",
+      "text_evidence": [
+        {
+          "pdf_page": 23,
+          "normalized_excerpt": "ice capacity, i.e., OOM issues occur: Wz/t > θ·mg (7) where θ = 0.8 is a memory utilization threshold reserving headroom for the KV cache. Infeasible groups are assigned a penalty latency Λ∞≫0; the min-makespan objective then n"
+        }
+      ]
+    },
+    {
+      "id": "reconfig_model",
+      "paper_section": "Appendix B / Equations (8)-(11)",
+      "pdf_pages": [
+        23
+      ],
+      "finding": "Terminate/drain and weight-load costs with model-dependent PCIe coefficients. Do not interpret this as a fully specified RDMA KV lifecycle protocol.",
+      "text_evidence": [
+        {
+          "pdf_page": 23,
+          "normalized_excerpt": "the (GPU type, TP, count) tuples changes — the cluster must terminate old replicas and reload new ones via PCIe. Let ∆Mi ⊆M denote the set of models whose placement changed from σi−1 to σi. The reconfiguration cost decomposes as: RECONFIG-COST(σi−1,σi) = Tterm(σi−1,σi) +"
+        }
+      ]
+    },
+    {
+      "id": "request_slo_formulation",
+      "paper_section": "Appendix C.2",
+      "pdf_pages": [
+        25
+      ],
+      "finding": "Workflow C/SLO and P95/P99/mean are discussed as objectives; Table 4 main case reports scheduling/serve/total time.",
+      "text_evidence": [
+        {
+          "pdf_page": 25,
+          "normalized_excerpt": "e Cω. The quality of a scheduling policy is measured by the completion ratio Cω/SLOω, and we use trace-level metrics such as 95th percentile, 99th percentile, and mean Cω/SLOω to evaluate end-to-end performance. Because scheduling is pe"
+        }
+      ]
+    },
+    {
+      "id": "appendix_models",
+      "paper_section": "Appendix D / Table 6",
+      "pdf_pages": [
+        25
+      ],
+      "finding": "Table 6 lists Claude Opus/Sonnet 4.6 with 0.7/0.3 sampling, inconsistent with the GLM claim in main text. No mapping of configurations to runs is provided there.",
+      "text_evidence": [
+        {
+          "pdf_page": 25,
+          "normalized_excerpt": "ameter Name Configured Value Primary Model Sampling Weights Claude Opus 4.6 0.7 Secondary Model Sampling Weights Claude Sonnet 4.6 0.3 LLM Temperature 0.7 Max Tokens 16384 Max Code Length 50000 Max Iterations 100 Population Size 50 Evo"
+        }
+      ]
+    },
+    {
+      "id": "domain_prompt",
+      "paper_section": "Appendix E",
+      "pdf_pages": [
+        26
+      ],
+      "finding": "Prompt explicitly guides per-model batch candidate caps and the search-quality trade-off; evaluator plus priors matter to attribution.",
+      "text_evidence": [
+        {
+          "pdf_page": 26,
+          "normalized_excerpt": " programs should instead choose per-model caps within their EVOLVE-BLOCKS based on model characteristics (e.g., weight size, memory footprint, and typical batch sizes). These caps can be different across timestamps. Inspect workloads"
+        }
+      ]
+    },
+    {
+      "id": "migration_prompt",
+      "paper_section": "Appendix E",
+      "pdf_pages": [
+        27
+      ],
+      "finding": "Prompt provides explicit gain-versus-reconfiguration-cost examples; not all algorithmic principles are supplied without human prior knowledge.",
+      "text_evidence": [
+        {
+          "pdf_page": 27,
+          "normalized_excerpt": "of serving and scheduling latency is only worthwhile if: ∆ >reconfig cost (17) Concrete Trade-off Examples Example A — Reschedule pays off: Suppose at ts0 you have a large model on fast GPUs with serving latency 2000 ms. At ts1, traf"
+        }
+      ]
+    },
+    {
+      "id": "evolved_implementation",
+      "paper_section": "Appendix F/G",
+      "pdf_pages": [
+        28,
+        29
+      ],
+      "finding": "Evolved scheduling examples include batch pruning, large-model TP constraints, per-variable Big-M, weighted objective and solver parameters.",
+      "text_evidence": [
+        {
+          "pdf_page": 28,
+          "normalized_excerpt": "of traversing all possible batch sizes, the LLM generates a curated set of candidates, combining powers of 2, divisors of the total batch size, and manually selected sweet spots. Specifically, the resulting batch candidates are designed to balan"
+        }
+      ]
+    },
+    {
+      "id": "main_trace_construction",
+      "paper_section": "Appendix H.3",
+      "pdf_pages": [
+        31
+      ],
+      "finding": "DistServe/HexGen share token-shape profiles with different workload intensity; MAF scenarios use mapped cluster schedules and hidden workload phases.",
+      "text_evidence": [
+        {
+          "pdf_page": 31,
+          "normalized_excerpt": "eGPT and LongBench, respectively. We divide each trace into six workload phases, where each timestamp corresponds to the beginning of a workload phase. Each of the six ShareGPT phases contains 5120 requests, and each LongBench phase contai"
+        }
+      ]
+    },
+    {
+      "id": "api_cost",
+      "paper_section": "Appendix I",
+      "pdf_pages": [
+        32
+      ],
+      "finding": "Acknowledges API cost/availability/latency and says current deployment uses open-source models. Does not identify a required shared customer/optimizer endpoint or resource pool.",
+      "text_evidence": [
+        {
+          "pdf_page": 32,
+          "normalized_excerpt": "e shared cluster-size schedule. I Discussion and Limitation LLM API stability and cost. The evolutionary process relies on LLM API calls for candidate mutation, making it sensitive to API availability and latency. Unstable API endpoints can stall"
+        }
+      ]
+    },
+    {
+      "id": "window_and_failure_limits",
+      "paper_section": "Appendix I",
+      "pdf_pages": [
+        32
+      ],
+      "finding": "Window length remains configurable; long windows mix regimes, short windows may overfit noise; also discusses hallucination and evolution cost.",
+      "text_evidence": [
+        {
+          "pdf_page": 32,
+          "normalized_excerpt": "scale remain a factor that influences evolution efficiency. Snapshot window configuration. The length of the runtime trace snapshot presents a trade-off: An overly long window aggregates information across multiple workload regimes, diluting the sig"
+        }
+      ]
+    },
+    {
+      "id": "alternative_objectives",
+      "paper_section": "Appendix I",
+      "pdf_pages": [
+        33
+      ],
+      "finding": "Other objectives are framed as evaluator aggregation changes. This is not direct evidence of measured business cumulative SLO goodput for a self-hosted optimizer.",
+      "text_evidence": [
+        {
+          "pdf_page": 33,
+          "normalized_excerpt": " the objective. To optimize for alternative metrics such as P95 latency or SLO attainment, only the evaluator’s aggregation logic needs modification: Instead of summing per-interval costs into Ttotal, the simulator tracks per- request latency across"
+        }
+      ]
+    }
+  ],
+  "figure_7_visual_check": {
+    "pdf_page": 13,
+    "autopoiesis_normalized_time": 1.0,
+    "plotted_baseline_to_autopoiesis_time_ratios": {
+      "DistServe ShareGPT": 1.23,
+      "DistServe LongBench": 1.31,
+      "HexGen ShareGPT": 1.27,
+      "HexGen LongBench": 1.33,
+      "SpotServe MAF 1": 1.35,
+      "SpotServe MAF 2": 1.53
+    },
+    "derivation": "For the rounded plotted ratio r = T_baseline / T_autopoiesis, fractional completion-time reduction = 1 - 1/r. This is an interpretation of plotted ratios, not new experimental measurement.",
+    "derived_reduction_percent_from_rounded_labels": {
+      "DistServe ShareGPT": 18.6992,
+      "DistServe LongBench": 23.6641,
+      "HexGen ShareGPT": 21.2598,
+      "HexGen LongBench": 24.812,
+      "SpotServe MAF 1": 25.9259,
+      "SpotServe MAF 2": 34.6405
+    },
+    "inconsistency": "Textual reduction values use ratio-minus-one percentages (e.g. 53%) whereas 1.53x baseline/Autopoiesis corresponds to about 34.6% less time. Preserve paper wording and plotted values separately; do not quote 53% as an independently confirmed time reduction."
+  },
+  "appendix_d_table_6_visual_check": {
+    "pdf_page": 25,
+    "primary_model": "Claude Opus 4.6",
+    "primary_sampling_weight": 0.7,
+    "secondary_model": "Claude Sonnet 4.6",
+    "secondary_sampling_weight": 0.3,
+    "temperature": 0.7,
+    "max_tokens": 16384,
+    "max_code_length": 50000,
+    "max_iterations": 100,
+    "population_size": 50,
+    "number_of_islands": 3,
+    "elite_selection_ratio": 0.2,
+    "inconsistency": "Main text p13 names GLM-4.7-Flash. Table 6 is not a verified GLM reproduction configuration."
+  },
+  "interpretation_limits": [
+    "No claim that absent details in this pinned paper establish absence of a mechanism in unpublished or uninspected implementation.",
+    "Section 5.3 points to Appendix B for fidelity validation, but the inspected appendix p22-23 provides formulas/assumptions rather than an independent simulator prediction-error table/plot. Calibration accuracy for the proposed RDMA/KV controls is not established here.",
+    "Candidate evaluation is simulator-backed; section 7 reports deployed cluster environments. Do not infer all reported experiments were simulator-only.",
+    "Pure-function policy hot-swap preserves current serving plans, but does not prove arbitrary KV/cache/graph/rank state migration or rollback.",
+    "Abstract average 34%/maximum 53% improvement must not be silently converted to measured SLO goodput, monetary savings or fractional runtime reduction.",
+    "API source, confidentiality boundary, own-service resource contention and all-in net benefit remain proposed comparison dimensions in this repository.",
+    "Original source-audit dates, upstream commits, research stages and unimplemented status remain unchanged."
+  ]
+}
