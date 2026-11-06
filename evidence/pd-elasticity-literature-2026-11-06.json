@@ -1,0 +1,1448 @@
+{
+  "checked_on": "2026-11-06",
+  "checked_at_utc": "2026-11-06T04:22:52.721956+00:00",
+  "timezone": "Asia/Shanghai",
+  "scope": "Primary-source PD-elasticity literature survey. 13 newly archived papers (21-33), focused mechanism reading plus shared DistServe/Llumnix. No inference/GPU experiments, source-code implementation audit or independent reproduction. Existing close-reading evidence is unchanged.",
+  "counts": {
+    "local_papers_total": 33,
+    "new_papers": 13,
+    "new_independently_verified_venue_or_program_entries": 8,
+    "new_entries_including_future_SC_program": [
+      "21",
+      "22",
+      "23",
+      "24",
+      "25",
+      "26",
+      "27",
+      "33"
+    ],
+    "new_author_or_unresolved_entries": [
+      "28",
+      "29",
+      "30",
+      "31",
+      "32"
+    ]
+  },
+  "primary_sources": [
+    {
+      "key": "isca",
+      "url": "https://iscaconf.org/isca2024/program/",
+      "fetched_at_utc": "2026-11-06T04:03:01.384220+00:00",
+      "response_bytes": 166798,
+      "response_sha256": "6dea1a81606a749adc11f7f7f50f2dcd2b62e794a12ec982200def4e9a31f60d",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/isca.txt",
+      "excerpt_sha256": "8abdb8bed02a2886295c504110035e81d594b090aac78017eb0363a87c9f6144",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "loongserve",
+      "url": "https://sigops.org/s/conferences/sosp/2024/schedule.html",
+      "fetched_at_utc": "2026-11-06T04:00:36.999872+00:00",
+      "response_bytes": 37650,
+      "response_sha256": "4dfe0d9294242b288ea2d49116228eb840f22263918493c75f49f8ee99acab97",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/loongserve.txt",
+      "excerpt_sha256": "986c52da77316c4b50eb8909f906d9d995608869f0bccdaf295085b3212d593d",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "mooncake",
+      "url": "https://www.usenix.org/conference/fast25/presentation/qin",
+      "fetched_at_utc": "2026-11-06T04:00:36.027093+00:00",
+      "response_bytes": 41917,
+      "response_sha256": "5887aa730009a5fc4d27b82416195a69603b658c564b59e5650c2876ad469862",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/mooncake.txt",
+      "excerpt_sha256": "7d6c486e8fb5fbcddd7305d24e98ab56b5443b61feb7b388b4a0d11c80530d53",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "blitzscale",
+      "url": "https://www.usenix.org/conference/osdi25/presentation/zhang-dingyan",
+      "fetched_at_utc": "2026-11-06T04:00:36.013031+00:00",
+      "response_bytes": 40117,
+      "response_sha256": "6617832edbb4403de0da10d1ba3681a9e4fbf5e1c4fe977afe41e6f811edde2e",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/blitzscale.txt",
+      "excerpt_sha256": "454c04ca19404581c75fe8aaf2b89eb78c0e42f790ac583e420960f70e230cd8",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "epd",
+      "url": "https://proceedings.mlr.press/v267/singh25d.html",
+      "fetched_at_utc": "2026-11-06T04:00:35.631059+00:00",
+      "response_bytes": 17800,
+      "response_sha256": "6952b77b3348891e7a664001a022c881c6823b0306aef756fc8ccfdca6eac373",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/epd.txt",
+      "excerpt_sha256": "478171da64c4ca430776dfe934861395e7779f2d51f8ab2dd447fdf41ba675f4",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "ecoserve",
+      "url": "https://www.usenix.org/conference/osdi26/presentation/du",
+      "fetched_at_utc": "2026-11-06T04:00:37.132939+00:00",
+      "response_bytes": 40514,
+      "response_sha256": "46eda3a1cb2d5b8d9c622ba48c8136a6231efa5ce2519c0dc8da3da281cd28ac",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/ecoserve.txt",
+      "excerpt_sha256": "40c0ffee4223af0209cbde2b44d3b0ec7ad4b672a824aff3c24a0f8da9834d23",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "libra-program",
+      "url": "https://www.usenix.org/conference/nsdi26/technical-sessions",
+      "fetched_at_utc": "2026-11-06T04:08:33.409290+00:00",
+      "response_bytes": 649428,
+      "response_sha256": "a6fcadad586dd494b7a433c8a412ced887c28f971ffc6df86859a50b07253dac",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/libra-program.txt",
+      "excerpt_sha256": "4687cae10ee7b730dda6a4dab4723f68de0d70c4fb52274f31c91bfc94d5a605",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "taichi",
+      "url": "https://sc26.conference-program.com/presentation/?id=pap819&sess=sess235",
+      "fetched_at_utc": "2026-11-06T04:00:37.789403+00:00",
+      "response_bytes": 68762,
+      "response_sha256": "c2812d36cd4790736f05566b43a9e3c21e2ac6bba19a16e888573b8e0ff620ed",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/taichi.txt",
+      "excerpt_sha256": "6675882242f38013617bdcb630a853033cd9da0ff2842c0859c3756bb761f324",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "socc26-detailed",
+      "url": "https://acmsocc.org/2026/socc26-program-papers.html",
+      "fetched_at_utc": "2026-11-06T04:08:32.716533+00:00",
+      "response_bytes": 54176,
+      "response_sha256": "0d44301bd189ae829cac9538db133c163d2e8e17d70af5d06a0f39c908cd77e2",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/socc26-detailed.txt",
+      "excerpt_sha256": "b77f3275a2413a05f66edd595c38d1920df91163dd4735e7d066ef5be9936513",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "arrow-current",
+      "url": "https://arxiv.org/abs/2505.11916",
+      "fetched_at_utc": "2026-11-06T04:02:59.189488+00:00",
+      "response_bytes": 42124,
+      "response_sha256": "a1bec1899b6b9a8feaf0b22fffcbb0713457c2fbc932c72aeb3751f6c4d419a0",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/arrow-current.txt",
+      "excerpt_sha256": "3aaadbcb5a5ad66cfb9899731ccb26df01acd68fadc58e00994961157dcae77c",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "dopd-current",
+      "url": "https://arxiv.org/abs/2511.20982",
+      "fetched_at_utc": "2026-11-06T04:02:59.593684+00:00",
+      "response_bytes": 42852,
+      "response_sha256": "d07ba181e40b893e479aad7b5bd2497c4d4ab187a4fe58edf652151ed6623225",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/dopd-current.txt",
+      "excerpt_sha256": "410a531008a505a671949a381685030b6309591a02473fe7d9a01b7ddcf18fb0",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "fluidpd",
+      "url": "https://arxiv.org/abs/2610.06917v1",
+      "fetched_at_utc": "2026-11-06T04:00:37.027651+00:00",
+      "response_bytes": 42350,
+      "response_sha256": "706d3f6f9b8510a13ae6527d40537c9741b4b339f7d3bc854d626341676437bc",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/fluidpd.txt",
+      "excerpt_sha256": "bbd3efd299bddfe5ff02fb7ce8add87b530c700ba90b5b5aa591805b684ddad5",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "hyperflexis-current",
+      "url": "https://arxiv.org/abs/2508.15919",
+      "fetched_at_utc": "2026-11-06T04:02:59.775939+00:00",
+      "response_bytes": 44026,
+      "response_sha256": "843c6b2c5afc0bd72adf9c1c340ce8fdea3ff532617c48d85fc1d940aa285e7a",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/hyperflexis-current.txt",
+      "excerpt_sha256": "b631b90933a4115d7767bdd6f1edca545dfa1d90416ffb74aaca2f0e864c18b7",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "tokenscale-current",
+      "url": "https://arxiv.org/abs/2512.03416",
+      "fetched_at_utc": "2026-11-06T04:02:59.654998+00:00",
+      "response_bytes": 42724,
+      "response_sha256": "1bd9f0f1df3ff8dc53477f7232c4b73b688d880d3d3ad9869a770813933a292c",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/tokenscale-current.txt",
+      "excerpt_sha256": "f79d30a8ec32872bf0c2a63e7ab78c0a6f688b349266794d86d8fa0032718d04",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    },
+    {
+      "key": "loongserve-arxiv",
+      "url": "https://arxiv.org/abs/2404.09526",
+      "fetched_at_utc": "2026-11-06T04:02:59.486178+00:00",
+      "response_bytes": 42816,
+      "response_sha256": "7580811455bcf8e35d1ecf1723fb66a8b32e3494d7d8333dcd74ea3b1b1d207b",
+      "excerpt_file": "evidence/pd-elasticity-sources-2026-11-06/loongserve-arxiv.txt",
+      "excerpt_sha256": "dffba95327520b1397770f987604321173eccd73b1762b1b70197f7a1767be3b",
+      "scope": "Short identity/version excerpt; source is the fetched primary page. Full HTML response is not committed."
+    }
+  ],
+  "papers": [
+    {
+      "paper_id": "21",
+      "title": "Splitwise: Efficient Generative LLM Inference Using Phase Splitting",
+      "publication_identity": "ISCA 2024",
+      "version_note": "PD elasticity survey addition; findings bound to this local artifact. Conference-layout PDF from official proceedings or author institution.",
+      "primary_source_keys": [
+        "isca"
+      ],
+      "pdf_url": "https://www.microsoft.com/en-us/research/wp-content/uploads/2023/12/Splitwise_ISCA24.pdf",
+      "artifacts": [
+        {
+          "file": "papers/21_Splitwise_ISCA2024.pdf",
+          "bytes": 1790551,
+          "sha256": "e22b6534854fd86e892a6184c2e55f7de06eb04f6e6c466cc59f8c960cd38013"
+        },
+        {
+          "file": "paper-text/21_Splitwise_ISCA2024.txt",
+          "bytes": 78633,
+          "sha256": "097577523a35b7fa1ad44afb03ea51b0bf50d9ec3474ad1ebd6c45031a0ed9ba"
+        }
+      ],
+      "physical_pdf_pages": 15,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "IV.A-C",
+          "classification": "paper_report",
+          "finding": "Three preloaded pools enable transient mixed execution, while sustained occupancy can lead to coarse prompt/token repurposing; JSQ uses queued tokens and KV is sent layerwise.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/21_Splitwise_ISCA2024.txt",
+              "line_start": 489,
+              "line_end": 616,
+              "pdf_pages": [
+                5
+              ],
+              "line_block_sha256": "24c149007ac1a02fa73c19c42048565bea402adc006e888d7eecb11156335998"
+            },
+            {
+              "text_file": "paper-text/21_Splitwise_ISCA2024.txt",
+              "line_start": 617,
+              "line_end": 741,
+              "pdf_pages": [
+                6
+              ],
+              "line_block_sha256": "4e6d86463a6da016e7972765827fa38c7e1dceaa344fdb1fd18d6d76b4c55f09"
+            },
+            {
+              "text_file": "paper-text/21_Splitwise_ISCA2024.txt",
+              "line_start": 742,
+              "line_end": 835,
+              "pdf_pages": [
+                7
+              ],
+              "line_block_sha256": "57e273888c73cdc66f95adad89143a411eaa8d1b51c6e1bc173ba86a185c1b3c"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "22",
+      "title": "Mooncake: Trading More Storage for Less Computation — A KVCache-centric Architecture for Serving LLM Chatbot",
+      "publication_identity": "FAST 2025",
+      "version_note": "PD elasticity survey addition; findings bound to this local artifact. Conference-layout PDF from official proceedings or author institution.",
+      "primary_source_keys": [
+        "mooncake"
+      ],
+      "pdf_url": "https://www.usenix.org/system/files/fast25-qin.pdf",
+      "artifacts": [
+        {
+          "file": "papers/22_Mooncake_FAST2025.pdf",
+          "bytes": 871530,
+          "sha256": "543e56c541523c5e807d2231370f96749b2294bc901266397a7265b18ae2c130"
+        },
+        {
+          "file": "paper-text/22_Mooncake_FAST2025.txt",
+          "bytes": 76119,
+          "sha256": "6639a68c7f1871cd64633f729bd4626c85b60f64bcebfd357e34685b16169c76"
+        }
+      ],
+      "physical_pdf_pages": 17,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "3-4",
+          "classification": "paper_report",
+          "finding": "KV-centric global caching, prefill scheduling, transfer engine and decode admission jointly constrain serving capacity.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/22_Mooncake_FAST2025.txt",
+              "line_start": 254,
+              "line_end": 358,
+              "pdf_pages": [
+                4
+              ],
+              "line_block_sha256": "390c44b8cd22064c59dafb54c1781dcbf3cf2305792c6a4124a32f5c273643ca"
+            },
+            {
+              "text_file": "paper-text/22_Mooncake_FAST2025.txt",
+              "line_start": 359,
+              "line_end": 470,
+              "pdf_pages": [
+                5
+              ],
+              "line_block_sha256": "75819cfd868ee0c5a65a153f5105864644cdd915fe1fe7daf2adf7953a48a1e2"
+            },
+            {
+              "text_file": "paper-text/22_Mooncake_FAST2025.txt",
+              "line_start": 471,
+              "line_end": 575,
+              "pdf_pages": [
+                6
+              ],
+              "line_block_sha256": "308a14aafc3936675af2fa0cb8cc5250e0c02f4ea02f242a9b5a1e87ae2f03ed"
+            },
+            {
+              "text_file": "paper-text/22_Mooncake_FAST2025.txt",
+              "line_start": 576,
+              "line_end": 694,
+              "pdf_pages": [
+                7
+              ],
+              "line_block_sha256": "9c14c51f13072c5185f44444b2d243c8e675a93aa1083d87e88bef2e9ca47c79"
+            },
+            {
+              "text_file": "paper-text/22_Mooncake_FAST2025.txt",
+              "line_start": 695,
+              "line_end": 805,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "6728bf0234c9bf07f25b5725111d8884b5eb31a0dfa11b9766edec0603e230f2"
+            },
+            {
+              "text_file": "paper-text/22_Mooncake_FAST2025.txt",
+              "line_start": 806,
+              "line_end": 946,
+              "pdf_pages": [
+                9
+              ],
+              "line_block_sha256": "06088e7e7989aa06f62e558b60ba9cfb8909865898e52b5b231167eb95fe43d2"
+            }
+          ]
+        },
+        {
+          "paper_section": "5.5 / Figure 15",
+          "classification": "paper_report",
+          "finding": "Fixed total nodes are evaluated at several P/D ratios. The deployed policy normally fixes the ratio and switches roles only under significant load fluctuations.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/22_Mooncake_FAST2025.txt",
+              "line_start": 1294,
+              "line_end": 1423,
+              "pdf_pages": [
+                13
+              ],
+              "line_block_sha256": "55757aab3970a50d3776770940229c89ca0b6f3c113fd72db12849108027c2a5"
+            },
+            {
+              "text_file": "paper-text/22_Mooncake_FAST2025.txt",
+              "line_start": 1424,
+              "line_end": 1544,
+              "pdf_pages": [
+                14
+              ],
+              "line_block_sha256": "1367398a906ee00a696c80f579268f9612cf2b263d270907593d3bed07adc5ea"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "23",
+      "title": "BlitzScale: Fast and Live Large Model Autoscaling with O(1) Host Caching",
+      "publication_identity": "OSDI 2025",
+      "version_note": "PD elasticity survey addition; findings bound to this local artifact. Conference-layout PDF from official proceedings or author institution.",
+      "primary_source_keys": [
+        "blitzscale"
+      ],
+      "pdf_url": "https://www.usenix.org/system/files/osdi25-zhang-dingyan.pdf",
+      "artifacts": [
+        {
+          "file": "papers/23_BlitzScale_OSDI2025.pdf",
+          "bytes": 5528046,
+          "sha256": "a129034ac6fbd9510212de0c1dbbf79bd13affc51e1a80cb0eed5982e9439ae9"
+        },
+        {
+          "file": "paper-text/23_BlitzScale_OSDI2025.txt",
+          "bytes": 101858,
+          "sha256": "860d73929fa1246d7e5fd2df4bdc5a53f14dd14b553ea7bbd5501a00849d0c6c"
+        }
+      ],
+      "physical_pdf_pages": 20,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "3-5",
+          "classification": "paper_report",
+          "finding": "Topology-aware GPU network weight distribution and layer-level live scaling allow partially loaded instances to contribute. Planning discusses interference with PD KV traffic.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/23_BlitzScale_OSDI2025.txt",
+              "line_start": 530,
+              "line_end": 747,
+              "pdf_pages": [
+                6
+              ],
+              "line_block_sha256": "fa5ea8d9eeb332867e223bfb9deecacae5cdad897a3cdde67a7297d75cac8274"
+            },
+            {
+              "text_file": "paper-text/23_BlitzScale_OSDI2025.txt",
+              "line_start": 748,
+              "line_end": 903,
+              "pdf_pages": [
+                7
+              ],
+              "line_block_sha256": "d80c8a0d1ef1106ff586a7c013b8bbec0da69cbb4d7cf4507f17ab3ff1e2b3d4"
+            },
+            {
+              "text_file": "paper-text/23_BlitzScale_OSDI2025.txt",
+              "line_start": 904,
+              "line_end": 1066,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "786bcf29096acf739a9aa6f46763d006318637a627fde7daad2f6b07a957c7cb"
+            },
+            {
+              "text_file": "paper-text/23_BlitzScale_OSDI2025.txt",
+              "line_start": 1067,
+              "line_end": 1215,
+              "pdf_pages": [
+                9
+              ],
+              "line_block_sha256": "483c9996a48552c6e78ab6970e3900eda658123c1ab7e4651bc51bdc81a356cb"
+            },
+            {
+              "text_file": "paper-text/23_BlitzScale_OSDI2025.txt",
+              "line_start": 1216,
+              "line_end": 1334,
+              "pdf_pages": [
+                10
+              ],
+              "line_block_sha256": "2048b27f00822cd3f073162e8eb170c675258bfa16fe32478684ebbdecb42867"
+            },
+            {
+              "text_file": "paper-text/23_BlitzScale_OSDI2025.txt",
+              "line_start": 1335,
+              "line_end": 1438,
+              "pdf_pages": [
+                11
+              ],
+              "line_block_sha256": "8bcc64a7827bac8cd8359e09ab6baddc0449381f183772df798df0f9bbeaf422"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "24",
+      "title": "Efficiently Serving Large Multimodal Models Using EPD Disaggregation",
+      "publication_identity": "ICML 2025",
+      "version_note": "PD elasticity survey addition; findings bound to this local artifact. Conference-layout PDF from official proceedings or author institution.",
+      "primary_source_keys": [
+        "epd"
+      ],
+      "pdf_url": "https://raw.githubusercontent.com/mlresearch/v267/main/assets/singh25d/singh25d.pdf",
+      "artifacts": [
+        {
+          "file": "papers/24_EPD_ICML2025.pdf",
+          "bytes": 2050443,
+          "sha256": "865c1b533ff1f23efecc16a01675fb8c646a79a85b23dd29ebf4715cc19fdc45"
+        },
+        {
+          "file": "paper-text/24_EPD_ICML2025.txt",
+          "bytes": 69755,
+          "sha256": "d3aa546c05fc09f3f8fe8cc7bb132e0220b6cd5841dc9884d48307f317510788"
+        }
+      ],
+      "physical_pdf_pages": 17,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "3.2.3-3.2.4",
+          "classification": "paper_report",
+          "finding": "Simulator/BO configuration optimization and queue-driven online E/P/D role switching. Offload redistributes queued work, Migration changes model/cache as needed, Onload resumes admission. Authors report the process typically below 0.7 s.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/24_EPD_ICML2025.txt",
+              "line_start": 313,
+              "line_end": 379,
+              "pdf_pages": [
+                4
+              ],
+              "line_block_sha256": "02153196e946e703a818a396535b297d1d71918639b9716e8dfdd2ea0c06ffeb"
+            },
+            {
+              "text_file": "paper-text/24_EPD_ICML2025.txt",
+              "line_start": 380,
+              "line_end": 483,
+              "pdf_pages": [
+                5
+              ],
+              "line_block_sha256": "7b5f11dbb3e13543cb7c5b113ae33b3fd4af811c257b1d4889eaf759fb7b7941"
+            }
+          ]
+        },
+        {
+          "paper_section": "4.4 / Table 6",
+          "classification": "paper_report",
+          "finding": "100 requests change from 50 to 500 output tokens after request 10 at 3 r/s; 5E1P2D becomes 2E1P5D. Reported mean latency is 28.01 versus 61.10 s, TPOT 0.05 versus 0.12 s, with/without switching.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/24_EPD_ICML2025.txt",
+              "line_start": 722,
+              "line_end": 810,
+              "pdf_pages": [
+                9
+              ],
+              "line_block_sha256": "c6d815c25b7466f7a1bc166f53cfc26056f121155d4f109e659e834c0446a439"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "25",
+      "title": "LoongServe: Efficiently Serving Long-Context Large Language Models with Elastic Sequence Parallelism",
+      "publication_identity": "SOSP 2024",
+      "version_note": "Author arXiv v2, pinned after checking the current arXiv history on 2026-11-06; venue identity is verified separately where available.",
+      "primary_source_keys": [
+        "loongserve",
+        "loongserve-arxiv"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2404.09526v2",
+      "artifacts": [
+        {
+          "file": "papers/25_LoongServe_SOSP2024_arxiv_v2.pdf",
+          "bytes": 984324,
+          "sha256": "d5ae35fa9a1645af42fd2760eb5ff423d5c994eed846e171602a5a14133e1401"
+        },
+        {
+          "file": "paper-text/25_LoongServe_SOSP2024_arxiv_v2.txt",
+          "bytes": 80337,
+          "sha256": "551ca8c1e033a5b9fad86aadc45dcf06e6083537b60f9047fb7b2c0615fd4b45"
+        }
+      ],
+      "physical_pdf_pages": 15,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "3-5",
+          "classification": "paper_report",
+          "finding": "Elastic sequence parallelism changes per-request/batch execution groups. Proactive KV placement reuses prefill communication; multi-master distributed decoding expands without moving all old request KV.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/25_LoongServe_SOSP2024_arxiv_v2.txt",
+              "line_start": 388,
+              "line_end": 489,
+              "pdf_pages": [
+                4
+              ],
+              "line_block_sha256": "b2d9c03b478f463dff90d3b2709b4880a8398e8b70002d6a924fdd87f03c1e8f"
+            },
+            {
+              "text_file": "paper-text/25_LoongServe_SOSP2024_arxiv_v2.txt",
+              "line_start": 490,
+              "line_end": 615,
+              "pdf_pages": [
+                5
+              ],
+              "line_block_sha256": "d28f5e4faf369432b734e8b344948313eafb3e61d878f903af865faa3b4f68a9"
+            },
+            {
+              "text_file": "paper-text/25_LoongServe_SOSP2024_arxiv_v2.txt",
+              "line_start": 616,
+              "line_end": 728,
+              "pdf_pages": [
+                6
+              ],
+              "line_block_sha256": "a4d7772b1e3590c18530391ce286bc241171a809d1680253af92079f612f58bd"
+            },
+            {
+              "text_file": "paper-text/25_LoongServe_SOSP2024_arxiv_v2.txt",
+              "line_start": 729,
+              "line_end": 840,
+              "pdf_pages": [
+                7
+              ],
+              "line_block_sha256": "043f7d87706b460bd3562120adcc72b6aef53c9db71b9b98868cc619d20ed7c0"
+            },
+            {
+              "text_file": "paper-text/25_LoongServe_SOSP2024_arxiv_v2.txt",
+              "line_start": 841,
+              "line_end": 955,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "abf2e3f269ca544e1a49dc241e59f22ee905a1953c0f993119f064d90f6bfbc1"
+            },
+            {
+              "text_file": "paper-text/25_LoongServe_SOSP2024_arxiv_v2.txt",
+              "line_start": 956,
+              "line_end": 1062,
+              "pdf_pages": [
+                9
+              ],
+              "line_block_sha256": "74ce5c606dc219bba211a0f9ecdd0392f9f8570210871117069a1ed5c05b1b43"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "26",
+      "title": "Prefill-Decode Aggregation or Disaggregation? Unifying Both for Goodput-Optimized LLM Serving",
+      "publication_identity": "SC 2026 (official program; presentation scheduled 2026-11-18)",
+      "version_note": "PD elasticity survey addition; findings bound to this local artifact. Pinned author arXiv v1; publication identity verified independently where listed. As of 2026-11-06 SC presentation is in the future; v1 and program abstract report different maxima.",
+      "primary_source_keys": [
+        "taichi"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2508.01989v1",
+      "artifacts": [
+        {
+          "file": "papers/26_TaiChi_SC2026_arxiv_v1.pdf",
+          "bytes": 1197458,
+          "sha256": "636b9e5a29b5592a014e21de313309a455a1c0411c905cdc4b74e77515676e8b"
+        },
+        {
+          "file": "paper-text/26_TaiChi_SC2026_arxiv_v1.txt",
+          "bytes": 92008,
+          "sha256": "d96c11aaee869aa7d8791a6dc0053ef66f7a72a62fdbb57eb98b77590d6f358a"
+        }
+      ],
+      "physical_pdf_pages": 17,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "3.1-3.3",
+          "classification": "paper_report",
+          "finding": "P-heavy/D-heavy mixed execution is configured by instance ratio and two chunk sizes, with flowing decode and length-aware prefill scheduling. Workload-triggered search/reconfiguration is described in minutes.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/26_TaiChi_SC2026_arxiv_v1.txt",
+              "line_start": 842,
+              "line_end": 968,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "d4d7c119e890969af35aab939789954bde3ac18b88a1a01727d6c061e2ea2e40"
+            },
+            {
+              "text_file": "paper-text/26_TaiChi_SC2026_arxiv_v1.txt",
+              "line_start": 969,
+              "line_end": 1078,
+              "pdf_pages": [
+                9
+              ],
+              "line_block_sha256": "587a4a58428a0fd8b6c2c2bdcc48c00d7f63e3b014a6f09cc8b2cbb1e00da841"
+            },
+            {
+              "text_file": "paper-text/26_TaiChi_SC2026_arxiv_v1.txt",
+              "line_start": 1079,
+              "line_end": 1211,
+              "pdf_pages": [
+                10
+              ],
+              "line_block_sha256": "2f29bf3e772f32ecd2c932818cdb6ee172caa2146c256ce1a8990ae2e4f33e3f"
+            },
+            {
+              "text_file": "paper-text/26_TaiChi_SC2026_arxiv_v1.txt",
+              "line_start": 1212,
+              "line_end": 1357,
+              "pdf_pages": [
+                11
+              ],
+              "line_block_sha256": "e9ea9afb3b94ba1bb4861f6d6b9a492d069441f61e5ac1983c1fc7c3c3d88400"
+            }
+          ]
+        },
+        {
+          "paper_section": "front matter",
+          "classification": "paper_report",
+          "finding": "Author v1 is dated 2025-08-04. Its abstract maximum differs from the SC 2026 program abstract; survey does not combine their performance numbers.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/26_TaiChi_SC2026_arxiv_v1.txt",
+              "line_start": 4,
+              "line_end": 106,
+              "pdf_pages": [
+                1
+              ],
+              "line_block_sha256": "0aafb8b487ecfee7e15761bbcf07debd3697c2eed28eb72981bf5168f474a8de"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "27",
+      "title": "Efficient LLM Serving on Commodity GPU Clusters with Data-Reduced Cross-Instance Orchestration",
+      "publication_identity": "OSDI 2026",
+      "version_note": "PD elasticity survey addition; findings bound to this local artifact. Conference-layout PDF from official proceedings or author institution.",
+      "primary_source_keys": [
+        "ecoserve"
+      ],
+      "pdf_url": "https://www.usenix.org/system/files/osdi26-du.pdf",
+      "artifacts": [
+        {
+          "file": "papers/27_EcoServe_OSDI2026.pdf",
+          "bytes": 937293,
+          "sha256": "494be63bc7b5fc66a25acf504cf84633e05f9f84448f5fb0ed1bdbff62d0eb79"
+        },
+        {
+          "file": "paper-text/27_EcoServe_OSDI2026.txt",
+          "bytes": 78823,
+          "sha256": "cef7f3c10f225389d9f8b60971527f0e298491d7b5867c3650d89b8a92c6a7ba"
+        }
+      ],
+      "physical_pdf_pages": 17,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "3.1-3.4",
+          "classification": "paper_report",
+          "finding": "Temporal P/D separation, rolling activation and macro-instances reduce cross-instance data movement. Mitosis scaling adds/removes instances then splits/merges macro-instances; handles can change ownership without restarting instances.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/27_EcoServe_OSDI2026.txt",
+              "line_start": 339,
+              "line_end": 441,
+              "pdf_pages": [
+                5
+              ],
+              "line_block_sha256": "482fdc5a15037f10fa5e8a283f595b6557c44752836722571e31ceeae2f1d79b"
+            },
+            {
+              "text_file": "paper-text/27_EcoServe_OSDI2026.txt",
+              "line_start": 442,
+              "line_end": 535,
+              "pdf_pages": [
+                6
+              ],
+              "line_block_sha256": "48bac8008452d264ca88e26507ebbb08cc26f2fa1498de405de0eb75d9b29a60"
+            },
+            {
+              "text_file": "paper-text/27_EcoServe_OSDI2026.txt",
+              "line_start": 536,
+              "line_end": 670,
+              "pdf_pages": [
+                7
+              ],
+              "line_block_sha256": "7a4b867cd71b427b2914a1df6520b0836c49e6ae9af78992458cc061b7bc8c0b"
+            },
+            {
+              "text_file": "paper-text/27_EcoServe_OSDI2026.txt",
+              "line_start": 671,
+              "line_end": 788,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "eccb599e56f47c17cb5b1a1a28e66f0c89084a41a413e6ca954925be72723732"
+            },
+            {
+              "text_file": "paper-text/27_EcoServe_OSDI2026.txt",
+              "line_start": 789,
+              "line_end": 887,
+              "pdf_pages": [
+                9
+              ],
+              "line_block_sha256": "1d2ee04634fff62a6a5d6a835c57a58fa82219413710d39db10e2b55d25612d2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "28",
+      "title": "Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture",
+      "publication_identity": "arXiv preprint (conference identity not verified)",
+      "version_note": "Author arXiv v2, pinned after checking the current arXiv history on 2026-11-06; venue identity is verified separately where available.",
+      "primary_source_keys": [
+        "arrow-current"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2505.11916v2",
+      "artifacts": [
+        {
+          "file": "papers/28_Arrow_arxiv_v2.pdf",
+          "bytes": 734439,
+          "sha256": "e9b06b2700f3e1e1a79015010f6aa9013fc4931153a00c6d2d71c7249ec9c80e"
+        },
+        {
+          "file": "paper-text/28_Arrow_arxiv_v2.txt",
+          "bytes": 64917,
+          "sha256": "8d79fe8f089d07340598552a17b6afa45a7e5270a621ed3d1e3fcc72f8da63e6"
+        }
+      ],
+      "physical_pdf_pages": 14,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "5.2-5.6",
+          "classification": "paper_report",
+          "finding": "Author v2 assigns roles to requests rather than limiting instance execution capability. SLO-aware request/instance scheduling, flip-cost choice, mixed local batching and cooldown handle transitions; implementation uses vLLM/NIXL. Not the four-pool v1 design.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/28_Arrow_arxiv_v2.txt",
+              "line_start": 576,
+              "line_end": 672,
+              "pdf_pages": [
+                6
+              ],
+              "line_block_sha256": "941662160c45f8757d26414ed8882fcc4901a3c49710a39b44b8b7250c51908b"
+            },
+            {
+              "text_file": "paper-text/28_Arrow_arxiv_v2.txt",
+              "line_start": 673,
+              "line_end": 787,
+              "pdf_pages": [
+                7
+              ],
+              "line_block_sha256": "dc1b46cceb1d1e36b99cf4b22dd8679520a1fb2539ee2d904c1ff95a4093fbfa"
+            },
+            {
+              "text_file": "paper-text/28_Arrow_arxiv_v2.txt",
+              "line_start": 788,
+              "line_end": 885,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "aaa2dd5c9289d799a0fc6b585d907ee4d8e6648f1e09a7d7a7979934d2452c42"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "29",
+      "title": "A Dynamic PD-Disaggregation Architecture for Maximizing Goodput in LLM Inference Serving",
+      "publication_identity": "arXiv preprint (publication identity unverified)",
+      "version_note": "Author arXiv v3, pinned after checking the current arXiv history on 2026-11-06; venue identity is verified separately where available.",
+      "primary_source_keys": [
+        "dopd-current"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2511.20982v3",
+      "artifacts": [
+        {
+          "file": "papers/29_DOPD_arxiv_v3.pdf",
+          "bytes": 4149638,
+          "sha256": "2677e8de623f3d6845f543f4776dbe316cf8e55ddc75d5c00144f0d679b7c67b"
+        },
+        {
+          "file": "paper-text/29_DOPD_arxiv_v3.txt",
+          "bytes": 77786,
+          "sha256": "5705062f6d7705737a63394a7610dd74fafe0f913617532d583905b3c92cd3b4"
+        }
+      ],
+      "physical_pdf_pages": 14,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "V.C / Algorithm 2",
+          "classification": "paper_report",
+          "finding": "Target model/hardware profiles and ARIMA length predictions determine P/D ratio and instance counts, with Dynamo executing resizing.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/29_DOPD_arxiv_v3.txt",
+              "line_start": 776,
+              "line_end": 878,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "c4f656c2d764eadd82dd695749ce7fad14c7f5db2f7b9ac55c93515ac342242a"
+            },
+            {
+              "text_file": "paper-text/29_DOPD_arxiv_v3.txt",
+              "line_start": 879,
+              "line_end": 1011,
+              "pdf_pages": [
+                9
+              ],
+              "line_block_sha256": "89e2f56001bc08f940c8e8a6ede1b06cb6795ef626cbffe98d405207d9314ff8"
+            }
+          ]
+        },
+        {
+          "paper_section": "VII",
+          "classification": "paper_report",
+          "finding": "Author reports hundreds-of-seconds decision intervals, graceful shutdown usually within 5 s, P scale-up for tested 70B at most 30 s and D about 1.5 times that including CUDA Graph loading. These are author-reported experiment conditions, not reproduced results.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/29_DOPD_arxiv_v3.txt",
+              "line_start": 1170,
+              "line_end": 1273,
+              "pdf_pages": [
+                12
+              ],
+              "line_block_sha256": "9922d464636a4fd830419dfc555683afe7824eaa5b34182e5f5384aaba83ec9d"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "30",
+      "title": "TokenScale: Timely and Accurate Autoscaling for Disaggregated LLM Serving with Token Velocity",
+      "publication_identity": "arXiv preprint (conference identity unverified)",
+      "version_note": "Pinned author arXiv v2 (2026-11-04). Front matter labels SoCC 2026 Volume 2 (2026-11-18 to 2026-11-20), DOI 10.1145/3828161.3857885. Official SoCC program lists TokenPipe: Stage-aware Autoscaling for Disaggregated LLM Serving with Token Velocity with the same author group; title mapping is unresolved. Retained outside the independently matched venue table.",
+      "primary_source_keys": [
+        "tokenscale-current",
+        "socc26-detailed"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2512.03416v2",
+      "artifacts": [
+        {
+          "file": "papers/30_TokenScale_arxiv_v2.pdf",
+          "bytes": 1278082,
+          "sha256": "5c14b63de1ce17e80a41b50d26fdfe8476068d0e4e7e4aea39beb8d2b175b382"
+        },
+        {
+          "file": "paper-text/30_TokenScale_arxiv_v2.txt",
+          "bytes": 88434,
+          "sha256": "d11fe5a8b089ed56c5cf16193fd05925cc4d7b4990445dfbc09e00f6390dedf0"
+        }
+      ],
+      "physical_pdf_pages": 14,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "front matter",
+          "classification": "paper_report",
+          "finding": "Pinned v2 dated 2026-11-04 identifies SoCC 2026 Volume 2 and DOI 10.1145/3828161.3857885. Official program has TokenPipe with matching author group but a different title; title mapping is unresolved, so not counted as an independently matched TokenScale venue identity.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/30_TokenScale_arxiv_v2.txt",
+              "line_start": 4,
+              "line_end": 121,
+              "pdf_pages": [
+                1
+              ],
+              "line_block_sha256": "e27c47663d09bac38a6d6f87bfb335e7c51a2d3f521e2c744bf2b8a4d4fd478b"
+            }
+          ]
+        },
+        {
+          "paper_section": "3-4 / 4.4.2 / 4.6",
+          "classification": "paper_report",
+          "finding": "Token velocity drives stage-specific autoscaling; Convertible Decoders execute bounded chunked prefill plus decode. Unlike v1, v2 periodically adjusts convertible decoder count from sliding-window burst estimates. Main workload scope is single-turn, with affinity left for extension.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/30_TokenScale_arxiv_v2.txt",
+              "line_start": 383,
+              "line_end": 492,
+              "pdf_pages": [
+                4
+              ],
+              "line_block_sha256": "c728e020e09516afe620e39e4854bff5c828713f249214fb1e7e2c92cc6018e7"
+            },
+            {
+              "text_file": "paper-text/30_TokenScale_arxiv_v2.txt",
+              "line_start": 493,
+              "line_end": 614,
+              "pdf_pages": [
+                5
+              ],
+              "line_block_sha256": "34bff5754718bf39c25833c9ae1f545727a0a4c7c02c24a61dce4b92a579699e"
+            },
+            {
+              "text_file": "paper-text/30_TokenScale_arxiv_v2.txt",
+              "line_start": 615,
+              "line_end": 723,
+              "pdf_pages": [
+                6
+              ],
+              "line_block_sha256": "cd514965d6e7df19487714189679545f80e3c9578ff40a3fa9e14b6d81bae8f2"
+            },
+            {
+              "text_file": "paper-text/30_TokenScale_arxiv_v2.txt",
+              "line_start": 724,
+              "line_end": 844,
+              "pdf_pages": [
+                7
+              ],
+              "line_block_sha256": "698581ee2a565fd559e93af26a74cfaee3d8e2f9374f8c570f868ebf4a7fcc56"
+            },
+            {
+              "text_file": "paper-text/30_TokenScale_arxiv_v2.txt",
+              "line_start": 845,
+              "line_end": 969,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "babab6ac2a9aa4b9d07b73ab575f48fd75da722137213178b43b5f24531dea50"
+            }
+          ]
+        },
+        {
+          "paper_section": "5",
+          "classification": "paper_report",
+          "finding": "Author reports AMD MI308X and NVIDIA A100 multi-node RDMA testbeds and allocation from a fixed-size provider GPU pool; unallocated devices remain standby or may serve other out-of-scope workloads. AMD runtime/software mapping is not independently reproduced.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/30_TokenScale_arxiv_v2.txt",
+              "line_start": 845,
+              "line_end": 969,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "babab6ac2a9aa4b9d07b73ab575f48fd75da722137213178b43b5f24531dea50"
+            },
+            {
+              "text_file": "paper-text/30_TokenScale_arxiv_v2.txt",
+              "line_start": 970,
+              "line_end": 1079,
+              "pdf_pages": [
+                9
+              ],
+              "line_block_sha256": "62629dd38a6b455af7f646c10bc9890fb77278c6c52962219daeef16ad659e9e"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "31",
+      "title": "FluidPD: In-Place Elasticity for SLO-Aware Prefill-Decode Disaggregated LLM Serving",
+      "publication_identity": "arXiv preprint (conference identity not verified)",
+      "version_note": "PD elasticity survey addition; findings bound to this local artifact. Pinned author arXiv v1; publication identity verified independently where listed.",
+      "primary_source_keys": [
+        "fluidpd"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2610.06917v1",
+      "artifacts": [
+        {
+          "file": "papers/31_FluidPD_arxiv_v1.pdf",
+          "bytes": 1313585,
+          "sha256": "0c109435f4a44db49f64e4a09c66c460826778f6910e77a0236cbf6808e11d33"
+        },
+        {
+          "file": "paper-text/31_FluidPD_arxiv_v1.txt",
+          "bytes": 69515,
+          "sha256": "580858a5c1f6786542bff5b744382d781fa14d35c59fa6932d6f3ac6fb8dbf3b"
+        }
+      ],
+      "physical_pdf_pages": 13,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "IV",
+          "classification": "paper_report",
+          "finding": "FluidToken offloads bounded prefill suffixes; FluidRole changes running workers with PPI/DPI signals. ACTIVE-DRAIN-SWITCH retains process, weights and model-parallel groups. Queued work is reassigned; active P and KV sends or active D generations drain. First decode graph capture is cached. Persistence, minimum-drain selection and cooldown guide changes.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/31_FluidPD_arxiv_v1.txt",
+              "line_start": 352,
+              "line_end": 482,
+              "pdf_pages": [
+                4
+              ],
+              "line_block_sha256": "c4ce1041e803c1b437b34b9577d881866426f7df00096c70642d38580b2eaa59"
+            },
+            {
+              "text_file": "paper-text/31_FluidPD_arxiv_v1.txt",
+              "line_start": 483,
+              "line_end": 609,
+              "pdf_pages": [
+                5
+              ],
+              "line_block_sha256": "c0d0f0200e50d1da4ec9f46e17490d0fa31f5ed2f9e76aaf639df2d8962ddd4c"
+            },
+            {
+              "text_file": "paper-text/31_FluidPD_arxiv_v1.txt",
+              "line_start": 610,
+              "line_end": 760,
+              "pdf_pages": [
+                6
+              ],
+              "line_block_sha256": "c1421608c68e1c8cf4b75f754515ecc8e196376e374c601bcb4cf3effc8368ce"
+            },
+            {
+              "text_file": "paper-text/31_FluidPD_arxiv_v1.txt",
+              "line_start": 761,
+              "line_end": 884,
+              "pdf_pages": [
+                7
+              ],
+              "line_block_sha256": "bfaad9c7825ec4b93165763ef6320cb4e1f377084d2e32547fd74fc91f451df3"
+            },
+            {
+              "text_file": "paper-text/31_FluidPD_arxiv_v1.txt",
+              "line_start": 885,
+              "line_end": 1015,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "ba53b033dde80ce62c7cbbefdd97f4491a6d88ef736803746738177c872700d6"
+            }
+          ]
+        },
+        {
+          "paper_section": "V.A",
+          "classification": "paper_report",
+          "finding": "Testbed is one AWS server with eight A100-80GB GPUs and NVLink, one GPU per instance; SGLang v0.5.4, three models and Azure-derived staged/mixed traces. Fixed GPU comparisons are distinct from the 6-to-8 autoscaling comparison.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/31_FluidPD_arxiv_v1.txt",
+              "line_start": 885,
+              "line_end": 1015,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "ba53b033dde80ce62c7cbbefdd97f4491a6d88ef736803746738177c872700d6"
+            },
+            {
+              "text_file": "paper-text/31_FluidPD_arxiv_v1.txt",
+              "line_start": 1016,
+              "line_end": 1128,
+              "pdf_pages": [
+                9
+              ],
+              "line_block_sha256": "ce52f6d379dbe3517cc90e8f541b4829671f9939026936d963f352472d590762"
+            }
+          ]
+        },
+        {
+          "paper_section": "V.H",
+          "classification": "paper_report",
+          "finding": "Authors report below 0.50 ms CPU control iteration, about 1 s P-to-D and up to 12 s D-to-P under tested conditions. D-to-P completion waits for existing active sequences, not Llumnix-style live request migration.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/31_FluidPD_arxiv_v1.txt",
+              "line_start": 1282,
+              "line_end": 1403,
+              "pdf_pages": [
+                11
+              ],
+              "line_block_sha256": "5de1381c1519a7fcdb2c596d4dbd4f08407218a406df5e784a10548a8b25294a"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "32",
+      "title": "HFX: Joint Design of Algorithms and Systems for Multi-SLO Serving and Fast Scaling",
+      "publication_identity": "arXiv preprint (conference identity not verified)",
+      "version_note": "Author arXiv v3, pinned after checking the current arXiv history on 2026-11-06; venue identity is verified separately where available. Originally titled HyperFlexis in v1/v2; this review uses HFX v3.",
+      "primary_source_keys": [
+        "hyperflexis-current"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2508.15919v3",
+      "artifacts": [
+        {
+          "file": "papers/32_HFX_arxiv_v3.pdf",
+          "bytes": 3669323,
+          "sha256": "866d9e8b296f806fb07c5e9585295c3a492bae80bafcd6134a0dbcf690de4ab9"
+        },
+        {
+          "file": "paper-text/32_HFX_arxiv_v3.txt",
+          "bytes": 73658,
+          "sha256": "29cafd651c6ac2b0ec8c504147406dbf350352719632f13ca3cc83c97eecbe26"
+        }
+      ],
+      "physical_pdf_pages": 27,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "front matter",
+          "classification": "paper_report",
+          "finding": "Pinned v3 dated 2026-04-23 is titled HFX, replacing HyperFlexis from v1/v2.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/32_HFX_arxiv_v3.txt",
+              "line_start": 4,
+              "line_end": 36,
+              "pdf_pages": [
+                1
+              ],
+              "line_block_sha256": "a22f2577dce203550b5ef539611f52b485bcddf5c27fc1608be60dfe81fa1ff8"
+            }
+          ]
+        },
+        {
+          "paper_section": "3.3.3-3.4",
+          "classification": "paper_report",
+          "finding": "Separate stage scalers can reassign roles. Python-runtime-only warm-up pool, HCCL D2D weights with disk fallback, and pre-established KV link groups prepare instances before serving. Backend is vLLM-Ascend with Ascend 910B and LLM-DataDist. Process/weight retention across role transitions is not established as fully as FluidPD.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/32_HFX_arxiv_v3.txt",
+              "line_start": 613,
+              "line_end": 664,
+              "pdf_pages": [
+                12
+              ],
+              "line_block_sha256": "f3786bd098cc8d55cdc664163e851b1baa632282f28ce058ed9da9a36f48a3fa"
+            },
+            {
+              "text_file": "paper-text/32_HFX_arxiv_v3.txt",
+              "line_start": 665,
+              "line_end": 708,
+              "pdf_pages": [
+                13
+              ],
+              "line_block_sha256": "18b1840b4de424feccc67d7ecb207705350739839fbdc8982aacfbd97e7ed6c6"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "33",
+      "title": "Libra: Flexible Request Partitioning and Scheduling for Serving Unbalanced and Dynamic LLM Workloads",
+      "publication_identity": "NSDI 2026",
+      "version_note": "Official USENIX version; formerly DynaServe in preprint. Identity confirmed in official NSDI 2026 technical sessions.",
+      "primary_source_keys": [
+        "libra-program"
+      ],
+      "pdf_url": "https://www.usenix.org/system/files/nsdi26-ruan-libra.pdf",
+      "artifacts": [
+        {
+          "file": "papers/33_Libra_NSDI2026.pdf",
+          "bytes": 718789,
+          "sha256": "536ead5dbaa75cdac79e4c8f30be6c6ddd8a4b2a216ce6770b420f814cb4f9bf"
+        },
+        {
+          "file": "paper-text/33_Libra_NSDI2026.txt",
+          "bytes": 81019,
+          "sha256": "a84ee911471ab0cbf8ea8512325cd143a82088b82df0aaa32591a69b2bc5913e"
+        }
+      ],
+      "physical_pdf_pages": 17,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "3-4",
+          "classification": "paper_report",
+          "finding": "Micro-requests can split at token boundaries, extending beyond the fixed prompt boundary. Unified instances use global split/routing and local SLO-aware token budgets; chunk KV transfers overlap computation.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/33_Libra_NSDI2026.txt",
+              "line_start": 333,
+              "line_end": 441,
+              "pdf_pages": [
+                5
+              ],
+              "line_block_sha256": "10e6028e2062f038cd46ca5ca17f8091f0a666eef0901a8d3720cc8dfffa1e4e"
+            },
+            {
+              "text_file": "paper-text/33_Libra_NSDI2026.txt",
+              "line_start": 442,
+              "line_end": 572,
+              "pdf_pages": [
+                6
+              ],
+              "line_block_sha256": "36976e7de1fcb1ce7fa1fbba2f05c63648a74fa83449dc51e944f9b5cc05522c"
+            },
+            {
+              "text_file": "paper-text/33_Libra_NSDI2026.txt",
+              "line_start": 573,
+              "line_end": 685,
+              "pdf_pages": [
+                7
+              ],
+              "line_block_sha256": "4263c92c762406cd59038c3f1c2b5be951693d00f42af0236f2c56fb3eb25b5d"
+            },
+            {
+              "text_file": "paper-text/33_Libra_NSDI2026.txt",
+              "line_start": 686,
+              "line_end": 819,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "9366fc8ea113e5ad1fc0d16e0e3b038f5f69ceffc8f719d406d92a0c294f6d52"
+            },
+            {
+              "text_file": "paper-text/33_Libra_NSDI2026.txt",
+              "line_start": 820,
+              "line_end": 930,
+              "pdf_pages": [
+                9
+              ],
+              "line_block_sha256": "02a7aeed71d1debf0f0d706e720715e4754a889bbe87bca7a424cfdd62aef1a8"
+            }
+          ]
+        },
+        {
+          "paper_section": "5",
+          "classification": "paper_report",
+          "finding": "Official NSDI 2026 version is Libra, formerly DynaServe in preprint citations. This survey uses the official version; does not treat unified micro-request execution as pure P/D pool resizing.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/33_Libra_NSDI2026.txt",
+              "line_start": 931,
+              "line_end": 1038,
+              "pdf_pages": [
+                10
+              ],
+              "line_block_sha256": "d2cc53c169e11af1144f0f11b63ea3a4595f6fd38abe0ecd180fa8f6008db424"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "08",
+      "title": "Llumnix: Dynamic Scheduling for Large Language Model Serving",
+      "publication_identity": "OSDI 2024",
+      "version_note": null,
+      "primary_source_keys": [],
+      "pdf_url": "https://www.usenix.org/system/files/osdi24-sun-biao.pdf",
+      "artifacts": [
+        {
+          "file": "papers/08_Llumnix_OSDI2024.pdf",
+          "bytes": 1940597,
+          "sha256": "2e99cfc54473cd0a0aeabbb9bf16706b23300a7717e5b370ee256cf75801a9d6"
+        },
+        {
+          "file": "paper-text/08_Llumnix_OSDI2024.txt",
+          "bytes": 95781,
+          "sha256": "88481001d7f9627bd0fe8d02412f2a243eb2f61f519c39daa7e91115d6e81d76"
+        }
+      ],
+      "physical_pdf_pages": 20,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "4.2-4.4",
+          "classification": "paper_report",
+          "finding": "Append-only KV enables staged live migration. Freeness and virtual usage support autoscaling; a fake infinite demand on a terminating instance prompts request evacuation, contrasting with natural drain.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/08_Llumnix_OSDI2024.txt",
+              "line_start": 448,
+              "line_end": 568,
+              "pdf_pages": [
+                6
+              ],
+              "line_block_sha256": "1b1c78a79fa334fd50504c78c6a64188a60d846aceb2a22a2a2a2a88af387184"
+            },
+            {
+              "text_file": "paper-text/08_Llumnix_OSDI2024.txt",
+              "line_start": 569,
+              "line_end": 693,
+              "pdf_pages": [
+                7
+              ],
+              "line_block_sha256": "1f9ea2fdb0815ae2aac737ab32df629380360e77ddee638b8c05cb938324fe80"
+            },
+            {
+              "text_file": "paper-text/08_Llumnix_OSDI2024.txt",
+              "line_start": 694,
+              "line_end": 792,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "77d227c0ada667c234e3376d37952335931e62aeb8f31e3bf6fad0cc8819ea4f"
+            },
+            {
+              "text_file": "paper-text/08_Llumnix_OSDI2024.txt",
+              "line_start": 793,
+              "line_end": 900,
+              "pdf_pages": [
+                9
+              ],
+              "line_block_sha256": "c9dcf8fe86fa51ef994bb47013a843a7835ddbd23301d11cb3960607a98b8656"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "paper_id": "10",
+      "title": "DistServe: Disaggregating Prefill and Decoding for Goodput-optimized Large Language Model Serving",
+      "publication_identity": "OSDI 2024",
+      "version_note": null,
+      "primary_source_keys": [],
+      "pdf_url": "https://www.usenix.org/system/files/osdi24-zhong-yinmin.pdf",
+      "artifacts": [
+        {
+          "file": "papers/10_DistServe_OSDI2024.pdf",
+          "bytes": 832045,
+          "sha256": "bb03e59d6ec6550015901f3f78d7e68f5a07cad8ccacb12f72835a8b667341c1"
+        },
+        {
+          "file": "paper-text/10_DistServe_OSDI2024.txt",
+          "bytes": 88541,
+          "sha256": "6c85dcc1d05bd5c75912c0f858053aec677bb8ed4797fe54fdda2f7f32b46711"
+        }
+      ],
+      "physical_pdf_pages": 19,
+      "reading_scope": "Focused reading of relevant paragraphs on the listed physical pages, plus front matter and selected evaluation conditions; not a claim to have reviewed every page or proof.",
+      "observations": [
+        {
+          "paper_section": "4-5",
+          "classification": "paper_report",
+          "finding": "Goodput-aware placement chooses stage parallelism and replication subject to topology. Replanning detects significant workload shifts, reruns placement using recent history and reloads weights; seconds planning and minutes loading are distinguished.",
+          "source_locations": [
+            {
+              "text_file": "paper-text/10_DistServe_OSDI2024.txt",
+              "line_start": 608,
+              "line_end": 721,
+              "pdf_pages": [
+                7
+              ],
+              "line_block_sha256": "3f3d95dde6b9139a627713d2f5c3917d16e13d7c809b5629163c2ea68a14156f"
+            },
+            {
+              "text_file": "paper-text/10_DistServe_OSDI2024.txt",
+              "line_start": 722,
+              "line_end": 875,
+              "pdf_pages": [
+                8
+              ],
+              "line_block_sha256": "99ec9d2e751adc845100fa1022f2fbebe6946cc5eaa1de70bb802c0aa11f9294"
+            },
+            {
+              "text_file": "paper-text/10_DistServe_OSDI2024.txt",
+              "line_start": 876,
+              "line_end": 990,
+              "pdf_pages": [
+                9
+              ],
+              "line_block_sha256": "a60925ff56b171a04992712cdc55c93da31d9717d0b50f35d0bd21cd8b842637"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "visual_checks": [
+    {
+      "paper_id": "24",
+      "pdf_pages": [
+        5,
+        8,
+        9
+      ],
+      "finding": "Read the three-step role-change procedure in correct column order; Table 6 is on physical page 9, not 8. Values and 5E1P2D-to-2E1P5D transition checked."
+    },
+    {
+      "paper_id": "31",
+      "pdf_pages": [
+        8
+      ],
+      "finding": "Figure 8 preserves process, weights and communication groups. Text differentiates queued-request reassignment from active-request drain and describes directional cost."
+    },
+    {
+      "paper_id": "30",
+      "pdf_pages": [
+        8
+      ],
+      "finding": "Section 4.4.2 describes online periodic convertible decoder count adjustment; Section 4.6 states single-turn scope. Hardware paragraph identifies MI308X RDMA setup."
+    }
+  ],
+  "publication_and_version_notes": [
+    "TaiChi is in the official SC 2026 program for 2026-11-18, after the current 2026-11-06 survey date. Author v1 and program abstract numbers differ; no cross-version performance claim is made.",
+    "TokenScale v2 has SoCC 2026 Volume 2 front matter. The official program lists TokenPipe: Stage-aware Autoscaling for Disaggregated LLM Serving with Token Velocity with the same author group. Crossref DOI lookup returned 404 and ACM page 403 in this audit. Treat the name mapping as unresolved, retain original titles and omit from the independently matched venue count.",
+    "HFX v3 (2026-04-23) replaces HyperFlexis v1/v2. Arrow v2, DOPD v3, TokenScale v2, HFX v3 and LoongServe v2 were selected after current arXiv history checks.",
+    "DOPD journal-style header does not independently verify publisher acceptance/publication. It remains in the author/preprint group.",
+    "Feature matrix is a scoped synthesis of these passages. Partial/uncovered labels refer to the inspected mechanisms; Ours denotes unimplemented design goals and is not evidence of novelty or measured benefit."
+  ],
+  "research_synthesis": {
+    "classification": "research_design_inference",
+    "finding": "Compare reserve-first versus drain-first in-place role changes at fixed total resources; jointly measure reserve occupancy/recovery, transition stage cost and cumulative SLO delivery, alongside mixed/unified execution and active-migration alternatives."
+  },
+  "verification_scope": "Downloaded new PDFs with existing downloader; extracted text with PDFKit; checked affected references/diffs/counts. Full validate_research.py is not run because the user requires an explicit request."
+}

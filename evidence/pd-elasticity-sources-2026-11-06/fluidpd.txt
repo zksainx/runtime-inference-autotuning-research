@@ -1,0 +1,9 @@
+URL: https://arxiv.org/abs/2610.06917v1
+Fetched at UTC: 2026-11-06T04:00:37.027651+00:00
+
+(cs)
+[Submitted on 2 Oct 2026]
+Title:
+FluidPD: In-Place Elasticity for SLO-Aware Prefill-Decode Disaggregated LLM Serving
+Authors:
+Kartik Ramesh

@@ -1,0 +1,11 @@
+URL: https://arxiv.org/abs/2512.03416
+Fetched at UTC: 2026-11-06T04:02:59.654998+00:00
+
+(cs)
+[Submitted on 3 Dec 2025 (
+v1
+), last revised 4 Nov 2026 (this version, v2)]
+Title:
+TokenScale: Timely and Accurate Autoscaling for Disaggregated LLM Serving with Token Velocity
+Authors:
+Ruiqi Lai

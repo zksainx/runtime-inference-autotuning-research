@@ -1,0 +1,7 @@
+URL: https://iscaconf.org/isca2024/program/
+Fetched at UTC: 2026-11-06T04:03:01.384220+00:00
+
+11:45 AM – 12:00 PM
+Splitwise: Efficient Generative LLM Inference Using Phase Splitting
+P. Patel, E. Choukse, C. Zhang, A. Shah, Í. Goiri, S. Maleki, R. Bianchini
+12:00 PM – 12:15 PM

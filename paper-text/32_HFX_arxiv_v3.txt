@@ -1,0 +1,1474 @@
+Source: 32_HFX_arxiv_v3.pdf
+Pages: 27
+
+===== PDF PAGE 1 =====
+arXiv:2508.15919v3 [cs.DC] 23 Apr 2026
+HFX: Joint Design of Algorithms and Systems for Multi-SLO
+Serving and Fast Scaling
+Zahra Yousefijamarani1,3,*, Xinglu Wang1,3,*, Qian Wang1,*, Morgan Lindsay Heisler1, Taha Shabani1
+,
+Niloofar Gholipour1,4, Parham Yassini1, Hong Chang1, Kan Chen2, Qiantao Zhang2, Xiaolong Bai2
+,
+Jiannan Wang3, Ying Xiong1, Yong Zhang1,†, Zhenan Fan1,†
+1Huawei Technologies Canada Co., Ltd. , 2Huawei Technologies Co., Ltd. , 3Simon Fraser University ,
+4École de technologie supérieure
+Large language model (LLM) serving faces the dual challenge of meeting strict user-specific
+service-level objectives (SLOs) while minimizing computational cost under dynamic, multi-task
+workloads. Existing approaches either rely on static scheduling policies or focus on single-task
+settings, limiting their applicability in real-world deployments with heterogeneous requests,
+variable prompt lengths, and elastic scaling requirements.
+We present HFX, a production LLM serving system that jointly optimizes request scheduling and
+elastic scaling across model replicas to satisfy diverse SLOs. HFX introduces a scheduler that
+performs proactive budget estimation and prioritization to ensure SLO compliance for both new
+and in-flight requests. HFX also integrates a scaler that supports fast device-to-device (D2D)
+weight transfer, reducing cold-start latency. Additionally, the system supports both colocated
+and disaggregated prefill/decode deployments, enabling adaptation to diverse workload patterns
+and cloud environments.
+Through extensive experiments on multi-task workloads, we demonstrate consistently higher SLO
+attainment, lower end-to-end latency, and lower NPU usage cost by up to 4.44×, 65.82%, and
+49.81%, respectively, compared to state-of-the-art systems. Our results highlight the effectiveness
+of SLO-aware scheduling and scaling in practical LLM serving, providing a robust framework
+for cost-efficient and SLO-compliant deployments.
+Keywords: LLM Inference Serving, Multi-SLO Scheduling, Dynamic resource scaling, P/D disaggregated
+systems, P/D Compatible Scheduling
+*Equal contribution.
+†Corresponding authors: Yong Zhang <yong.zhang3@huawei.com>, Zhenan Fan <zhenan.fan1@huawei.com>.
+
+===== PDF PAGE 2 =====
+Contents
+1 Introduction 3
+2 Background and Motivation 4
+2.1 2.2 2.3 Large Language Model Serving . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+Multi-SLO Scheduling Challenges . . . . . . . . . . . . . . . . . . . . . . . . 5
+Elastic Scaling Challenges . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+3 System Design 6
+3.1 3.2 3.3 Problem Definition . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+HFX Overview . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+Detailed System Design . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+3.3.1 Dispatching Mechanism and Policy . . . . . . . . . . . . . . . . . . . 8
+3.3.2 Priority-Based SLO Mapping . . . . . . . . . . . . . . . . . . . . . . . 11
+3.3.3 Scaling Mechanism and Policy . . . . . . . . . . . . . . . . . . . . . . 12
+3.4 Implementation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+4 Evaluation 14
+4.1 4.2 Experimental Setup . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . Multi-task Workload Experiments . . . . . . . . . . . . . . . . . . . . . . . . 4.2.1 Colocated Mode . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4.2.2 P/D Disaggregated Mode . . . . . . . . . . . . . . . . . . . . . . . . . 4.3 4.4 4.5 Priority Mapping Experiments . . . . . . . . . . . . . . . . . . . . . . . . . . Fast Scaling Experiments . . . . . . . . . . . . . . . . . . . . . . . . . . . . . Deployment Experiences . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4.5.1 Dynamic SLO Assignment and Priority Mapping . . . . . . . . . . . . 18
+4.5.2 Single-task Stability . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4.5.3 Monitor and Scaling Intervals . . . . . . . . . . . . . . . . . . . . . . 14
+16
+16
+17
+17
+18
+18
+19
+20
+5 Related Work 21
+5.1 Single-Node Inference and Prefill/Decode Optimization . . . . . . . . . . . . . 5.2 5.3 Cluster-Level LLM Serving . . . . . . . . . . . . . . . . . . . . . . . . . . . . Multi-SLO Scheduling and Scaling . . . . . . . . . . . . . . . . . . . . . . . . 21
+21
+22
+6 Conclusion 22
+2
+
+===== PDF PAGE 3 =====
+1. Introduction
+As large language models (LLMs) [1, 8, 19, 31, 32, 38] become integral to enterprise and
+consumer applications deployed on Huawei Cloud, maintaining predictable performance under
+diverse service-level objectives (SLOs) has become a central operational challenge. Production
+environments exhibit substantial variation in request size, priority, and latency sensitivity, making
+static scheduling and resource allocation insufficient. Without careful coordination, latency-
+critical requests may be delayed by long or low-priority tasks, resulting in SLO violations and
+increased cost.
+A central bottleneck in production clusters is the resource arbitration for multi-SLO work-
+loads, where requests impose distinct requirements for Time-to-First-Token (TTFT), Time-Per-
+Output-Token (TPOT), or throughput. For example, interactive chatbots require low TTFT
+for responsive user interactions, whereas batch summarization jobs can tolerate longer prefill
+times but demand high decode throughput. In production clusters, these workloads must be
+co-scheduled across shared hardware, with careful balancing to prevent high-priority tasks from
+being blocked or low-priority tasks from monopolizing resources. This heterogeneity makes
+scheduling decisions fundamentally more complex than in single-SLO or single-task settings.
+Even with effective scheduling, sustaining SLO compliance further depends on timely elastic
+scaling. However, conventional auto-scaling mechanisms struggle to provide timely capacity
+adjustments because loading large model weights introduces substantial cold-start delays. To
+avoid these delays, operators often over-provision resources, trading cost efficiency for minimal
+SLO risk.
+Another key design consideration is the deployment mode of the Prefill/Decode pipeline.
+Colocated deployments optimize throughput by sharing hardware resources across prefill and
+decode, but make it difficult to meet strict TTFT and TPOT requirements, whereas disaggregated
+deployments allocate dedicated resources to each stage to satisfy tight latency SLOs, often at
+the cost of using more capacity [11, 35, 44]. In practice, both modes are used in production,
+and the choice between them is often determined by workload composition and operational
+constraints rather than fixed task categories. Since production workloads mix latency-sensitive,
+throughput-oriented, and long-context tasks, supporting both modes allows operators to select
+the architecture best aligned with their operational constraints.
+Existing scheduling and scaling approaches [7, 10, 21, 28, 30, 37, 40, 45] either target at
+single-task workloads or limited to single-instance deployment. These systems provide valuable
+insights but do not fully address the complexities of heterogeneous, multi-stage, and dynamically
+varying cloud workloads, leaving SLO attainment and cost efficiency under-optimized.
+To address these operational challenges, we introduce HFX, a novel unified LLM serving
+system for production-scale cloud deployments. HFX integrates algorithmic and system-level
+innovations to jointly optimize scheduling and scaling across colocated and disaggregated P/D
+execution, as shown in Figure 1. It is designed for real-world operational requirements, ensuring
+high SLO compliance, low latency, and cost-effective resource utilization.
+Our system makes the following contributions:
+• Multi-SLO-Aware Scheduling: We design a dispatcher that organizes requests into
+3
+
+===== PDF PAGE 4 =====
+SLO-aware queues and assigns them to instances via an Instance-Priority Queue. In
+disaggregated P/D deployments, prefill and decode stages are scheduled independently
+using the Dispatcher and Migrator, ensuring each stage meets its SLO without interference,
+even under heterogeneous workloads.
+• Elastic Scaling Framework: A unified scaling controller dynamically adjusts resources
+based on load and utilization across both execution deployments, and supports pre-
+fill–decode role transitions in P/D mode. Device-to-device (D2D) weight transfer further
+cuts cold-start latency by up to 19.39×, enabling fast, cost-efficient scaling.
+• Operational Impact: Evaluation under different workloads shows up to 4.44×higher
+SLO attainment, 65.82% lower request latency, and substantial operational cost savings
+compared to state-of-the-art baselines, demonstrating the effectiveness of our approach for
+real-world LLM serving.
+2. Background and Motivation
+2.1. Large Language Model Serving
+The growing adoption of LLMs in interactive and high-throughput applications, such as chatbots,
+code assistants, and real-time translation services, places stringent demands on cloud serving
+infrastructure.
+Most modern LLMs rely on the Transformer architecture and generate tokens in an auto-
+regressive fashion. Inference with LLMs typically involves two computationally distinct phases:
+Prefill and Decode. Prefill Phase: Processes the initial prompt using full-sequence attention
+to generate the first token. This phase is compute-intensive and determines the TTFT. Decode
+Phase: The decode phase generates subsequent tokens incrementally, leveraging cached KV
+states and the latency of each token generation iteration determines the TPOT. This phase is
+memory-bandwidth bound which results in low arithmetic intensity that under-utilizes GPU
+compute resources.
+LLM serving generally adopts either colocated or disaggregated deployments. Colocated
+mode [16] executes prefill and decode on the same devices. While this approach simplifies
+deployment and can reduce the number of devices required, it introduces the challenge that
+prefill-heavy requests can repeatedly interrupt ongoing decoding, causing TPOT to exceed
+its SLO. Conversely, disaggregated mode [44] isolates these phases to strengthen per-stage
+SLO control and scaling flexibility, but requires deploying model replicas across more devices.
+In workloads where either prefill or decode is lightly exercised, this separation can lead to
+underutilized resources. Disaggregation also introduces KV cache transfer overheads that can
+violate strict latency SLOs, so the optimal choice depends on specific TTFT and TPOT targets
+[36]. Overall, neither mode universally dominates, so effective serving systems must support
+both architectures to accommodate diverse production environments. It is important to note
+that this work does not aim to decide when colocated or disaggregated deployments should be
+used, nor does it address dynamic switching between the two. Instead, our goal is to ensure that
+multi-SLO scheduling and scaling operate effectively under both architectures, regardless of
+which deployment mode a production system adopts.
+4
+
+===== PDF PAGE 5 =====
+Application 1
+Application 2
+.....
+SLO-Aware Global Scheduler
+Dispatcher
+Scaler
+Application n
+Migrator
+Monitor
+System Statistics
+Prefilling Pool
+Prefill Instance
+Scheduler
+Cache Manager
+Scheduling Decision
+Worker Instances
+Disaggregated Mode
+Decoding Pool
+Decode Instance
+KV Cache Transfer
+Scheduler
+Cache Manager
+Colocated Mode
+Instance Pool
+Instance
+Scheduler
+Cache Manager
+Figure 1 |Overview of the HFX architecture. The dispatcher, migrator, monitor, and scaler
+collectively enable proactive, SLO-aware scheduling and scaling. The system supports both
+disaggregated and colocated modes, and continuously aggregates system and SLO feedback for
+closed-loop adaptation under dynamic load.
+2.2. Multi-SLO Scheduling Challenges
+To scale with increasing load, LLM serving systems run across clusters of many instances.
+However, standard load balancers (e.g., Round-Robin, Least-Connections) are insufficient for
+SLO-aware serving because they ignore the state-dependent nature of LLM workloads and
+cannot prioritize requests by remaining SLO budget. Dedicating instances to different request
+types or latency classes avoids interference but introduces new issues:
+(1) resource under-utilization, as some instances idle while others queue; (2) operational
+inflexibility, requiring reconfiguration for new latency classes; and (3) higher provisioning
+cost due to per-class over-provisioning. Moreover, static separation fails to address the core
+issue: request urgency changes over time within each instance, requiring continuous scheduling
+decisions.
+A second challenge arises from the nature of batching in modern serving systems. While
+frameworks like vLLM [16] and TensorRT-LLM [22] adopt continuous batching to maximize
+the throughput, their perspective is strictly local. The scheduler within each instance treats the
+stream of incoming requests as fixed; it can determine how to batch what it receives, but not
+which requests it receives in the first place. Consequently, these systems lack the global context
+required to navigate trade-offs across multiple instances. For example, a latency-sensitive request
+may be queued behind long-context requests on one instance, even though another instance in the
+cluster has available compute capacity. Without a global scheduler that understands the current
+queue depth, memory fragmentation, and request types across all instances, the cluster suffers
+from Head-of-Line (HOL) blocking, where high-priority requests get stuck behind long-running
+ones on a selected instance.
+5
+
+===== PDF PAGE 6 =====
+2.3. Elastic Scaling Challenges
+LLM workloads vary widely in request rate, length, priority, and latency SLOs. In large cloud
+deployments such as Huawei Cloud, clusters must handle highly dynamic traffic, making multi-
+instance scheduling even harder. Beyond these scheduling challenges, large-scale deployments
+must also contend with elastic scaling, which introduces a separate class of operational difficul-
+ties.
+Cold-Start Penalty: Scaling is not instantaneous. New instances incur significant delays
+while cold-start overhead occurs when newly provisioned instances instantiate the inference
+engine and load model weights from storage.
+Cost vs. SLO Attainment Tradeoff: Scaling must balance the risk of SLO violations against
+the cost of idle resources, creating a core optimization challenge: providing enough capacity to
+meet deadlines without over-provisioning. Although this resembles a constrained scheduling
+and allocation problem, full end-to-end optimization is impractical due to three compounding
+factors.
+First, decisions are event-driven, triggered by requests for arrivals, completions, or the com-
+pletion of an instance’s iteration, rather than occurring on a fixed rolling horizon [33], resulting
+in an irregular decision timeline. Second, future workloads are uncertain, as request lengths
+are unknown and arrivals are highly stochastic. Third, batching forms a circular dependency:
+given the current queue delays and SLO requirements, the scheduler chooses a batch size; this
+batch size determines the per-iteration latency, which then feeds back into future queue delays.
+This closed feedback loop has no simple analytic form. A robust system must jointly address
+micro-level scheduling (routing requests to the best instance) with macro-level scaling (detecting
+when current instances will no longer suffice).
+Existing LLM serving systems do not fully address the operational complexities of large-scale
+cloud environments. One-shot dispatching and static scaling fail to handle dynamic queues,
+multi-stage workloads, and heterogeneous SLOs, leading to unpredictable latency, inefficient
+utilization, and higher costs. These gaps motivate HFX, a unified LLM serving system for
+Huawei Cloud that integrates multi-SLO-aware scheduling and elastic scaling for predictable,
+cost-efficient performance at production scale.
+3. System Design
+3.1. Problem Definition
+The serving system (Fig. 1) receives a continuous stream of requests 𝑅= {𝑟1,𝑟2,...,𝑟𝑚,...}.
+Each request 𝑟𝑚 arrives at a certain timestamp and specifies its prompt, maximum output length,
+and heterogeneous SLOs, including TTFT and TPOT. Meanwhile, the system should support
+elastic scaling, adding instances on demand up to a maximum of 𝑁, constrained by available
+resources.
+At every event boundary, either a new request arrival or the completion of a prefill or
+decode iteration by any instance, the Global Scheduler should make two types of decisions: (i)
+dispatching: whether and how to assign pending requests to instances, and (ii) scaling: whether
+to scale out or scale in, and which instances to deactivate when scaling in. These decisions
+6
+
+===== PDF PAGE 7 =====
+➄
+Dispatch
+API Server
+Rn
+Inference
+Request
+Request Queue (QR)
+SLO-Aware Scheduler
+Inst. Queue (QI)
+Monitoring Agent
+Local Scheduler
+① Select Instance
+Instance 1
+Instance 1
+Waiting Queue:
+_
+⏱ 20ms
+Rn
+② Compute Budget
+R1
+R1
+Instance 2
+decode
+decode
+R1
+R1
+R2
+R2
+⏱ 50ms
+Edecode
+Saved
+decode
+decode
+decode
+decode
+Time
+R2
+R2
+R3
+.
+.
+SLOTPOT
+decode
+decode
+decode
+R3
+decode
+Instance 3.
+.
+.
+.
+R3
+...
+decode
+R3
+R3
+R3
+decode
+decode
+decode
+.
+.
+.
+⏱ 100ms
+...
+R3
+R3
+decode
+decode
+Prefill ntoken
+...
+Rdecode Rdecode
+Maturity Time
+Running Batch:
+R1
+decode
+R2
+decode
+R3
+decode
+R3
+decode
+NPU NPU NPU NPU
+New
+Dispatch
+Time
+Estimated Next
+Dispatch
+Instance 1
+⋮
+TTFT: 1s
+TPOT: 0.2
+TTFT: 2s
+TPOT: 0.7s
+TTFT: 10s
+TPOT: 1s
+③ Admit requests
+➃ Update Maturity
+Monitoring Agent
+Latency Predictor
+✓ ✓ ✗
+SLO Type (tight→loose)
+Prefill ntoken
+Saved
+Time Saved
+Time...
+Local Scheduler
+Profiled Data
+Check ntoken
+capacity and TTFT deadline
+#iterations to wait
+⏱ 100ms
+...
+📊
+Latency model
+NPU
+NPU
+NPU
+Worker Processes
+Monitor
+Scaler
+Instance 2
+Report State
+Scale
+Monitoring Agent
+Local Scheduler
+`
+...
+NPU
+NPU
+NPU
+Worker Processes
+Instance 3
+D2D Transfer
+NPU
+NPU
+⋮
+NPU
+NPU
+Instance n
+Figure 2 |Execution flow of HFX. A client request enters through the API Server into Dis-
+patcher’s Request Queue. The SLO-Aware Scheduler of Dispatcher: (1) selects an instance from
+Instance Queue, (2) computes the budget using the Latency Predictor and system status, and (3)
+admits requests from Request Queue. Then (4) updates the maturity time of selected instance,
+and (5) dispatches admitted requests to the selected instance.
+must balance two conflicting objectives: minimizing infrastructure cost while maximizing user
+satisfaction. Specifically, infrastructure cost is given by
+Cost=
+𝑁
+∑︁
+(active time of instance 𝑛)·UnitCost, 𝑛=1
+(1)
+where UnitCost denotes the rental price per-second for a Neural Processing Unit (NPU) [18]
+instance. Meanwhile, user satisfaction is measured by SLO attainment, defined as the fraction of
+requests that meet both the TTFT and TPOT requirements:
+Attainment=
+1
+𝑀
+𝑀
+∑︁
+𝑚=1
+ITTFT(𝑟𝑚) ITPOT(𝑟𝑚). (2)
+Apart from SLO attainment, end-to-end (E2E) completion time for a request 𝑟𝑚 provides a
+complementary view of user-perceived latency, defined as E2E(𝑟𝑚) = 𝑇complete(𝑟𝑚)−𝑇arrival(𝑟𝑚).
+As discussed in Section 2.3, lowering the cost and increasing the attainment of SLO has some
+challenges. These challenges make an explicit formulation infeasible. We therefore distill a set
+of core guiding principles to drive both the algorithmic and system design: (1) At micro-level
+scheduling, the system prioritizes protecting in-flight SLOs, ensuring that admitted tasks can
+continue progressing toward their SLO requirements before any additional load is accepted.
+Meanwhile, new requests are admitted greedily, whenever it is safe, to maximize hardware
+utilization and thereby reduce cost. (2) At macro-level scaling, Elastic scaling serves as a
+fallback when no safe placement exists, enabling the system to adjust resources dynamically
+while preserving SLO compliance. These principles are instantiated naturally in both colocated
+and disaggregated deployment modes, providing a practical framework for building an SLO-
+aware serving system that balances user satisfaction and cost efficiency in dynamic workloads.
+7
+
+===== PDF PAGE 8 =====
+3.2. HFX Overview
+In this section, we present the overall system design and framework of HFX.
+Architecture. As shown in Figure 1, HFX comprises four main components: the Dispatcher,
+Scaler, Monitor, and Migrator. The Dispatcher manages request scheduling, while the Scaler
+dynamically adjusts the number of active instances and enables efficient weight loading during
+scale operations. Both rely on system statistics from the Monitor to make informed decisions.
+The Migrator coordinates task dispatching in the decode phase, links prefill and decode instances,
+and manages KV-cache transfers to ensure smooth, efficient execution.
+Workflow. Figure 2 illustrates HFX’s execution flow. Multiple clients submit LLM inference
+requests with heterogeneous latency targets, including TTFT and TPOT. Requests enter via an
+API server and are managed by the centralized Multi-SLO-Aware Dispatcher (§3.3.1), which
+classifies requests by SLO and enqueues them in a priority queue. The dispatcher selects
+instances based on predicted availability (maturity time) and dispatches requests using system
+status, token budgets, and predicted latencies, ensuring SLOs are not violated for new or ongoing
+tasks.
+Execution depends on deployment mode. In colocated setups, both TTFT and TPOT are
+considered; in disaggregated P/D mode, the dispatcher considers only TTFT and assigns requests
+to Prefill instances. The Migrator then handles TPOT, migrating requests from Prefill to selected
+Decode instances as shown in Figure 2.
+Resource provisioning is handled by Scaler (§3.3.3) for both colocated and disaggregated
+deployments. It adjusts instance counts dynamically based on utilization and queue metrics and
+supports seamless role transitions between prefill and decode instances.
+Monitor subsystem underpins these mechanisms by continuously collecting statistics on
+instance utilization, request latencies, queue states, and instance roles. This data feeds into both
+scheduling and scaling decisions.
+In summary, HFX aims to meet diverse latency objectives while using resources efficiently.
+The following section describes how these mechanisms are implemented in practice.
+3.3. Detailed System Design
+3.3.1. Dispatching Mechanism and Policy
+Our SLO-aware dispatcher (i) schedules new requests promptly so latency-critical work begins
+without unnecessary delay, while (ii) ensuring ongoing executions meet their SLOs. However,
+scheduling a new request can interfere with in-progress work, increasing latency and risking
+SLO violations. To manage this, we introduce maturity time, the earliest an instance can take
+additional load without affecting ongoing requests. By tracking maturity times centrally, the
+dispatcher enables low-overhead, responsive global scheduling that protects existing workloads.
+Since colocated and disaggregated deployments exhibit different interference behaviors, we
+apply separate control policies for each mode.
+8
+
+===== PDF PAGE 9 =====
+Colocated Mode. In colocated deployments, prefill and decode share the same device. New
+requests trigger prefill computations that can preempt ongoing decoding, increasing latency and
+risking TPOT violations. The dispatcher’s main role is to protect ongoing decode workloads
+while scheduling urgent new requests before violating their TTFTs.
+The dispatcher centrally tracks all instances and controls when each can accept new prefills.
+For each instance, it computes a maturity time, the earliest point at which new requests can be
+admitted without violating ongoing decode SLOs. Before maturity, the instance is protected;
+afterward, it can take new assignments. We also use token budget to represent the maximum
+number of tokens can be dispatched to a instance without violating ongoing decode TPOT limits.
+Next, we will first give a high-level overview of the dispatching steps, then explain how token
+budget and maturity time is computed.
+Dispaching steps are as follows: (1) select the instance whose maturity time arrives first;
+(2) compute its safe token budget; (3) scan the global request queue to identify the most urgent
+requests that fit within this budget; and (4) dispatch them, then update the instance’s future
+maturity time based on the newly predicted workload. This process ensures that decode jobs
+remain protected, while unused capacity is quickly reclaimed to serve urgent incoming requests.
+The detailed realization in colocated mode is shown in Algorithm 1 in the supplementary material.
+We now explain how the token budget is computed as shown in Step 1 of Figure 2. Firstly,
+we introduce slack time, as the saved time of each decoding token compared to the TPOT
+requirement. With decoding iterations, the slack time accumulates, creating a ‘safe’ time window
+for new Prefill batch to jump in, without violating the ongoing decoding TPOT. This is the core
+concept of the algorithm.
+Next, lets first assume the dispatcher has decided to dispatch 𝑛token tokens in the new prefill
+batch to the instance (later we will explain how 𝑛token is computed). Then the prefill latency of
+the new batch 𝐸𝑝, and the decoding latency of following decoding iterations 𝐸𝑑 can be estimated
+following [44]. Referring to the core concept, 𝐸𝑝 is actually the ‘safe’ time window for the new
+prefill batch, and TPOT−𝐸𝑑 will be the slack time of each following decoding iteration. Then
+𝑘= 𝐸𝑝/(TPOT−𝐸𝑑) decoding iterations will be needed to accumulate enough slack time to
+achieve the ‘safe’ time window. Before 𝑘decoding iterations, the instance cannot admit new
+requests. The maturity time is the point at which the instance becomes eligible to admit new
+requests again. It is the sum of the prefill latency and the slack-accumulating decoding iterations:
+Maturity Time := 𝐸𝑝 + 𝑘·𝐸𝑑.
+Note that, for simplicity, we ignored any past-accumulated slack time before current dispatching.
+As our scaling algorithm will guarantee system always runs in nearly-full capacity, the past-
+accumulated slack should be minimal.
+Now, we revisit how to compute 𝑛token, which we define as token budget for the instance.
+Inherently, the larger 𝑛token, the longer maturity time will be, and it will delay the instance to
+accept new requests, consequently, hinders future request’s TTFT. So, we should limit 𝑛token. We
+adopt a worst-case guarantee methodology. The worst case for future request is that a request
+arrives right after the current dispatching, then the estimated time for its actual TTFT will be:
+Maturity Time + 𝐸𝑝 = 2𝐸𝑝 + 𝑘·𝐸𝑑. Considering the TTFT constraint, we get
+2𝐸𝑝 + 𝑘·𝐸𝑑 ≤TTFT.
+9
+
+===== PDF PAGE 10 =====
+As shown in the Appendix A.2 of DistServe [44], prefill latency can be estimated using a
+quadratic performance model. However, based on both our NPU profiling and their released
+code, the quadratic term is negligibly small in practice. We therefore adopt a linear model
+𝐸𝑝 = 𝑎+ 𝑏𝑛token. And as 𝐸𝑑 grows slowly with new request added, we can ignore the effect of
+new 𝑛token and use current running batch to estimate a constant 𝐸𝑑. Substituting them into the
+TTFT inequality and simplifying yields the token-budget constraint in Eq. 3:
+𝑛token ≤(TPOT−E𝑑)·TTFT
+(2TPOT−E𝑑)·𝑏−
+Thus, we get an upper bound for 𝑛token, and the dispatcher can dispatch accordingly.
+𝑎
+𝑏. (3)
+Disaggregated Mode. In the PD-disaggregated deployment mode, prefill and decode run on
+separate instance pools, so the four-step dispatching logic in colocated mode is instantiated
+twice: once by the Dispatcher for the P stage and once by the Migrator for the D stage. Both
+components follow the same four-step structure, with only Step 2 and Step 4 differing from the
+colocated mode due to a different interference model. We therefore focus on explaining these
+two steps for each stage.
+P-stage Dispatcher. Prefill batches are non-interruptible under static batching. Consequently,
+the Dispatcher uses a simplified maturity definition: an instance becomes mature only when its
+current prefill batch completes. The different steps are:
+• Step 2 (token budget). Starting from an empty instance, its safe token budget is determined
+solely by the strictest TTFT in the priority-ordered request queue. The intuition is that
+lower-priority requests have looser TTFT requirements, so satisfying the strictest TTFT
+automatically ensures that remaining requests meet their TTFT constraints.
+• Step 4 (maturity time). After dispatching a new batch, the instance’s next maturity time
+is set to the estimated completion time of this prefill batch, since it cannot be interrupted
+mid-way.
+D-stage Migrator. Under continuous batching, decode progress is iterative, and each iteration
+boundary provides a natural decision point, enabling fine-grained control. The Migrator makes
+the dispatching decision. The different steps are:
+• Step 2 (token budget). The safe token budget depends primarily on the state of the
+decoding instance. When the instance already has an active decode batch, its effective
+TPOT constraint is determined by the strictest TPOT among the in-flight requests, and
+the budget is computed to ensure that admitting additional tokens will not violate this
+constraint. If the instance is temporarily idle, it instead uses the strictest TPOT from the
+priority-ordered queue of prefilled requests to determine its token budget.
+• Step 4 (maturity time). After dispatching, maturity is updated to the end of the next
+decoding iteration, enabling a decision at every iteration boundary.
+Simple strategies such as round-robin or dispatching to the least-loaded instance do not
+consider instance states or request-level SLO requirements, and therefore may admit requests
+10
+
+===== PDF PAGE 11 =====
+Latency
+Values
+Index
+rnew
+C0= 20 C1= 30 C2= 10 C3= 40
+P2
+P0 P1 P3
+1.85
+0.09 0.15 0.59 0.70 0.75 0.89 1.21 1.32 1.94 10.02 11.54 12.32
+0 1 19 20 21 49 50 51 59 60 61 99
+56
+= 50 = 6
+SLOTTFT= 1.85
+Figure 3 |Priority-based SLO mapping example. SLOTTFT is determined from recent perfor-
+mance data.
+even when the resulting latency cannot meet SLO constraints. In contrast, our dispatching logic
+is SLO-aware and avoids these limitations.
+3.3.2. Priority-Based SLO Mapping
+We design a priority-based SLO mapping scheme to handle cases where users cannot specify
+explicit metrics such as TTFT or TPOT. In real deployments, customers often lack precise latency
+targets, but they can usually express the relative importance of their applications. Our scheme
+leverages these priorities to derive latency SLOs dynamically, adapting them over time as the
+system operates. This is illustrated in Figure 3 and explained below with five steps.
+(1) Priority as input. Each request is assigned a priority 𝑝, with 0 being the highest and 𝑁−1
+the lowest, with 𝑁 representing the total number of priority levels. (2) Sliding-window history.
+The system maintains two sliding windows of size 𝑊 for recent TTFT and TPOT values. Each
+new result is inserted while the oldest entry is dropped, ensuring SLOs are based on up-to-date
+conditions. (3) Mapping priority to latency. For each new request (𝑟new), the system determines
+its SLO latency within the window using an indexing scheme. The base index accounts for all
+higher-priority requests already placed in the window, while the offset determines the request’s
+position within its own priority class. This mapping biases higher priorities toward lower-latency
+quantiles and lower priorities toward higher-latency quantiles. Formally:
+𝑝−1
+base=
+∑︁
+𝑖=0
+𝐶𝑖, offset= ⌊︂𝑝+ 1
+𝑁 + 1·𝐶𝑝⌋︂(4)
+where 𝐶𝑖 is the count of completed requests with priority 𝑖in the window. The sum (𝑖𝑠 =
+base + offset) indexes the latency used as the provisional SLO for 𝑟new. (4) Correcting for
+queuing effects. To prevent temporary queue spikes from inflating SLOs, we subtract the extra
+queuing delay between the chosen reference request and the most recent request of the same
+priority. This correction keeps SLOs aligned with real-time system behavior. (5) Ensuring
+stability. Derived SLOs are bounded within pre-defined ranges per priority. A contention-aware
+rule further stabilizes outcomes: If higher-priority requests are pending, the system enforces the
+strict lower bound. Otherwise, the bound is relaxed so lower-priority requests may complete
+sooner without undermining priority ordering.
+Finally, the adjusted TTFT and TPOT values are delivered to the SLO-aware scheduler for
+11
+
+===== PDF PAGE 12 =====
+integration into dispatching decisions. The detailed algorithm is provided in Algorithm 3 of the
+supplementary material.
+3.3.3. Scaling Mechanism and Policy
+Dynamic scaling is key to maintaining SLOs during load fluctuations. Too few resources cause
+queueing and SLO violations; too many increase cost. We present algorithmic design and
+system-level techniques that enable fast, cost-efficient scaling: the algorithm decides when and
+how to scale prefill and decode capacity, while the system executes these decisions efficiently
+and reliably. We focus on the algorithmic design here and leave the implementation details of
+the system techniques to Section 3.4.
+The detailed pseudocode is provided in Algorithm 2 of the supplementary material; we
+present its decision logic here. Every 𝜏 seconds, the Scaler inspects the global request queue and
+all active instances to compute three indicators for scaling.
+• The first captures system load over a long (10 s) horizon. The Scaler maintains a fixed 10 s
+window of enqueue and dequeue timestamps to derive smoothed arrival and completion
+rates, 𝜆in and 𝜆out. To avoid spurious actions during startup or with few events, rate
+estimates are suppressed until enough samples exist. The load estimator is 𝑓1 =
+𝜆out
+:
+𝜆in
+𝑓1 < 1 indicates completions lag arrivals (pressure to scale out), and 𝑓1 > 1 indicates
+excess capacity.
+• Second, we use a SLO-aware load indicator that captures short-term fluctuations. The
+Scaler computes the normalized waiting time of each queued request relative to its SLO,
+𝑓2 =
+1
+𝑁 ∑︀𝑟∈queue
+waiting_time(𝑟)
+SLO𝑟
+, where 𝑁 is the number of queued requests. Higher 𝑓2
+indicates more urgent requests and greater risk of SLO violations.
+• The third indicator captures each instance’s memory load. For instance 𝑛, the Scaler
+maintains a coarse utilization estimate based on KV-cache usage, 𝑓3 = used_blocks𝑛
+, where
+total_blocks𝑛
+used_blocks𝑛 includes blocks held by in-flight requests and those reserved for pending
+requests in the instance’s local queue.
+These three indicators drive a threshold-based scaling policy. 𝑓1 is the primary rate signal:
+𝑓1 <𝜖out triggers scaling out, while 𝑓1 >𝜖in and multiple instances allow scaling in by removing
+the instance with smallest 𝑓3. The SLO-aware signal 𝑓2 reacts quickly to bursts: 𝑓2 > 𝜖wait
+triggers proactive scale-out even if 𝑓1 is moderate. By default, we use a 10 s smoothing window,
+𝜖out = 0.7, 𝜖in = 1.1, and 𝜖wait = 1/4 of the SLO target.
+In PD-disaggregated mode, prefill and decode stages have different workloads, so the Scaler
+evaluates each stage independently. The two instance pools may diverge—for example, prefill
+may scale in while decode scales out—unlike in the colocated case. To avoid unnecessary churn
+from terminating and relaunching instances, the Scaler can make a role switching decision, e.g.,
+reassigning a prefill instance’s NPU resources to the decode pool.
+3.4. Implementation
+HFX is implemented in Python and consists of approximately 3.5K lines of code (LoC) across
+different modules, including the dispatcher, scaler, migrator, monitor, and instance runtime, as
+12
+
+===== PDF PAGE 13 =====
+shown in Figure 1. The serving backend is built on vLLM-Ascend [34], extended to support
+multi-SLO-aware scheduling, fast role transitions, and device-to-device data movement across
+Ascend 910B NPUs [18]. The entrypoint exposes an OpenAI-compatible API [23] for inference
+and management. Each module is implemented as an independent Ray [20] actor, allowing
+failures, restarts, and instance elasticity to be handled transparently at runtime. All actors
+communicate with asynchronous RPCs, and the system uses a multi-process design that isolates
+CPU-bound control logic from NPU-bound execution.
+The instance runtime is a modified vLLM-Ascend engine running as a Ray actor bound to a
+configurable number of NPU devices. Each instance maintains a lightweight execution loop for
+prefill and decode, exposes token-level progress metrics to the scheduler, and integrates a KV
+cache manager backed by LLM-DataDist [15], an Ascend runtime component for cross-process
+memory mapping and KV data movement. HFX extends this mechanism with a metadata
+exchange protocol and per-request KV-transfer parameters, supporting efficient KV exchange in
+PD-disaggregated execution.
+We design the system for fast scale-out, allowing new instances to start with minimal cold-
+start latency. This is achieved through a two-stage weight transfer pipeline inside the Scaler.
+In the first stage, each NPU server maintains a warm-up pool of lightweight instances that
+initialize the Python runtime but defer model weight loading. When scaling out (the second
+stage), the Scaler establishes temporary communication groups and triggers HCCL-based device-
+to-device send_weight/receive_weight transfers from existing instances. Specifically,
+each instance embeds a WeightManager that tracks device memory layout, enabling any running
+instance to serve as a source for weight transfer. Tensors are copied in a device-aligned manner,
+allowing the target instance to join the running pool immediately after transfer. If a transfer
+fails, the system falls back to disk-based weight loading to ensure correctness. This mechanism
+significantly reduces cold-start latency and supports rapid role reassignment in the disaggregated
+prefill–decode architecture.
+In PD-disaggregated mode, we further accelerate KV-cache transfer through the following
+system design. The Migrator manages the communication-group topology for KV-cache transfers
+between prefill and decode instances. When executing a role-switch decision, the Scaler reassigns
+an instance’s role between prefill and decode, and the Migrator proactively establishes the
+necessary link groups before the instance begins serving, enabling KV-cache movement to
+proceed without delay. In contrast, prior systems such as Mooncake [25] construct these links on
+demand, incurring additional latency.
+HFX is currently undergoing production deployment within Huawei ModelArts [14]. Our
+scheduler is integrated with the existing ModelArts runtime, which provides Kubernetes-based
+orchestration, pod lifecycle management, and system monitoring. To support this deployment, we
+implemented a 8.3K-LoC Go control-plane component that augments the ModelArts CRDs and
+coordinates vLLM-Ascend instances, exposing the scheduling decisions produced by our system.
+The underlying hardware and communication stack (Ascend NPUs, HCCL, LLM-DataDist)
+remain unchanged. The deployment is proceeding through staged evaluation, replacing the
+scheduling layer while preserving the rest of the production infrastructure.
+13
+
+===== PDF PAGE 14 =====
+Task SLO (s) Lengths
+TTFT TPOT Input Output
+med_qa [6] 0.7 0.5 32.6 ±10.3 38.9 ±16.8
+tldr_c†[41] 1 0.7 44.4 ±6.6 96.0 ±35.0
+tldr_h†[41] 2 0.9 121.8 ±35.0 13.6 ±6.6
+wikisql [41] 20 1 643.2 ±337.0 27.8 ±4.8
+gsm8k [5] 0.7 0.2 51.4 ±15.8 90.1 ±26.7
+sharegpt[42] 2 0.5 259.2 ±324.9 207.8 ±235.0
+†tldr_c and tldr_h correspond to the tldr_content_gen and tldr_headline_gen
+datasets respectively
+Table 1 |Summary statistics of the benchmark tasks. The first four tasks form the 4-task
+multi-SLO set, and the last two form the 2-task set. Input/output lengths are reported as mean ±
+standard deviation over 300 requests.
+4. Evaluation
+Our evaluation aims to systematically assess the performance and resource efficiency of HFX
+under realistic, multi-SLO distributed inference workloads. Specifically, we seek to answer
+three core quantitative questions: (1) Does HFX achieve superior SLO attainment compared
+to competitive baselines? (2) How does HFX’s scheduling impact overall end-to-end latency
+for a heterogeneous mix of tasks? (3) Can HFX efficiently manage the dynamic scaling of
+resources to minimize resource cost while maintaining high SLO attainment? The following
+subsections detail the experimental setup, serving models, and benchmark workloads before
+presenting the results for these key metrics. Beyond core performance, we also investigate the
+practical robustness and adaptability of HFX to dynamic production conditions. Specifically,
+we evaluate whether the system can (1) adapt to dynamic traffic patterns, (2) remain stable even
+when operating in single-task regimes it was not optimized for, and (3) preserve performance
+when key control parameters, such as monitoring and scaling intervals, are varied.
+4.1. Experimental Setup
+We evaluate HFX on realistic multi-SLO workloads across multiple models and hardware setups.
+All methods run on the same cluster with identical configurations, and each experiment is
+repeated three times; plots show the mean with standard deviation as error bars.
+Hardware. The experimental testbed consists of two Huawei Atlas 800I compute nodes [13].
+Each node is equipped with eight Ascend 910B NPUs [18], with 64GB of HBM capacity per
+NPU. Intra-node communication is facilitated by direct HCCS links providing a peak bandwidth
+of 720 Gbps. For inter-node communication, the system utilizes a RoCE-enabled Ethernet fabric
+via 200GE QSFP ports. This configuration is representative of high-performance cluster in the
+production distributed inference clusters.
+Models. We evaluate HFX on three widely used open-source LLMs: Qwen7B, Qwen32B [3],
+and Llama70B [32], covering lightweight to large-scale deployments. Inference uses BF16
+precision for efficiency and accuracy, with tensor parallelism [27] configured as TP=1, 2, and 8,
+14
+
+===== PDF PAGE 15 =====
+4 tasks
+2 tasks
+Cost (*1e3) E2E (s) Attain. (%)
+Qwen7B
+Qwen32B
+Llama70b
+Qwen7B
+100
+80
+60
+100
+50
+100
+75
+50
+100
+100
+80
+60
+Qwen32B Llama70b
+100
+50
+95
+15
+20
+5
+10
+5
+10
+20
+40
+60
+7.5
+10.0 12.5
+5
+10
+15
+20
+40
+20
+10
+30
+20
+10
+8
+6
+15
+10
+15
+10
+5
+15
+20
+5
+10
+5
+10
+20
+40
+60
+7.5
+10.0 12.5
+5
+10
+15
+1.50
+1.25
+1.00
+4
+2
+4
+2
+2.0
+1.8
+1.6
+4.0
+3.5
+6
+4
+2
+15
+20
+5
+QPS
+QPS
+10
+5
+QPS
+HFX(Ours) RR
+10
+20
+40
+60
+7.5
+QPS
+10.0 12.5
+QPS
+5
+10
+QPS
+15
+SCORPIO
+HFX-Scaling(Ours)
+Figure 4 |Multi-task performance on 2-task and 4-task workloads. Metrics include SLO
+attainment (top, higher is better), end-to-end latency (middle, lower is better), and cost (bottom,
+lower is better) for HFX, RR, SCORPIO, and HFX-Scaling. Results use two instances, with up
+to four for scaling.
+respectively.
+Benchmark Workloads and Datasets. Production LLM services typically host multiple
+tasks with distinct latency targets and input/output characteristics. To capture this variabil-
+ity, we evaluate two multi-SLO task sets observed on Huawei Cloud. They contain diverse
+tasks with heterogeneous SLO requirements, summarized in Table 1. The first set includes
+the medical_qa dataset [6], which consists of auto-generated answers to clinical medical
+questions; the tldr_content_gen and tldr_headline_gen datasets [41], which focus on
+text generation by producing article content from headlines and headlines from article content,
+respectively; and the wikisql dataset [41, 43], a semantic parsing benchmark mapping natural
+language questions to SQL queries over tables. The second set comprises two tasks, gsm8k [5]
+that contains grade school math word problems and sharegpt [42] that is a collection of
+conversational data, representing high-complexity reasoning and conversational AI workloads,
+respectively. For evaluation, we draw 300 samples per task. Requests for each task follow a
+Poisson inter-arrival time distribution, with each task contributing an equal number of samples.
+A fixed random seed is used to ensure reproducibility.
+For priority-based SLO mapping (HFX-PM), we use the median SLO targets from Table 1
+with a ±25% range to separate priorities while allowing dynamic assignment based on real-time
+workloads.
+Baselines. We compare HFX against four representative scheduling approaches. (1) Al-
+addin [21], a heuristic-based latency optimizer for single-task workloads; (2) Simulated Anneal-
+ing (SA) [12], a stochastic scheduler designed for multi-SLO workloads; (3) SCORPIO [30],
+which also targets multi-SLO workloads, extended with Round-Robin logic to support multi-
+instance scheduling; and (4) Llumnix [29] with standard Round-Robin, referred as RR. Together,
+these baselines span both single-task and multi-SLO strategies, providing a comprehensive
+comparison across diverse competitive scenarios. All experiments are conducted under colocated
+deployment unless stated otherwise.
+15
+
+===== PDF PAGE 16 =====
+Qwen7B
+Attain. (%) Attain. (%)
+100
+80
+100
+50
+10
+5
+20
+10
+E2E (s)
+E2E (s)
+20
+10
+15
+10
+5
+10
+Qwen32B
+5
+QPS
+HFX-PD RR-PD
+QPS
+20
+10
+Cost (*1e3) Cost (*1e3)
+7.5
+5.0
+2.5
+7.5
+5.0
+2.5
+10
+5
+QPS
+HFX-PD-Scaling
+20
+10
+Figure 5 |Performance comparison under P/D disaggregated mode. Results for 4-task
+workloads using Qwen7B and Qwen32B.
+Metrics. We evaluate three metrics (§3.1): (i) SLO attainment, the fraction of requests
+meeting latency targets; (ii) E2E latency, from request arrival until request finishes generating
+tokens; and (iii) Resource cost, the total active time of all instances (one unit = one instance
+active for 50 ms), capturing both instance count and duration for fair comparison across methods.
+4.2. Multi-task Workload Experiments
+To evaluate how HFX handles heterogeneous workloads, we test with two multi-SLO task sets
+under both deployment modes.
+4.2.1. Colocated Mode
+Figure 4 compares the performance of HFX against RR and SCORPIO. The top row reports
+SLO attainment. On the 2-task benchmark, SLO-aware dispatching enables HFX to improve
+attainment by up to 1.23×over RR and 2.14×over SCORPIO. With scaling enabled, HFX-
+Scaling further raises these gains to 1.5×and 2.93×, respectively. On the more heterogeneous
+4-task benchmark, contention and queuing effects intensify, amplifying the benefits of SLO-
+aware scheduling. HFX achieves up to 2.60×improvement over RR and 1.73×over SCORPIO,
+and HFX-Scaling further increases these improvements to 4.44×and 2.59×.
+The middle row reports end-to-end latency. While all methods show similar latency at low
+QPS, our advantages become clear as load increases, maintaining responsiveness under heavy
+traffic. On the 4-task benchmark, HFX-Scaling achieves up to 50.96% and 65.82% latency
+reduction over RR and SCORPIO, confirming that our SLO-aware policies effectively mitigate
+queuing and contention.
+The bottom row compares cost efficiency. When compared to RR, our methods HFX and
+HFX-Scaling achieve similar cost, with occasional reductions of up to 4.99%. In contrast, relative
+to SCORPIO, our methods deliver substantial cost savings, indicating that the improved user
+satisfaction of our methods does not come at the expense of higher costs. Notably, for Llama70B,
+16
+
+===== PDF PAGE 17 =====
+4-Task
+2-Task
+100
+Qwen 7B
+Qwen32B
+Attainment (%) E2E Latency (s) Attainment (%) E2E Latency (s)
+15
+100
+75
+100
+98
+25
+10
+50
+QPS
+10
+5
+20
+8
+6
+25
+50
+30
+20
+10
+10
+20
+5
+10
+50
+19
+18
+25
+17
+50
+QPS
+20
+40
+20
+QPS
+HFX-PM RR
+5
+10
+40
+QPS
+Figure 6 |Performance under dynamic SLO ranges for Qwen7B and Qwen32B across 2-task
+and 4-task workloads. Metrics shown are SLO attainment and end-to-end latency comparing
+HFX against RR. HFX consistently achieves higher SLO attainment, especially at higher QPS.
+we observe up to 49.81% cost reduction over SCORPIO.
+4.2.2. P/D Disaggregated Mode
+We denote our methods in the disaggregated deployment mode as HFX-PD (with the SLO-aware
+dispatcher) and HFX-PD-Scaling (with both the SLO-aware dispatcher and scaler). We test
+on 4-task benchmark with initial allocation of 2 prefill and 2 decode instances, and scaling up
+to 8 instances on demand. Note that the experiment for Qwen32B (TP=2) runs across nodes,
+highlighting the system’s scalability and flexibility. Figure 5 compares HFX against RR-PD,
+showing that independent scheduling of prefill and decode improves SLO attainment and reduces
+latency while keeping cost similar to the baseline. The RR-PD baseline means that request
+dispatching in both the Prefill and Decode stages follows a round-robin policy. As shown in the
+Figure 5, both HFX-PD and HFX-PD-Scaling achieve higher attainment (up to 2.54×) and lower
+request latency (up to 31.82% reduction) compared to RR-PD. With auto-scaling enabled, the
+cost of HFX-PD-Scaling is only slightly higher than RR-PD for Qwen7B and roughly equivalent
+to RR-PD for Qwen32B. These experiments demonstrate practical benefits of our methods under
+disaggregated mode and heterogeneous workloads.
+4.3. Priority Mapping Experiments
+In production, requests often carry different latency priorities. To evaluate whether HFX can
+handle dynamic SLO assignment based on priority, we use median SLO targets with a ±25%
+range to separate priorities. Figure 6 shows that HFX consistently outperforms RR in SLO
+attainment across all workloads, with the advantage increasing at higher QPS due to its multi-
+SLO-aware scheduling and predictive mechanisms, achieving up to 7.02×improvement in
+attainment. Latency varies with workload and load: for 2-task sets, HFX incurs slightly higher
+latency due to scheduling overhead and conservative resource allocation with at most 1.35s,
+whereas for 4-task sets at high QPS, it reduces latency through efficient dispatching, prioritization,
+and lower queuing delays. The cost metric, which reflects scaling overhead, is not shown here.
+17
+
+===== PDF PAGE 18 =====
+Qwen 7B Qwen 32B Llama 70B
+Fast Scaling 0.89 ±0.01 2.05 ±0.02 1.16 ±0.05
+CPU Offloading 2.73 ±0.17 19.41 ±3.14 11.50 ±1.86
+Disk loading 4.14 ±0.26 28.84 ±2.23 22.58 ±0.82
+Table 2 |Scaling time for different models. Results for Qwen7B, Qwen32B, and LLaMA70B
+using different methods, measured in seconds.
+These results reflect the system’s ability to honor customer-assigned priorities under varying
+load, a common operational requirement.
+4.4. Fast Scaling Experiments
+Workloads fluctuate in practice, requiring the system to rapidly scale without violating SLOs.
+We compare three scaling strategies: (1) loading weights from disk when scaling, (2) offloading
+weights to CPU when scaling out and reloading from CPU when scaling in, and (3) loading
+weights from an already running instance, which we term Fast Scaling. As shown in Table 2, Fast
+Scaling significantly reduces scaling time, achieving up to a 9.88×speedup over CPU offloading
+and 19.39×speedup over disk-based loading. This shows that reusing weights resident in peer
+device memory can dramatically accelerate dynamic scaling without incurring the overhead of
+disk or CPU transfers.
+4.5. Deployment Experiences
+We evaluate how HFX behaves under dynamic workloads and varying system parameters,
+highlighting insights relevant for production deployment. These experiments do not aim to
+quantify algorithmic contributions, but to demonstrate practical robustness and responsiveness in
+realistic settings.
+4.5.1. Dynamic SLO Assignment and Priority Mapping
+Production LLM deployments experience fluctuating request rates and heterogeneous priority
+levels. To evaluate our system’s ability to dynamically adapt to runtime conditions by mapping
+priorities to absolute SLOs (Section 3.3.2), we conduct experiments under a dynamic workload.
+We begin with a single client generating 250 requests lowest-priority tasks (P3 tasks) at
+15 QPS. After 20 seconds, a new client joins, issuing P2 tasks at the same rate. This process
+continues until all four priority levels are active, at which point the total task rate reaches 60 QPS
+after 60 seconds. The bottom row of Figure 7 shows the resulting stacked request histogram.
+In this experiment, absolute task SLOs are derived from Table 1, and HFX’s priority mapping
+is configured to satisfy these targets.
+As shown in the upper row of Figure 7, RR schedules requests as quickly as possible,
+creating contention when multiple task types coexist (60–90s window), causing the TTFT of
+higher-priority tasks to violate their SLOs (blue dotted line).
+In contrast, HFX dynamically adjusts its scheduling. When the system is underloaded
+18
+
+===== PDF PAGE 19 =====
+Num. Requests TTFT (s)
+20
+15
+10
+5
+0
+100
+50
+0
+0
+Round-Robin
+Measured TTFT
+Target SLO
+1
+0
+60
+70
+20 60
+40
+Time (s)
+10
+5
+0
+80
+80
+90
+0
+HFX
+Measured TTFT
+Assigned SLO
+1
+0
+60
+20 40 60
+Time (s)
+70
+80
+80
+Request Arrivals by Priority
+0 10 20
+P0 (medical
+_qa)
+30
+P1 (tldr
+40
+Time (s)
+50 60
+70
+80
+content) P2 (tldr
+headline) P3 (wikisql)
+_
+_
+Figure 7 |Responsiveness of HFX to dynamic workloads. Top: The measured TTFT (solid
+lines) and the TTFT SLO (dotted lines) for different request types, averaged over per-second
+intervals for the RR (left) and HFX (right) schedulers. Bottom: The request arrival rate, where
+P3 starts at 15 QPS and priorities P2–P0 gradually ramp up to a total of 60 QPS at 60 seconds.
+(first 20s), it assigns tighter SLOs to low-priority (P3) requests to minimize their latency. As
+higher-priority requests join and contention increases, HFX adapts by relaxing the SLOs for
+lower-priority tasks up to their configured maximum, thereby preserving capacity to meet the
+strict SLOs of higher-priority tasks.
+The results demonstrate that HFX can safely handle sudden changes in demand while
+preserving service guarantees, a critical property for operational deployments. By dynamically
+adjusting assigned SLOs, it optimizes latency when capacity is available and ensures strict
+prioritization under contention, ensuring all tasks meet their configured performance targets.
+4.5.2. Single-task Stability
+HFX is designed for multi-task, multi-SLO workloads, we want to verify that it is still working
+on single-task deployments that remain common in production. We evaluate on the WikiSQL
+dataset using Qwen7B and Qwen32B, and compare HFX against two state-of-the-art single-task,
+single-SLO baselines, Aladdin and SA, under varying QPS levels. For this experiment, the TTFT
+and TPOT SLOs are set to 0.7 s and 0.5 s, respectively.
+As shown in Figure 8, all systems maintain near-perfect SLO attainment under light load. As
+QPS increases, however, SA’s attainment drops sharply once the system approaches saturation,
+while HFX sustains higher attainment, particularly at the knee point for Qwen7B (40 QPS).
+19
+
+===== PDF PAGE 20 =====
+SLO Attainment (%) SLO Attainment (%)
+100
+50
+0
+20
+100
+50
+0
+4
+40
+Qwen7B
+E2E Latency (s)
+10
+5
+0
+60
+Qwen32B
+E2E Latency (s) 15
+10
+5
+6 8
+10
+12 4
+QPS
+20
+6 8
+QPS
+HFX Aladdin SA
+40
+60
+10
+12
+Figure 8 |Single-task performance comparison of Qwen7B and Qwen32B on the WikiSQL
+dataset. The TTFT and TPOT SLOs are set to 0.7 s and 0.5 s, respectively.
+Figure 8 also reports end-to-end latency. Under higher loads, however, HFX delivers more
+stable performance, avoiding the sharp latency spikes observed with SA and Aladdin (e.g., at
+12 QPS on Qwen32B). These results confirm that HFX’s scheduling and instance-aware queuing
+mechanisms improve responsiveness and reduce congestion even in single-task settings.
+Overall, these results show that although HFX targets heterogeneous multi-SLO workloads,
+it remains competitive, and sometimes even better than Aladdin and SA.
+4.5.3. Monitor and Scaling Intervals
+To understand the sensitivity of HFX’s performance to key system parameters, we conduct an
+ablation study varying both the monitoring interval and the scaling interval as shown in Figure 9.
+Effect of Monitor Interval. We vary the monitor interval across 50 ms, 1 s, and 5 s. As
+shown in the top row of Figure 9, performance is largely robust to the choice of interval.
+However, slight trends are observable: (1) SLO attainment is slightly reduced with a 5 s monitor
+interval compared to 50 ms and 1 s, reflecting delayed feedback that slows adaptation to system
+status changes; (2) end-to-end latency is marginally higher with the 50 ms interval due to the
+slight overhead of frequent monitoring, especially under heavy load, though the impact remains
+minimal. Overall, HFX is robust across a wide range of monitor intervals, and choosing a
+moderate interval (e.g., 1 s) provides a good balance between responsiveness and overhead.
+Effect of Scaling Interval. We vary the scaling interval across 0.5 s, 1 s, and 2 s to evaluate
+how the frequency of scaling decisions affects performance (Figure 9). SLO attainment shows
+minimal differences across intervals for most QPS values. At high QPS, shorter intervals exhibit
+slightly lower attainment, as the overhead of frequent scaling outweighs the benefits, particularly
+under heavy load when time is critical.
+These results suggest that HFX’s performance is largely insensitive to the scaling interval
+within the tested range. While very short or intermediate intervals may introduce minor variability
+20
+
+===== PDF PAGE 21 =====
+Attainment (%)
+Attainment (%)
+100
+80
+60
+50ms
+1s
+5s
+2 4 6 8 10
+QPS
+100
+95
+90
+0.5s
+1s
+2s
+Monitor Interval
+E2E Latency (s)
+30
+20
+10
+Scaling Interval
+E2E Latency (s)
+20
+15
+10
+50ms
+1s
+5s
+2 4 6 8 10
+QPS
+0.5s
+1s
+2s
+2 4 6 8 10
+QPS
+2 4 6 8 10
+QPS
+Figure 9 |Ablation of monitor and scaling intervals on Qwen32B with the 4-task benchmark,
+using two instances in the first row and up to four instances in the second row.
+in attainment or latency, overall system robustness is preserved. These insights guide deployment
+parameter choices without requiring deep algorithmic tuning.
+5. Related Work
+5.1. Single-Node Inference and Prefill/Decode Optimization
+Single-node LLM serving systems have focused on improving efficiency within one server.
+vLLM [16] and FlexGen [26] optimize KV reuse and CPU–GPU offloading to reduce memory
+footprint, but assume uniform workloads without SLO differentiation. Apt-Serve [9] and Sarathi-
+Serve [2] improve throughput and tail-latency control via adaptive batching and chunked-prefill
+scheduling.
+These systems do not support multi-SLO-aware scheduling or dynamic scaling. In production,
+heterogeneous workloads with conflicting latency and throughput targets can lead to SLO
+violations or inefficient utilization when relying on single-node optimizations alone. This
+motivates the need for a multi-SLO-aware dispatcher that works across instances and stages, not
+just within a single node.
+5.2. Cluster-Level LLM Serving
+Distributed LLM serving frameworks exploit multiple nodes to handle large models and diverse
+workloads. Disaggregated deployment such as DistServe [44] and Splitwise [24] separate prefill
+and decode onto specialized cluster pools to balance compute and memory usage. KV-cache
+optimization systems like MIRAGE [17] and BlitzScale [39] improve memory utilization and
+tail latency through remapping and layer-level autoscaling.
+While these approaches improve resource utilization and latency, they often assume static
+placement and simple scheduling policies. In real-world cloud deployments, workload intensity
+can fluctuate rapidly, and prefill/decode stages may require independent scaling. These limitations
+21
+
+===== PDF PAGE 22 =====
+motivate dynamic stage-aware dispatching and adaptive scaling mechanisms to maintain SLOs
+under heterogeneous and bursty workloads.
+5.3. Multi-SLO Scheduling and Scaling
+Recent work addresses scheduling and scaling across multiple SLOs. SCORPIO [30], Tempo [40],
+and SA [12] prioritize requests based on SLO type and input length. Arrow [37], Aladdin [21],
+and PD-Multiplexing [7] extend this to prompt/decode architectures, allocating workloads
+dynamically to reduce latency or improve throughput. PolyServe [45] and SLOs-Serve [4]
+incorporate multi-SLO constraints into placement. HAS-GPU [10] and USHER [28] introduce
+adaptive autoscaling across replicas. These systems often treat scheduling, placement, and
+scaling separately, or assume slow spin-up times. They do not proactively reallocate capacity
+during bursty multi-SLO workloads, or limitedly support P/D disaggregation. In operational
+environments, this can lead to SLO violations and underutilized resources. These gaps motivate
+a unified system that jointly manages multi-SLO-aware scheduling, P/D disaggregation, and fast
+adaptive scaling.
+6. Conclusion
+We presented HFX, a unified LLM serving system that addresses the challenges of multi-SLO
+scheduling and elastic scaling. By combining a multi-SLO-aware dispatcher, a two-stage
+P/D scheduling mechanism, adaptive SLO mapping, and a fast, unified scaling controller,
+HFX efficiently manages heterogeneous workloads across both colocated and disaggregated
+deployments. It also supports distributed settings, including cross-node scenarios. Our extensive
+evaluation demonstrates that HFX significantly improves SLO attainment, reduces latency, lowers
+operational cost, and accelerates scaling compared to existing baselines. These results show that
+by integrating SLO-aware dispatching with dynamic scaling, HFX provides an effective, high-
+performance, and cost-efficient solution for LLM serving across diverse, multi-task workloads,
+generalizing across workload sizes, model scales, and deployment architectures to support
+production-grade, multi-tenant inference systems.
+Future work includes exploring heterogeneous models and hardware, enabling HFX to
+efficiently serve multiple model types of different sizes and resource requirements on both
+low-end and high-end hardware simultaneously.
+22
+
+===== PDF PAGE 23 =====
+References
+[1] Operating Systems Design and Implementation, 2024, Santa Clara, 2024.
+Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Florencia Leoni
+Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al. Gpt-4
+technical report. arXiv preprint arXiv:2303.08774, 2023.
+[2] Amey Agrawal, Nitin Kedia, Ashish Panwar, Jayashree Mohan, Nipun Kwatra, Bhargav S
+Gulavani, Alexey Tumanov, and Ramachandran Ramjee. Taming throughput-latency
+tradeoff in llm inference with sarathi-serve. Proceedings of 18th USENIX Symposium on
+[3] Jinze Bai, Shuai Bai, Yunfei Chu, Zeyu Cui, Kai Dang, Xiaodong Deng, Yang Fan, Wenbin
+Ge, Yu Han, Fei Huang, et al. Qwen technical report. arXiv preprint arXiv:2309.16609,
+2023.
+[4] Siyuan Chen, Zhipeng Jia, Samira Khan, Arvind Krishnamurthy, and Phillip B. Gibbons.
+Slos-serve: Optimized serving of multi-slo llms, 2025.
+[5] Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz
+Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, et al. Training
+verifiers to solve math word problems. arXiv preprint arXiv:2110.14168, 2021.
+[6] CMeKG_tools Contributors. Cmekg_tools: Chinese medical knowledge graph tools.
+https://github.com/king-yyf/CMeKG_tools, 2023.
+[7] Weihao Cui, Yukang Chen, Han Zhao, Ziyi Xu, Quan Chen, Xusheng Chen, Yangjie Zhou,
+Shixuan Sun, and Minyi Guo. Optimizing slo-oriented llm serving with pd-multiplexing,
+2025.
+[8] Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle,
+Aiesha Letman, Akhil Mathur, Alan Schelten, Amy Yang, Angela Fan, Anirudh Goyal,
+Anthony Hartshorn, Aobo Yang, Archi Mitra, Archie Sravankumar, Artem Korenev, Arthur
+Hinsvark, Arun Rao, Aston Zhang, Aurélien Rodriguez, Austen Gregerson, Ava Spataru,
+Baptiste Rozière, Bethany Biron, Binh Tang, Bobbie Chern, Charlotte Caucheteux, Chaya
+Nayak, Chloe Bi, Chris Marra, Chris McConnell, Christian Keller, Christophe Touret,
+Chunyang Wu, Corinne Wong, Cristian Canton Ferrer, Cyrus Nikolaidis, Damien Allonsius,
+Daniel Song, Danielle Pintz, Danny Livshits, David Esiobu, Dhruv Choudhary, Dhruv
+Mahajan, Diego Garcia-Olano, Diego Perino, Dieuwke Hupkes, Egor Lakomkin, Ehab
+AlBadawy, Elina Lobanova, Emily Dinan, Eric Michael Smith, Filip Radenovic, Frank
+Zhang, Gabriel Synnaeve, Gabrielle Lee, Georgia Lewis Anderson, Graeme Nail, Grégoire
+Mialon, Guan Pang, Guillem Cucurell, Hailey Nguyen, Hannah Korevaar, Hu Xu, Hugo
+Touvron, Iliyan Zarov, Imanol Arrieta Ibarra, Isabel M. Kloumann, Ishan Misra, Ivan
+Evtimov, Jade Copet, Jaewon Lee, Jan Geffert, Jana Vranes, Jason Park, Jay Mahadeokar,
+Jeet Shah, Jelmer van der Linde, Jennifer Billock, Jenny Hong, Jenya Lee, Jeremy Fu,
+Jianfeng Chi, Jianyu Huang, Jiawen Liu, Jie Wang, Jiecao Yu, Joanna Bitton, Joe Spisak,
+Jongsoo Park, Joseph Rocca, Joshua Johnstun, Joshua Saxe, Junteng Jia, Kalyan Vasuden
+Alwala, Kartikeya Upasani, Kate Plawiak, Ke Li, Kenneth Heafield, Kevin Stone, and et al.
+The llama 3 herd of models. CoRR, abs/2407.21783, 2024.
+23
+
+===== PDF PAGE 24 =====
+[9] Shihong Gao, Xin Zhang, Yanyan Shen, and Lei Chen. Apt-serve: Adaptive request
+scheduling on hybrid cache for scalable llm inference serving. Proc. ACM Manag. Data,
+3(3), June 2025.
+[10] Jianfeng Gu, Puxuan Wang, Isaac Nunezand, Kai Huang, and Michael Gerndt. Has-gpu:
+Efficient hybrid auto-scaling with fine-grained gpu allocation for slo-aware serverless
+inferences, 2025.
+[11] Cunchen Hu, Heyang Huang, Liangliang Xu, Xusheng Chen, Jiang Xu, Shuang Chen, Hao
+Feng, Chenxi Wang, Sa Wang, Yungang Bao, Ninghui Sun, and Yizhou Shan. Inference
+without interference: Disaggregate llm inference for mixed downstream workloads, 2024.
+[12] Jinqi Huang, Yi Xiong, Xuebing Yu, Wenjie Huang, Entong Li, Li Zeng, and Xin Chen.
+Slo-aware scheduling for large language model inferences, 2025.
+[13] Huawei. Atlas 800i a2 inference. https://support.huawei.com/enterpris
+e/en/doc/EDOC1100370558/d3d87653/technical-specifications, 2025.
+Accessed: 2025-11-21.
+[14] Huawei. Modelarts ai platform. https://www.huaweicloud.com/intl/en-us/
+product/modelarts.html, 2025. Accessed: 2025-12-08.
+[15] Huawei Technologies Co., Ltd. LLM-DataDist API Reference. Huawei Ascend, 2025.
+[16] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu,
+Joseph E. Gonzalez, Hao Zhang, and Ion Stoica. Efficient memory management for large
+language model serving with pagedattention. In Proceedings of the ACM SIGOPS 29th
+Symposium on Operating Systems Principles, 2023.
+[17] Ruihao Li, Shagnik Pal, Vineeth Narayan Pullu, Prasoon Sinha, Jeeho Ryoo, Lizy K. John,
+and Neeraja J. Yadwadkar. Mirage: Kv cache optimization through parameter remapping
+for multi-tenant llm serving, 2025.
+[18] Heng Liao, Jiajin Tu, Jing Xia, Hu Liu, Xiping Zhou, Honghui Yuan, and Yuxing Hu.
+Ascend: a scalable and unified architecture for ubiquitous deep neural network comput-
+ing: Industry track paper. In 2021 IEEE International Symposium on High-Performance
+Computer Architecture (HPCA), pages 789–801. IEEE, 2021.
+[19] Aixin Liu, Bei Feng, Bing Xue, Bingxuan Wang, Bochao Wu, Chengda Lu, Chenggang
+Zhao, Chengqi Deng, Chenyu Zhang, Chong Ruan, et al. Deepseek-v3 technical report.
+arXiv preprint arXiv:2412.19437, 2024.
+[20] Philipp Moritz, Robert Nishihara, Stephanie Wang, Alexey Tumanov, Richard Liaw, Eric
+Liang, Melih Elibol, Zongheng Yang, William Paul, Michael I Jordan, et al. Ray: A
+distributed framework for emerging {AI}applications. In 13th USENIX symposium on
+operating systems design and implementation (OSDI 18), pages 561–577, 2018.
+[21] Chengyi Nie, Rodrigo Fonseca, and Zhenhua Liu. Aladdin: Joint placement and scaling
+for slo-aware llm serving. arXiv preprint arXiv:2405.06856, 2024.
+24
+
+===== PDF PAGE 25 =====
+[22] NVIDIA. Tensorrt llm. https://github.com/NVIDIA/TensorRT-LLM, 2025.
+Accessed: 2025-11-21.
+[23] OpenAI. Openai api. https://openai.com/blog/openai-api, 2020. Accessed:
+2025-11-19.
+[24] Pratyush Patel, Esha Choukse, Chaojie Zhang, Aashaka Shah, Íñigo Goiri, Saeed Maleki,
+and Ricardo Bianchini. Splitwise: Efficient generative llm inference using phase split-
+ting. In 2024 ACM/IEEE 51st Annual International Symposium on Computer Architecture
+(ISCA), pages 118–132, 2024.
+[25] Ruoyu Qin, Zheming Li, Weiran He, Mingxing Zhang, Yongwei Wu, Weimin Zheng, and
+Xinran Xu. Mooncake: A kvcache-centric disaggregated architecture for llm serving. arXiv
+preprint arXiv:2407.00079, 2024.
+[26] Ying Sheng, Lianmin Zheng, Binhang Yuan, Zhuohan Li, Max Ryabinin, Beidi Chen, Percy
+Liang, Christopher Ré, Ion Stoica, and Ce Zhang. Flexgen: High-throughput generative
+inference of large language models with a single gpu. In International Conference on
+Machine Learning, pages 31094–31116. PMLR, 2023.
+[27] Mohammad Shoeybi, Mostofa Patwary, Raul Puri, Patrick LeGresley, Jared Casper, and
+Bryan Catanzaro. Megatron-lm: Training multi-billion parameter language models using
+model parallelism. arXiv preprint arXiv:1909.08053, 2019.
+[28] Sudipta Saha Shubha, Haiying Shen, and Anand Iyer. USHER: Holistic interference avoid-
+ance for resource optimized ML inference. In 18th USENIX Symposium on Operating
+Systems Design and Implementation (OSDI 24), pages 947–964, Santa Clara, CA, July
+2024. USENIX Association.
+[29] Biao Sun, Ziming Huang, Hanyu Zhao, Wencong Xiao, Xinyi Zhang, Yong Li, and Wei
+Lin. Llumnix: Dynamic scheduling for large language model serving. In 18th USENIX
+Symposium on Operating Systems Design and Implementation (OSDI 24), pages 173–191,
+Santa Clara, CA, July 2024. USENIX Association.
+[30] Yinghao Tang, Tingfeng Lan, Xiuqi Huang, Hui Lu, and Wei Chen. Scorpio: Serving the
+right requests at the right time for heterogeneous slos in llm inference, 2025.
+[31] Gemma Team, Thomas Mesnard, Cassidy Hardin, Robert Dadashi, Surya Bhupati-
+raju, Shreya Pathak, Laurent Sifre, Morgane Rivière, Mihir Sanjay Kale, Juliette Love,
+et al. Gemma: Open models based on gemini research and technology. arXiv preprint
+arXiv:2403.08295, 2024.
+[32] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne Lachaux,
+Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal Azhar, et al.
+Llama: Open and efficient foundation language models. arXiv preprint arXiv:2302.13971,
+2023.
+[33] Pascal Van Hentenryck, Hadrien Bentz, and Laurent Michel. A rolling-horizon approach
+for multi-period optimization. Annals of Operations Research, 70:287–311, 1996.
+25
+
+===== PDF PAGE 26 =====
+[34] vLLM Community. vllm ascend plugin. https://github.com/vllm-project/v
+llm-ascend, 2024. Accessed: 2025-06-05.
+[35] Chao Wang, Pengfei Zuo, Zhangyu Chen, Yunkai Liang, Zhou Yu, and Ming-Chang Yang.
+Prefill-decode aggregation or disaggregation? unifying both for goodput-optimized llm
+serving. arXiv preprint arXiv:2508.01989, 2025.
+[36] Chao Wang, Pengfei Zuo, Zhangyu Chen, Yunkai Liang, Zhou Yu, and Ming-Chang Yang.
+Prefill-Decode aggregation or disaggregation? unifying both for goodput-optimized llm
+serving. arXiv preprint, 2025.
+[37] Yu Wu, Tongxuan Liu, Yuting Zeng, Siyu Wu, Jun Xiong, Xianzhe Dong, Hailong Yang,
+Ke Zhang, and Jing Li. Arrow: Adaptive scheduling mechanisms for disaggregated llm
+inference architecture, 2025.
+[38] An Yang, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chengyuan
+Li, Dayiheng Liu, Fei Huang, Haoran Wei, Huan Lin, Jian Yang, Jianhong Tu, Jianwei
+Zhang, Jianxin Yang, Jiaxi Yang, Jingren Zhou, Junyang Lin, Kai Dang, Keming Lu, Keqin
+Bao, Kexin Yang, Le Yu, Mei Li, Mingfeng Xue, Pei Zhang, Qin Zhu, Rui Men, Runji Lin,
+Tianhao Li, Tingyu Xia, Xingzhang Ren, Xuancheng Ren, Yang Fan, Yang Su, Yichang
+Zhang, Yu Wan, Yuqiong Liu, Zeyu Cui, Zhenru Zhang, and Zihan Qiu. Qwen2.5 technical
+report. arXiv preprint arXiv:2412.15115, 2024.
+[39] Dingyan Zhang, Haotian Wang, Yang Liu, Xingda Wei, Yizhou Shan, Rong Chen, and
+Haibo Chen. {BlitzScale}: Fast and live large model autoscaling with o (1) host caching.
+In 19th USENIX Symposium on Operating Systems Design and Implementation (OSDI
+25), pages 275–293, 2025.
+[40] Wei Zhang, Zhiyu Wu, Yi Mu, Banruo Liu, Myungjin Lee, and Fan Lai. Tempo:
+Application-aware llm serving with mixed slo requirements, 2025.
+[41] Justin Zhao, Timothy Wang, Wael Abid, Geoffrey Angus, Arnav Garg, Jeffery Kinnison,
+Piero Molino, Travis Addair, and Devvret Rishi. Lora land: 310 fine-tuned llms that rival
+gpt-4 — a technical report. https://predibase.com/blog/lora-land-fine-tuned-open-source-
+llms-that-outperform-gpt-4, 2024.
+[42] Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao
+Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric P. Xing, Hao Zhang, Joseph E. Gonzalez,
+and Ion Stoica. Judging llm-as-a-judge with mt-bench and chatbot arena. arXiv preprint
+arXiv:2306.05685, 2023.
+[43] Victor Zhong, Caiming Xiong, and Richard Socher. Seq2sql: Generating structured queries
+from natural language using reinforcement learning. arXiv preprint arXiv:1709.00103,
+2017.
+[44] Yinmin Zhong, Shengyu Liu, Junda Chen, Jianbo Hu, Yibo Zhu, Xuanzhe Liu, Xin Jin, and
+Hao Zhang. Distserve: disaggregating prefill and decoding for goodput-optimized large
+language model serving. In Proceedings of the 18th USENIX Conference on Operating
+Systems Design and Implementation, OSDI’24, USA, 2024. USENIX Association.
+26
+
+===== PDF PAGE 27 =====
+[45] Kan Zhu, Haiyang Shi, Le Xu, Jiaxin Shan, Arvind Krishnamurthy, Baris Kasikci, and
+Liguang Xie. Polyserve: Efficient multi-slo serving at scale, 2025.
+27

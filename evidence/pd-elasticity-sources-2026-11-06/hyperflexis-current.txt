@@ -1,0 +1,11 @@
+URL: https://arxiv.org/abs/2508.15919
+Fetched at UTC: 2026-11-06T04:02:59.775939+00:00
+
+(cs)
+[Submitted on 21 Aug 2025 (
+v1
+), last revised 23 Apr 2026 (this version, v3)]
+Title:
+HFX: Joint Design of Algorithms and Systems for Multi-SLO Serving and Fast Scaling
+Authors:
+Zahra Yousefijamarani

@@ -1,0 +1,1525 @@
+Source: 28_Arrow_arxiv_v2.pdf
+Pages: 14
+
+===== PDF PAGE 1 =====
+arXiv:2505.11916v2 [cs.DC] 6 Nov 2025
+ARROW: ADAPTIVE SCHEDULING MECHANISMS FOR DISAGGREGATED LLM
+INFERENCE ARCHITECTURE
+Yu Wu 1 Tongxuan Liu 1 Yuting Zeng 1 Siyu Wu 2 Jun Xiong 3 Xianzhe Dong 1 Hailong Yang 2 Ke Zhang 3
+Jing Li 1
+ABSTRACT
+Existing large language model (LLM) serving systems typically employ Prefill-Decode disaggregated architecture
+to prevent computational interference between the prefill and decode phases. However, in real-world LLM
+serving scenarios, significant fluctuations in request input/output lengths lead to imbalanced computational loads
+between prefill and decode nodes under traditional static node allocation strategies, consequently preventing
+efficient utilization of computing resources to improve the system’s goodput. To address this challenge, we
+design and implement Arrow, an adaptive scheduler that leverages stateless instances and latency characteristics
+of prefill and decode tasks to achieve efficient adaptive request and instance scheduling. Arrow dynamically
+adjusts the number of instances handling prefill and decode tasks based on real-time cluster performance metrics,
+substantially enhancing the system’s capability to handle traffic spikes and load variations. Our evaluation under
+diverse real-world workloads shows that Arrow achieves up to 2.55×higher request serving rates compared to
+state-of-the-art Prefill-Decode disaggregated serving systems.
+1 INTRODUCTION
+Large language models (LLMs), such as Gemini (Team
+et al., 2024a;b), GPT (OpenAI et al., 2024a;b), Llama (Tou-
+vron et al., 2023; Grattafiori et al., 2024), Qwen (Bai et al.,
+2023; Qwen et al., 2025), and DeepSeek (DeepSeek-AI
+et al., 2025a;b), have achieved remarkable success across
+various domains. Building upon these models, a series of in-
+novative applications have emerged, including LLM-based
+search engines (Perplexity Inc., 2025; Mehdi, 2023), per-
+sonal assistants (OpenAI Inc., 2025; DeepSeek Inc., 2025),
+and embodied intelligence systems (Wang et al., 2023; Li
+et al., 2023), highlighting the tremendous application po-
+tential of LLMs. However, deploying these LLMs’ infer-
+ence services in production environments presents numerous
+challenges. The massive parameters of LLMs and ultra-
+long input sequences impose tremendous computational and
+memory demands, making it difficult to consistently meet
+strict Service Level Objectives (SLOs) even when using
+high-performance GPU servers (Zhou et al., 2024; Yuan
+et al., 2024; Zhen et al., 2025).
+In LLM inference services, token generation proceeds iter-
+atively in an autoregressive manner, where each iteration
+decodes the next token based on previous token sequence.
+The inference process is typically divided into two distinct
+1University of Science and Technology of China 2Beihang
+University 3JD.com.
+Preliminary work. Under review. Do not distribute.
+phases: prefill and decode. During the prefill phase, the
+entire input token sequence undergoes forward propagation
+to generate the first output token. In the decode phase, each
+newly generated token is concatenated to the end of the
+current token sequence and used as input for generating the
+subsequent token in each iteration. Two key metrics are
+commonly used to evaluate the performance of inference
+services: (1) Time-to-First-Token (TTFT), measuring the
+latency to generate the first token in the prefill phase; and
+(2) Time-per-Output-Token (TPOT), representing the aver-
+age token generation latency in the decode phase. Efficient
+inference services must satisfy strict SLOs under limited
+hardware resources while maximizing the system’s goodput.
+Recently, researchers have proposed various optimization
+techniques to improve the overall throughput of serving
+systems and meet SLOs of diverse applications. A notable
+advancement is continuous batching (Yu et al., 2022), which
+implements iteration-level scheduling to dynamically add or
+remove requests in the batch during each computation itera-
+tion. This approach provides greater flexibility compared to
+traditional request-level scheduling, significantly reducing
+queuing latency. Subsequent studies introduced chunked
+prefill (Holmes et al., 2024; Agrawal et al., 2024), which di-
+vides input sequences into smaller chunks and batches them
+with decode tasks to mitigate the latency spikes caused by
+lengthy prompts, further enabling stall-free scheduling that
+allows new requests to be added without interrupting on-
+going decode processing. However, recent works (Zhong
+
+===== PDF PAGE 2 =====
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+Azure Code
+Azure Conversation
+×106
+×104
+×105
+# Input Tokens
+1.0
+0.5
+0.0
+1.5
+1.0
+0.5
+# Output Tokens
+# Input Tokens
+6
+4
+2
+0.0
+0
+Input Output
+×104
+8
+6
+4
+2
+# Output Tokens
+0
+# Input Tokens
+×105
+4
+3
+2
+1
+0
+BurstGPT (1-hour clip)
+×104
+Mooncake Conversation
+×106
+×104
+2
+1
+# Output Tokens
+0
+# Input Tokens
+3
+2
+1
+0
+8
+6
+4
+2
+# Output Tokens
+0
+0 20 40 60
+Time (minute)
+0 20 40 60
+Time (minute)
+0 20 40 60
+Time (minute)
+0 20 40 60
+Time (minute)
+Figure 1: Total request input/output length per minute over time in different LLM serving systems.
+et al., 2024; Patel et al., 2024; Hu et al., 2025) have shown
+that prefill and decode phases exhibit fundamentally dis-
+tinct computational characteristics and latency requirements.
+Colocating prefill and decode computation from different re-
+quests creates mutual interference, causing increased TTFT
+and TPOT that ultimately degrades the system’s goodput.
+To address the interference between prefill and decode
+phases, DistServe (Zhong et al., 2024) assigns these phases
+to separate instances, eliminating phase interference while
+enabling independent optimization of parallelization strate-
+gies for each phase. Splitwise (Patel et al., 2024) further
+explores both homogeneous and heterogeneous cluster de-
+ployments to optimize cost-efficiency and throughput. Shuf-
+fleInfer (Hu et al., 2025) designs a two-level scheduling
+algorithm based on resource utilization prediction to prevent
+decode scheduling hotspots. While disaggregation resolves
+phase interference, a key challenge remains: properly con-
+figuring the ratio between prefill and decode workers to
+maximize goodput. Improper configuration ratio can lead
+to severe performance degradation (Qin et al., 2025).
+We observe substantial variability in input and output
+lengths across real-world LLM inference workloads. This
+observation is drawn from diverse production traces as il-
+lustrated in Figure 1, including Azure LLM inference ser-
+vices (Patel et al., 2024), Azure OpenAI GPT service (Burst-
+GPT) (Wang et al., 2025), and Kimi conversation service
+(Mooncake Conversation) (Qin et al., 2025). The variation
+of input/output length directly impacts the workload distri-
+bution between prefill and decode nodes (Zhong et al., 2024;
+Du et al., 2025), making the optimal prefill-decode (PD)
+ratio configuration highly sensitive to workload patterns.
+Consequently, static PD ratio fails to achieve optimal per-
+formance under such fluctuating conditions, necessitating
+adaptive resource allocation strategies.
+To address the above challenge, we first conduct an in-depth
+analysis of workload variations in real-world inference ser-
+vices. Our study reveals that existing Prefill-Decode disag-
+gregated systems exhibit lagging instance scheduling when
+handling dynamic workload changes (§3). Based on the
+request processing workflow of Prefill-Decode disaggre-
+gated systems, we derive crucial insights for request and
+instance scheduling (§4). Building upon these analyses and
+insights, we design Arrow, an adaptive request and instance
+scheduler that dynamically schedules requests and instances
+based on SLO settings and instance load (§5). Arrow em-
+ploys stateless instances where each instance can process
+both prefill and decode requests without dedicated roles.
+The system features an SLO-aware scheduling algorithm
+where a global scheduler dynamically adjusts request dis-
+patching and instance allocation based on: (1) predicted
+TTFT for incoming requests, (2) real-time token generation
+intervals of ongoing requests, and (3) target SLO metrics.
+We implement Arrow based on vLLM (Kwon et al., 2023)
+and evaluate its performance using diverse production work-
+loads (§6). Experimental results show that Arrow can
+significantly outperform existing approaches, delivering
+1.59×~2.55×higher request serving rates than state-of-the-
+art PD-disaggregated systems under given SLO constraints.
+In summary, our main contributions are as follows:
+• Identify that fluctuations in input/output lengths can lead
+to suboptimal goodput under traditional static PD config-
+uration ratio and propose several key insights for more
+effective request and instance scheduling.
+• Design a novel scheduler Arrow that enables adaptive re-
+quest and instance scheduling through stateless instances
+and latency characteristics of prefill and decode tasks.
+• Conduct a comprehensive performance evaluation of Ar-
+row using real-world workloads, demonstrating the effec-
+tiveness of its adaptive scheduling strategy.
+2 BACKGROUND
+2.1 LLM Inference
+Modern LLMs (OpenAI et al., 2024a; Grattafiori et al., 2024;
+Qwen et al., 2025; DeepSeek-AI et al., 2025b) mostly adopt
+the transformer architecture (Vaswani et al., 2017) and pro-
+cess input sequences through an autoregressive generation
+process. To avoid redundant computation, existing inference
+engines typically employ KV Cache (HuggingFace, 2025)
+to cache intermediate results, thereby dividing the computa-
+tion for a single request into two phases: Prefill and Decode.
+During the prefill phase, the inference engine processes the
+user’s input, generates KV Cache for all input tokens, and
+
+===== PDF PAGE 3 =====
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+Azure Code
+Azure Conversation
+BurstGPT (1-hour clip)
+Mooncake Conversation
+Normalized P/D Load
+2.5
+2.0
+1.5
+1.0
+0.5
+Normalized P/D Load
+1.6
+1.4
+1.2
+1.0
+0.8
+Normalized P/D Load
+2.0
+1.5
+1.0
+0.5
+Normalized P/D Load
+1.75
+1.50
+1.25
+1.00
+0.75
+0 20 40 60
+Time (minute)
+0 20 40 60
+Time (minute)
+0 20 40 60
+Time (minute)
+0 20 40 60
+Time (minute)
+Figure 2: Normalized Prefill / Decode load over time in different traces.
+produces the first output token. In the decode phase, the
+engine computes KV Cache for each newly generated token
+in subsequent iterations and outputs the next token. Since
+both prefill and decode phases require shared access to KV
+Cache, existing serving systems typically colocate these two
+phases within the same instance. Techniques such as contin-
+uous batching (Yu et al., 2022) and chunked prefill (Agrawal
+et al., 2024) are employed to further optimize the system’s
+overall throughput.
+2.2 Prefill-Decode Disaggregation
+Recent studies have highlighted significant differences in
+computational characteristics between the prefill and decode
+phases (Patel et al., 2024; Zhong et al., 2024), which can
+lead to mutual interference between these two phases (Hu
+et al., 2025) and suboptimal hardware resource alloca-
+tion (Zhong et al., 2024). To address these issues, re-
+searchers have proposed the Prefill-Decode disaggregated
+inference architecture (Patel et al., 2024; Hu et al., 2025;
+Zhong et al., 2024), which divides compute instances into
+two types: prefill instances and decode instances, each dedi-
+cated to handling their respective phases. After completing
+the prefill computation for a request, the prefill instance
+transfers both the request and its corresponding KV Cache
+to a decode instance via high-speed interconnects such as
+NVLink or InfiniBand. The decode instance then proceeds
+with the subsequent decode computations. This architec-
+ture eliminates computational interference between the two
+phases and enables independent optimization of paralleliza-
+tion strategies and resource allocation for each phase by
+decoupling prefill and decode, further improving the flexi-
+bility in performance tuning and overall goodput.
+3 MOTIVATION
+The Prefill-Decode disaggregated inference architecture en-
+ables independent optimization for both phases. However,
+we observe that existing disaggregated systems employing
+static instance partitioning schemes suffer from low hard-
+ware resource utilization and inadequate responsiveness to
+traffic bursts. In this section, we will elaborate on this is-
+sue using production traces from real-world LLM serving
+systems and present our key insights for addressing it.
+3.1 Diversity of Workloads
+We conduct an in-depth analysis of the four traces men-
+tioned in Section 1. Figure 1 shows the total input and
+output lengths of requests per minute over time. We observe
+that these traces exhibit substantial temporal variations in
+request input and output lengths within traces, with per-
+minute lengths differing by more than 50 times between the
+lowest and highest load periods. Besides, significant varia-
+tion in workload characteristics can also be observed across
+traces: Azure Code and BurstGPT exhibit frequent bursts,
+while Mooncake Conversation maintains relatively stable
+loads. Load predictability also varies significantly, with
+Azure Code showing strong input-output length correlation
+compared to Azure Conversation’s weaker correlation.
+Prior works (Zhong et al., 2024; Du et al., 2025) reveal that
+the load of prefill phase scales quadratically with the input
+length, while the load of decode phase grows linearly with
+the total number of tokens in the batch. This fundamental
+difference in scaling characteristics leads to distinct load
+growth rates between prefill and decode instances. The ob-
+served diversity in input/output lengths further exacerbates
+load fluctuations. To illustrate this fluctuation, we aggregate
+the total prefill and decode processing times of all requests
+within each minute in Figure 1, treating them respectively
+as the system’s prefill and decode loads. Using the aver-
+age Prefill/Decode load ratio across the entire trace as a
+baseline, we compute the per-minute Prefill/Decode load
+ratio relative to this baseline, as shown in Figure 2. The red
+line at 1.0 represents the baseline Prefill/Decode load. A
+value above 1.0 indicates that a higher P/D instance ratio
+can achieve better serving performance. Conversely, a value
+below 1.0 implies that a lower P/D ratio is preferred. We
+can observe significant variation in prefill and decode load
+dynamics over time, indicating that serving systems must
+be capable of dynamically adjusting the ratio of prefill and
+decode nodes to accommodate varying workload patterns.
+3.2 Existing Solutions
+Workload Profiling and Simulation. Existing works (Jin
+et al., 2024; Patel et al., 2024; Qin et al., 2025) typically set
+the PD ratio based on profiling or simulator data. However,
+profiling-based methods are only effective when request
+
+===== PDF PAGE 4 =====
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+arrival patterns and length distributions remain relatively
+stable. In situations with substantial load variations, if ad-
+equate instances are provisioned based on the peak load
+of both types of instances, it may lead to idle hardware
+resources when the load of one type of task is low. Alterna-
+tively, if the PD ratio is set according to the average load,
+the preconfigured ratio may deviate from the actual load
+during fluctuations, potentially resulting in SLO violations.
+Length and Utilization Monitoring. Another common ap-
+proach is to dynamically adjust the types of instances based
+on the request length distribution or instance utilization.
+However, the instance flipping strategies adopted by current
+systems (Zhong et al., 2024; Patel et al., 2024; Hu et al.,
+2025) generally suffer from long response times. These
+approaches typically involve multiple steps, including ob-
+servation, waiting for flipping conditions, and restarting
+instances. The entire process often takes several minutes
+to finish, exhibiting significant scheduling latency. As a
+result, the serving system struggles to promptly adapt to
+workload fluctuations. Moreover, this approach introduces
+additional instance downtime, which further degrades the
+system’s overall serving capacity.
+4 ANALYSIS
+In this section, we present several key insights for request
+and instance scheduling in PD-disaggregated systems.
+4.1 Request Processing
+Figure 3 illustrates the complete request processing work-
+flow in a typical PD-disaggregated system. Consider a re-
+quest r with output tokens o1o2···om, the request is first
+dispatched to a prefill instance, experiencing prefill queu-
+ing delay q1 before starting prefill computation (duration
+p1). The system then waits (q2) for a decode instance to
+fetch both the request and its corresponding KV Cache, with
+transfer time c. After decode queuing delay q3, the decode
+instance begins iterative token generation, where each itera-
+tion produces one token with computation time p2 through
+pm. We assume that prefill instances process requests se-
+quentially, while decode instances maximize batch size by
+grouping multiple decode requests within given batch size
+and GPU memory constraints. The rationale is that increas-
+ing the prefill batch size can hardly bring improvements
+in throughput; while enlarging the decode batch size can
+substantially enhance throughput (Zhong et al., 2024; Patel
+et al., 2024; Hu et al., 2025).
+4.2 TTFT
+TTFT (Time-to-First-Token) is a key indicator of the pro-
+cessing capability of prefill instances. It is defined as the
+time from when the user issues a request until the first token
+Output Token: 𝒐𝟏 𝒐𝟐 𝒐𝒎
+…
+Prefill
+Queueing
+𝒒𝟏
+Prefill
+Processing
+𝒑𝟏
+KV Cache
+Transmission
+Queueing
+𝒒𝟐
+KV Cache
+Transmission
+𝒄
+Decode
+Queueing
+𝒒𝟑
+Decode
+Iteration
+𝒑𝟐
+…
+Decode
+Iteration
+𝒑𝒎
+Timeline
+Request
+Issued
+TTFT TPOT × (𝒎 − 𝟏)
+Request
+Finished
+Figure 3: Request processing timeline in Prefill-Decode
+disaggregated inference system.
+is received, corresponding to the q1 + p1 duration illustrated
+in Figure 3. Suppose there are n prefill requests r1···rn
+to be processed on the prefill instance. Let ai denote the
+arrival time of the i-th request, ei denote its computation
+completion time, q(i)
+1 denote the prefill queuing delay, and
+p(i)
+1 denote the prefill processing time. Then we have:
+TTFTi = q(i)
+1 + p(i)
+1 = max{ei−1−ai, 0}+ p(i)
+1 (1)
+ei = ai + TTFTi (2)
+Specifically, TTFT1 = p1. We summarize three key charac-
+teristics of TTFT:
+• Strong Predictability: Equations 1 and 2 indicate that
+the TTFT of the i-th request can be uniquely determined
+by the arrival times and prefill processing times of the
+first to i-th requests. Since the relationship between the
+computation time of a prefill request and input length can
+be determined through profiling and interpolation (Zhong
+et al., 2024; Qin et al., 2025; Du et al., 2025), the TTFT
+of each request can be accurately predicted.
+• Monotonicity: Starting from the moment a user issues a
+request, the TTFT of the request can only increase mono-
+tonically with the processing time. If the current queuing
+delay and computation time exceed the TTFT SLO, the
+request can no longer meet the SLO requirement.
+• Sensitivity to Burst Traffic: Consider the case where
+n requests arrive as a burst, meaning their arrival times
+ai fall within a narrow interval, In this case, ai can be
+approximated as a constant, and the monotonic increase
+of ei causes the TTFT of requests 1 through n to exhibit
+an increasing trend.
+Insight 1: The strong predictability of TTFT enables the
+serving system to leverage queue information from prefill
+instances to accurately predict the TTFT of new requests,
+thereby anticipating potential violations of TTFT SLO.
+Insight 2: The monotonicity of TTFT and its sensitivity to
+burst traffic imply that the serving system cannot rely on
+monitoring the TTFT metrics of completed requests to make
+instance scheduling decisions. Otherwise, this approach
+may lead to TTFT SLO violations for later-queued requests
+in bursty traffic scenarios, with no remedial actions available
+to bring these requests back into SLO compliance.
+
+===== PDF PAGE 5 =====
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+4.3 TPOT
+The TPOT (Time-per-Output-Token) metric is a key indi-
+cator of the processing capability of decode instances. It
+represents the average waiting time between every two con-
+secutive tokens received by the user. Let tj+1 denote the
+time interval between the output tokens oj and oj+1 of re-
+quest r. Then, TPOT can be expressed as:
+TPOT=
+m
+j=2 tj
+m−1
+=
+Decode Phase Time
+m−1 (m ≥2) (3)
+Here, tj= pj if j > 2. Specifically, t2 = q2 + c + q3 + p2.
+We focus our analysis on the four components of t2:
+• KV Cache Transmission Queueing Delay q2 and Decode
+Queueing Delay q3: Having sufficient GPU memory is
+the prerequisite for a decode instance to fetch the cache
+of a decode request and execute it. However, the iterative
+process of LLMs makes it difficult to predict the output
+length of each request in advance, further complicating
+the estimation of the available GPU memory of decode in-
+stances at any given moment. Consequently, both queuing
+delays are highly unpredictable when the decode instance
+is under high load with limited available memory.
+• Cache Transmission Time c: It can be determined by the
+size of the KV Cache to be transmitted and the available
+bandwidth.
+• Decode Iteration Time p2: The relationship between pro-
+cessing time and the number of tokens in the batch can be
+determined through profiling (Zhong et al., 2024).
+We summarize two key characteristics of TPOT:
+• Weak Predictability: The uncertainty in request output
+length makes several delays difficult to predict, resulting
+in the weak predictability of TPOT.
+• Non-monotonicity: Equation 3 shows that TPOT is deter-
+mined by the generation intervals of all tokens. Thus, the
+TPOT of a request does not exhibit a definite monotonic
+relationship with processing time.
+Insight 3. The weak predictability of TPOT makes it chal-
+lenging for the serving system to accurately predict new
+requests’ TPOT. Real-time monitoring of token generation
+intervals is required to detect TPOT SLO violations.
+Insight 4. The non-monotonicity of TPOT allows decode
+instances to tolerate temporary workload spikes. Longer
+generation delays for some tokens do not always result in
+TPOT SLO violations.
+4.4 Load Difference
+We take a clip of the Azure Conversation trace from the 20th
+to the 40th minute as an example to analyze the load differ-
+ences between prefill and decode instances under gradually
+increasing input load. This clip is characterized by a rising
+Prefill Decode
+# Running Requests
+2000
+1000
+0
+0 20 40 60 80
+Time (second)
+Figure 4: Prefill and Decode load over time when serving
+the Azure Conversation workload.
+trend in request count per minute. Figure 4 illustrates the
+number of requests being processed by prefill and decode
+instances over time. Under gradually increasing workload,
+since requests must be processed sequentially through prefill
+instance followed by decode instance, the prefill instances
+experience an earlier onset of load increase, peak load tim-
+ing, and load decline compared to decode instances.
+Insight 5. The mandatory Prefill →Decode computation
+order creates temporal misalignment in peak load patterns
+between prefill and decode instances, offering optimization
+opportunities for instance scheduling under bursty traffic:
+When prefill load increases, some decode instances with
+still-low load can be temporarily scheduled for prefill com-
+putation, until decode load begins to rise, at which point
+more instances should be reallocated to decode computation.
+5 DESIGN
+5.1 Overview
+Based on the analyses in Sections 3 and 4, we design Arrow,
+an adaptive scheduling engine for Prefill-Decode disaggre-
+gated architecture. Figure 5 illustrates the architecture of
+Arrow. Arrow adopts a stateless design for instances (IV),
+which can process both prefill and decode requests. When
+the cluster is initially started, the profiler (I) performs TTFT
+and TPOT profiling for each instance to model their prefill
+and decode processing capabilities. The instance monitor
+(VI) collects real-time performance data such as TTFT and
+TPOT by recording the input and output information of each
+instance. When a new request arrives, the global scheduler
+(III) computes the cost of dispatching the request to each
+instance based on the predicted TTFT from the TTFT pre-
+dictor (II) and the performance data recorded by the instance
+monitor, then assigns the request to the instance with the
+minimum cost. The local scheduler (V) on the instance
+schedules request computations and KV Cache transfers
+in each iteration. The global scheduler also dynamically
+adjusts the role labels of instances based on real-time per-
+formance data, enabling rapid adaptation to load variations.
+
+===== PDF PAGE 6 =====
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+Requests
+Input Request Output Tokens Performance Statistics
+Tokenizer
+Ⅰ. Profiler
+TTFT Profiling
+Ⅳ. Stateless Instance
+Ⅱ. TTFT Predictor
+TPOT Profiling
+Ⅲ. Global Scheduler
+Profiling Cache
+Schedule Instance
+Instance Scheduler
+Ⅴ. Local Scheduler
+Request Queue
+Migration Queue
+Load and Cost Calculator
+Request Scheduler
+VI. Zero-overhead
+Instance Monitor
+• TTFT / TPOT
+• Queue Status
+• KV Cache Usage
+Schedule Request
+& Cache Migration
+Execution Engine
+Output Tokens
+5.2 Instance Management
+Stateless Instance. Arrow designs instances to be stateless,
+allowing each instance to handle both prefill and decode
+requests. When a new request arrives, the global scheduler
+selects Instance A to process the prefill phase. After Instance
+A completes the prefill computation, the global scheduler
+then selects another instance, Instance B, to execute the
+decode stage computation. Upon receiving the decode re-
+quest, Instance B pulls the KV Cache from Instance A and
+begins the iterative decode phase. This provides the global
+scheduler with greater flexibility in request and instance
+scheduling: (1) Each request is split into prefill and de-
+code sub-requests, which can be scheduled independently.
+The global scheduler can use different scheduling strategies
+for these two types of requests, and may even assign both
+phases to the same instance if desired. (2) Prefill and decode
+are no longer treated as attributes of instances, but solely as
+attributes of requests, completely eliminating flip waiting
+time and instance restart time during instance scheduling.
+Instance Monitor. Traditional performance monitoring typ-
+ically requires instances to actively record and report metrics.
+However, query intervals can cause the performance data
+obtained by the scheduler during decision-making to be non-
+real-time, while recording performance data on inference in-
+stances also introduces additional overhead. To address this,
+we deploy a zero-overhead instance monitor that computes
+metrics such as token generation latency, queue status, and
+KV Cache usage on an independent component by listening
+to the request information dispatched by the scheduler to
+instances and each output token from the instances. This en-
+ables real-time performance monitoring without impacting
+the performance of the inference instances.
+Processing Capability Modeling. To further decouple the
+global scheduler from the computing instances, enabling
+Figure 5: Arrow architecture overview.
+the scheduler to remain agnostic to low-level deployment
+details such as the specific parallelization strategies used
+by instances, we profile the prefill and decode processing
+capabilities of each instance when the cluster is first initial-
+ized. The profiler will send requests of varying lengths to
+the instances, records the TTFT, and models the prefill com-
+putation capability of each instance by fitting a quadratic
+curve to the relationship between input length and TTFT.
+Then, by sending requests with extremely long output length
+requirements, it records how the token generation interval
+varies with the number of tokens in the batch to model the
+instance’s decode capability. This information is cached to
+disk and can be reused in subsequent cluster startups. If an
+instance’s computational capability changes - for example,
+due to a change in deployment configuration - only that
+specific instance needs to be re-profiled.
+5.3 SLO-aware Global Request Scheduling
+Building on the minimum-load scheduling strategy, Arrow
+further designs its request scheduling strategy to be SLO-
+aware, meaning that the scheduler considers real-time TTFT
+and TPOT of existing requests and makes decisions in con-
+junction with the SLO targets. As shown in Algorithm 1,
+when a new request arrives, if it is a decode request and the
+instance that processed the prefill stage of this request has
+been reassigned to decode instance, the request is directly
+dispatched to that instance to avoid KV cache transfer. Oth-
+erwise, the scheduler searches for the lowest-cost instance
+that can also meet the SLO requirements. If such an instance
+does not exist, the scheduler will try to flip an instance based
+on cluster load. If the request still cannot be satisfied, it falls
+back to the instance with the minimum cost.
+The computational cost for request r on instance i is calcu-
+lated as follows, where P and D are the prefill and decode
+
+===== PDF PAGE 7 =====
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+Algorithm 1 SLO-aware Global Request Scheduling
+Algorithm 2 Global Scheduler Monitoring Loop
+1: Input: Request r, Instances I
+2: Output: Target instance t
+{Prefill instance has been flipped to decode}
+3: if r.type= Decode= r.pref ill_
+instance.role then
+4: return r.pref ill_
+instance
+5: end if
+{1. Compute cost for each instance}
+6: for all i ∈I do
+7: costs[i] ←GetCost(r, i)
+8: end for
+{2. Find minimal-cost instance satisfying SLO}
+9: (best
+_i, best_
+cost) ← min
+(i,c)∈costs, SLO(i,c)=True(i, c)
+10: if best
+_
+i ̸= N one then
+11: return best
+i
+_
+12: end if
+{3. Try to flip an instance based on load condition}
+13: if r.type= Decode or Decode load is low then
+14: if (new
+_
+i ←Flip(r.type)) ̸= N one then
+15: return new
+i
+_
+16: end if
+17: end if
+{4. Fallback: select instance with minimal cost}
+18: return arg mini∈I costs[i]
+1: Input: Prefill instances IP , Decode instances ID
+2: for every update interval do
+3: LP , LD ←GetLoad(IP ), GetLoad(ID )
+4: if LD ≥LEXPAND or LP ≤LSHRINK ≤LD then
+5: Flip(Decode)
+6: end if
+7: end for
+requests on instance i, and L(r) is the length of request r:
+• For a prefill request r, the computational cost is defined
+as a tuple
+ rd ∈D
+L(rd),
+rp ∈P ∪{r}
+T (rp, i) 
+Here, T (r, i) represents the prefill processing time of re-
+quest r on instance i, provided by the TTFT predictor
+based on the instance’s TTFT profiling data. The first
+component of the cost represents the total number of de-
+code tokens currently being processed on the instance.
+This encourages the scheduler to favor instances that are
+only handling prefill requests over others, avoiding dis-
+patching new prefill requests to instances still processing
+remaining decode requests whenever possible to avoid in-
+terference. The second component indicates that instances
+with smaller prefill processing times have lower costs.
+• For a decode request r, the cost is similarly defined as
+ rp ∈P
+L(rp),
+rd ∈D∪{r}
+L(rd)−MT(i, SLOTPOT) 
+Here, MT(i, SLOTPOT) denotes the maximum number of
+tokens instance i can compute concurrently under the
+given TPOT SLO, derived from the instance’s TPOT pro-
+filing data. The design of the first component is similar to
+that for prefill costs: the scheduler tries to avoid dispatch-
+ing decode requests to instances that are still processing
+remaining prefill requests. The second component repre-
+sents the distance between the current number of tokens
+being processed on the instance and its maximum capac-
+ity; a smaller value indicates a lighter load.
+For the SLO check function, it simply checks whether the
+second component of the prefill cost exceeds the TTFT SLO
+threshold, or whether the second component of the decode
+cost is greater than 0. The calculation of instance load and
+flipping operations will be introduced in Section 5.5.
+5.4 Local Request Scheduling
+When a new request arrives, the local scheduler first checks
+whether KV Cache migration is required. If so, the request
+is placed in the migration queue and moved to the request
+queue after migration completes. The local scheduler adopts
+a FCFS policy for KV Cache migration, and uses the chun-
+ked prefill scheduling strategy (Agrawal et al., 2024) for
+requests: Under a given batch size, decode requests are
+prioritized to be included in the running batch. If there is
+remaining space, chunked prefill requests are added. This
+strategy enables instances to begin processing new types of
+requests as soon as possible during role flipping, avoiding
+the situation where requests queued before instance flipping
+block the execution of new requests after flipping.
+5.5 SLO-aware Instance Scheduling
+Flipping Timing. The instance scheduling strategy em-
+ployed by Arrow is also SLO-aware. Algorithm 2 describes
+the scheduler’s monitoring loop. Here, the prefill load of
+an instance is defined as the ratio of total estimated prefill
+processing time to TTFT SLO, while the decode load is de-
+fined as the ratio of the average latency of tokens generated
+between the update interval to TPOT SLO. The load of the
+instance pool is the average load of all instances within it.
+• Instance scheduling from decode to prefill occurs during
+the prefill request scheduling process (line 10 of Algo-
+rithm 1): Based on Insights 1 and 2, when the scheduler
+predicts that the current prefill instances cannot meet the
+TTFT SLO requirement for a new request, it will attempt
+to reassign decode instances to the prefill instance pool.
+
+===== PDF PAGE 8 =====
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+Algorithm 3 Instance Scheduling
+1: Input: Source instances S, target instances T , direction
+flag d ∈{P2D, D2P}
+2: Output: Flipped instance t or None
+3: if d= P2D and tnow−tlast_flip < COOLDOWN then
+4: return None
+5: end if
+6: if |S|> 1 then
+7: for all instance ∈S do
+8: costs[instance] ←GetFlipCost(instance)
+9: end for
+10: t ←arg mini∈S costs[i]
+11: S, T ←S −{t}, T ∪{t}
+12: return t
+13: end if
+14: return None
+on current instance. If they do, it indicates that the instance’s
+role has been flipped previously and the flipping is not yet
+complete. The scheduler prioritizes flipping instances of this
+type, effectively revoking the previous flipping operation.
+The second component indicates that instances with a lighter
+load have a lower cost.
+Scheduling in Overload Scenario. Scenarios in which both
+prefill and decode tasks are overloaded are not the primary
+optimization target for Arrow. However, to prevent instance
+scheduling oscillations in such scenarios, Arrow prioritizes
+allocating compute resources to the decode requests. Specif-
+ically, in Algorithm 1, before a D→P flip, the scheduler
+checks the load of the decode instance and aborts the flip if
+the decode load is high, whereas P→D flips proceed without
+prefill load checks. The core rationale for this design is to
+avoid scenarios where a large number of requests occupy
+memory resources without progressing beyond the prefill
+phase. Existing work (Qin et al., 2024) has also proposed re-
+quest scheduling schemes for overloaded scenarios, but the
+design of such schemes is beyond the scope of this paper.
+5.6 Implementation Details
+Arrow is currently built upon vLLM (Kwon et al., 2023)
+and utilizes NIXL (NVIDIA, 2025) for KV Cache trans-
+mission. Components such as the Profiler and Monitor are
+transparent to the backend instances, enabling the design of
+Arrow to be extended to other inference engines. The only
+requirement is that the inference engine is implemented as
+stateless and capable of KV Cache transmission with any
+arbitrary instance. Alternatively, distributed KV Cache stor-
+age solutions like Mooncake (Qin et al., 2024) can be used
+to further optimize KV Cache transmission and global cache
+reuse.
+• Instance scheduling from prefill to decode occurs in
+the following situations: (1) During the decode request
+scheduling process (line 10 of Algorithm 1); (2) When
+the scheduler detects that the average load of decode in-
+stances exceeds a threshold over a period of time (line 4 of
+Algorithm 2, LD ≥LEXPAND); (3) When prefill instances
+are under low load while decode instances are not idle,
+idle prefill instances are added to decode computation
+to free up computing resources as quickly as possible in
+anticipation of potential future bursty traffic. (line 4 of
+Algorithm 2, LP ≤LSHRINK ≤LD ).
+Flipping Target. Algorithm 3 details the instance schedul-
+ing process. The scheduler flips the instance with the mini-
+mum flipping cost. To prevent oscillation in instance assign-
+ment, we introduce a cooldown mechanism to avoid overly
+frequent adjustments. Based on the analysis in Section 4, the
+cooldown mechanism is only applied to P→D process, since
+the load of decode instances requires a period of observation
+to determine, and the weak predictability of TPOT means
+that a slight lag in P→D scheduling is tolerable. In con-
+trast, TTFT, due to its strong predictability and sensitivity
+to traffic spikes, requires rapid instance scheduling.
+The flipping cost for a prefill instance is defined as
+ I[D= ∅],
+rp ∈P
+T (rp, i) 
+Similarly, the flipping cost for a decode instance is
+I[P= ∅],
+rd ∈D
+L(rd)
+Here, I is the indicator function. The first component is
+used to check whether requests of the other type still exist
+6 EVALUATION
+In this section, we evaluate the performance of Arrow with
+state-of-the-art PD-disaggregated systems on real-world
+workloads and show the effectiveness of its components.
+6.1 Experimental Setup
+Testbed. We evaluate Arrow on two servers, each equipped
+with 8 NVIDIA H20 141GB GPUs, 2×200Gbps InfiniBand
+NICs, 96-core CPUs, and 2048GB of host memory.
+Model. We evaluated the performance of Arrow on models
+of varying sizes, including Qwen3-8B, Qwen3-32B (Yang
+et al., 2025), and Llama-3.1-70B (Grattafiori et al., 2024).
+Workloads. We choose the four LLM serving traces intro-
+duced in Section 1 as test workloads. Detailed descriptions
+of these traces and SLO settings are included in Appendix A.
+Baseline. We use vLLM v0.11 (Kwon et al., 2023) as base-
+
+===== PDF PAGE 9 =====
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+Qwen3-8B
+SLO Attainment (%)
+Azure Code
+100
+75
+50
+25
+0
+100
+75
+50
+25
+0
+Arrow vLLM
+Azure Conversation
+100
+75
+50
+25
+0
+BurstGPT
+Mooncake Conversation
+100
+75
+50
+25
+0
+5 10 15 20 25
+Request Rate (req/s)
+10 20 30 40 50
+Request Rate (req/s)
+10 20 30
+Request Rate (req/s)
+1 2 3 4
+Request Rate (req/s)
+Qwen3-32B
+SLO Attainment (%)
+Azure Code
+Azure Conversation
+BurstGPT
+Mooncake Conversation
+100
+75
+50
+25
+0
+100
+75
+50
+25
+0
+100
+75
+50
+25
+0
+100
+75
+50
+25
+0
+2 4 6
+Request Rate (req/s)
+2.5 5.0 7.5 10.0 12.5
+Request Rate (req/s)
+2 4 6 8
+Request Rate (req/s)
+0.30 0.35 0.40 0.45 0.50
+Request Rate (req/s)
+Llama-3.1-70B
+SLO Attainment (%)
+100
+75
+50
+25
+0
+Azure Code
+Azure Conversation
+BurstGPT
+100
+75
+50
+25
+0
+100
+75
+50
+25
+0
+1.0 1.5 2.0 2.5
+Request Rate (req/s)
+2 4 6 8
+Request Rate (req/s)
+1.0 1.5 2.0 2.5 3.0
+Request Rate (req/s)
+Figure 6: Performance of different LLM serving systems employing different models under various traces and request rates.
+line system, as it represents state-of-the-art Prefill-Decode
+disaggregated inference serving system. We launched 4 pre-
+fill instances and 4 decode instances to handle the requests.
+Metrics. We use SLO attainment as the major metric.
+Under a specific SLO setting, we are concerned with the
+maximum request rate the system can handle. We set the
+SLO attainment target to 90%, which is a common setting
+in previous work (Patel et al., 2024; Zhong et al., 2024).
+Evaluation Workflow. We adopt the same evaluation work-
+flow as previous works (Wang et al., 2025; Qin et al., 2025),
+assessing the performance of different serving systems by
+replaying service traces. To evaluate system performance
+under different request rates, we multiply the timestamps by
+a constant to simulate varying request rates.
+6.2 End-to-End Performance
+We compared the performance of Arrow and the baseline
+system across four real-world serving traces. Figure 6 shows
+the test results. On the Qwen3-8B model, Arrow achieves
+1.60×~2.21×higher sustainable request rates compared
+to vLLM. This is because Arrow leverages its SLO-aware
+request and instance scheduling strategy to effectively bal-
+ance the computational demands of prefill and decode tasks,
+striving to meet both TTFT and TPOT SLOs for requests
+simultaneously. Similar results can be observed in tests with
+the larger model Qwen3-32B, where Arrow improves re-
+quest goodput by 1.59×~2.03×compared to vLLM. vLLM
+consistently failed to reach 90% SLO attainment on the
+Azure Code dataset, which has significant bursty traffic, and
+the Mooncake Conversation dataset, which contains ultra-
+long request lengths. In contrast, Arrow utilizes the strong
+predictability of TTFT to promptly allocate more instances
+to prefill computation when bursty traffic arrives, preventing
+a large number of burst requests from violating TTFT SLO
+due to long queuing delays. For the Llama-3.1-70B model,
+we set the tensor parallelism size to 2. Due to the high
+load of the Azure Code dataset, we set its SLO attainment
+target to 50%. On the Azure Conversation dataset, vLLM
+experienced KV Cache transfer failures under high load,
+preventing completion of the test. The Mooncake Conver-
+sation dataset was not tested on Llama-3.1-70B due to its
+ultra-long input sequences, which easily exceed the memory
+capacity of the serving systems. In the 70B model tests, Ar-
+row yields 1.97×~2.55×improvements over the baseline,
+effectively increasing the system’s serving capacity.
+6.3 Ablation Study
+In this section, we study the effectiveness of Arrow’s adap-
+tive scheduling strategy. We compare the performance of
+three scheduling strategies on the Qwen3-8B model: (1)
+SLO Aware, which is the strategy used by Arrow and
+includes both request scheduling strategy and instance
+scheduling strategy from Section 5.3 and 5.5; (2) Mini-
+mal Load, which only includes the minimum-load request
+scheduling strategy; and (3) Round Robin. The results are
+shown in Figure 7.
+On the Azure Code dataset, the SLO Aware strategy used
+by Arrow achieves 1.69×higher request serving rate com-
+pared to the Minimal Load strategy, demonstrating the effec-
+tiveness of adaptive instance scheduling. Compared to the
+
+===== PDF PAGE 10 =====
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+SLO Attainment (%)
+100
+50
+0
+SLO Aware Minimal Load Round Robin
+Azure Code
+Azure Conversation
+100
+50
+0
+SLO Attainment (%)
+100
+50
+0
+SLO Aware Minimal Load
+Azure Code
+Azure Conversation
+100
+50
+0
+5 10 15 20 25
+Request Rate (req/s)
+10 20 30 40 50
+Request Rate (req/s)
+2 4 6 8
+# Instances
+2 4 6 8
+# Instances
+Figure 7: Performance of different scheduling strategies.
+Round Robin strategy, the Minimal Load request scheduling
+strategy achieves up to a 2.2% improvement in SLO attain-
+ment. For the Azure Conversation dataset, the SLO Aware
+strategy achieves 1.53×higher request serving rate than the
+Minimal Load strategy, serving 10 additional requests per
+second. The Minimal Load strategy achieves up to 11.2%
+improvement in SLO attainment compared to Round Robin
+strategy, proving that minimal-load scheduling can more
+closely approximate the optimal scheduling strategy.
+6.4 Scalability
+Strategy Scalability. We compare the SLO attainment of
+the SLO Aware and Minimal Load scheduling strategies
+under varying instance counts to evaluate the scalability of
+Arrow’s scheduling strategy. The results are shown in Fig-
+ure 8. By employing a flexible instance scheduling strategy,
+Arrow can fully utilize computational resources to meet
+the demands of both prefill and decode phases, enabling
+the serving system to achieve significant improvements in
+SLO attainment as the number of instances increases. In
+contrast, traditional static PD ratio configurations are prone
+to hitting either prefill or decode computation bottlenecks
+under resource constraints, making it difficult to satisfy both
+TTFT and TPOT SLOs simultaneously. For example, in
+tests on the Azure Conversation dataset, when the num-
+ber of instances increased from 2 to 6, the number of both
+prefill and decode instances in the cluster using the Mini-
+mal Load strategy increased by 2, but the SLO attainment
+rate improved only marginally. In contrast, the SLO Aware
+scheduling strategy effectively adjusts the number of in-
+stances for both types, achieving an SLO attainment rate
+exceeding 60%. The experimental results demonstrate that
+our adaptive scheduling strategy exhibits strong universality
+and scalability, enabling efficient computational resource
+utilization across different hardware environments.
+Scheduler Scalability. To test whether the centralized Tok-
+enizer and Global Scheduler could become system bottle-
+necks, we measured the tokenization latency and scheduling
+latency under different request rates on the Azure Conver-
+sation dataset. The results are shown in Figure 9(Left). As
+the request rate gradually increases, the tokenization latency
+shows a slight rise, while the scheduling latency remains al-
+most unchanged. Compared to the second-level processing
+Figure 8: Performance under different number of instances.
+time of the prefill stage, the increase in latency for tokeniza-
+tion and scheduling is negligible. In scenarios involving
+long contexts or systems with extremely high concurrency,
+if tokenization becomes a bottleneck, it can be addressed by
+deploying multiple tokenization service nodes. The global
+scheduler, when dispatching requests, only needs to per-
+form simple calculations for the scheduling cost, thus it is
+unlikely to become a performance bottleneck.
+6.5 Heterogeneous Deployment
+Arrow’s scheduler directly assigns prefill or decode in-
+stances to handle requests of the other type, which may
+cause these instances to operate under suboptimal paral-
+lelization strategies. The rationale behind this design is to
+enable rapid response to traffic spikes without waiting for
+lengthy instance restarts that could take minutes. When
+the cluster load decreases, these instances are returned to
+their original pools. We conducted a heterogeneous instance
+deployment test on the Qwen3-32B model, comparing the
+performance of Arrow’s scheduling strategy with traditional
+static Prefill/Decode ratio configuration schemes. We set
+tensor parallelism size to 1 for prefill instances and 2 for de-
+code instances. The results are shown in Figure 9(Right). It
+can be observed that although Arrow’s immediate instance
+scheduling does not operate instances under their optimal
+parallelization strategies, it still effectively enhances the sys-
+tem’s serving capacity. Existing work (Chen et al., 2025) has
+proposed several dynamic parallelization strategy switching
+schemes, which could be integrated into Arrow to improve
+serving performance in heterogeneous Prefill-Decode envi-
+ronments. We leave this integration as future work.
+Tokenization Latency (ms)
+3.0
+2.8
+Tokenize
+Prefill
+Decode
+0.06
+0.04
+0.02
+Scheduling Latency (ms)
+Mooncake Conversation Arrow vLLM
+SLO Attainment (%)
+100
+50
+0
+30 40 50
+Request Rate (req/s)
+0.5 0.6 0.7
+Request Rate (req/s)
+Figure 9: (Left) Scheduling latency under different request
+rates. (Right) Performance results when prefill and decode
+instances use different parallelization strategies.
+
+===== PDF PAGE 11 =====
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+7 RELATED WORK
+LLM Serving. Existing works have optimized LLM serving
+systems from multiple perspectives, including kernel (Dao
+et al., 2022; Kao et al., 2023), KV Cache management (Ge
+et al., 2023; Kwon et al., 2023; Li et al., 2024), and batching
+strategy (Agrawal et al., 2024; Yu et al., 2022). Among
+these, Orca (Yu et al., 2022) employs an iteration-level
+scheduling strategy to reduce request queuing latency, and
+Sarathi-Serve (Agrawal et al., 2024) implements chunked
+prefill to improve compute utilization during the decode
+phase. These works are orthogonal to our work and have
+already been integrated into Arrow. To avoid interference be-
+tween the prefill and decode phases, ShuffleInfer (Hu et al.,
+2025), Splitwise (Patel et al., 2024), and DistServe (Zhong
+et al., 2024) proposed the Prefill-Decode disaggregated infer-
+ence architecture. EPD disaggregation (Singh et al., 2025)
+further extends this architecture to multi-modal models.
+However, their static PD ratio configurations are prone to
+SLO violations when handling varying workloads. In con-
+trast, Arrow proposes an innovative SLO-aware scheduling
+strategy that can effectively improve serving capacity while
+meeting the given SLO settings.
+PD-disaggregation Optimization. As the effectiveness of
+the PD-disaggregated architecture has been widely validated,
+numerous optimization efforts for the PD-disaggregated ar-
+chitecture have recently emerged. Mooncake (Qin et al.,
+2025) and MemServe (Hu et al., 2024) deploy a distributed
+KV Cache pool to enable cache reuse. DéjàVu (Strati et al.,
+2024) implements a set of high-performance KV Cache
+streaming APIs to reduce the KV Cache transmission over-
+head. These solutions can be integrated into Arrow to further
+improve its performance. Other works have optimized the
+PD-disaggregated architecture from perspectives including
+parallelization strategies (Wu et al., 2024a; Zhong et al.,
+2024), resource utilization (Liang et al., 2025; Ruan et al.,
+2025; Hong et al., 2025), and deployment costs (Du et al.,
+2025). Our work proposes an effective request and instance
+scheduling strategy that leverages TTFT’s strong predictabil-
+ity and TPOT’s non-monotonicity, thereby addressing work-
+load diversity.
+Request Scheduling. Existing works have optimized re-
+quest scheduling in LLM serving systems for various ob-
+jectives, including throughput (Yu et al., 2022; Cheng et al.,
+2024; Wu et al., 2024b), load balancing (Srivatsa et al., 2024;
+Sun et al., 2024), and fairness (Sheng et al., 2024). Recent
+studies have also proposed diverse request scheduling op-
+timizations for PD-disaggregated architecture, considering
+aspects such as cache (Qin et al., 2025; Hu et al., 2024),
+SLO settings (Du et al., 2025), and instance load (Zhong
+et al., 2024; Hu et al., 2025). We design an SLO-aware
+scheduling strategy based on the minimal-load scheduling
+policy to enable adaptive request dispatching.
+8 CONCLUSION
+To tackle load fluctuations in LLM serving systems, we de-
+sign Arrow, an efficient and adaptive scheduler that dynami-
+cally schedules requests and instances based on cluster load.
+Arrow employs stateless inference instances and SLO-aware
+load assessment to enable responsive instance reconfigura-
+tion, while performing adaptive request dispatching and
+instance scheduling based on SLO settings and real-time
+performance metrics. Evaluations on multiple real-world
+datasets demonstrate that Arrow can effectively improve
+system serving capacity compared to existing solutions.
+REFERENCES
+Agrawal, A., Kedia, N., Panwar, A., Mohan, J., Kwatra,
+N., Gulavani, B., Tumanov, A. and Ramjee, R. Taming
+Throughput-Latency Tradeoff in LLM Inference with
+Sarathi-Serve. In 18th USENIX Symposium on Operating
+Systems Design and Implementation (OSDI 24), pp. 117–
+134, Santa Clara, CA, 2024.
+Bai, J., Bai, S., Chu, Y., Cui, Z., Dang, K., Deng, X., Fan,
+Y., Ge, W., Han, Y. and Huang, F. et al. Qwen Technical
+Report, September 2023.
+Chen, H., Li, X., Qian, K., Guan, Y., Zhao, J. and Wang, X.
+Gyges: Dynamic Cross-Instance Parallelism Transforma-
+tion for Efficient LLM Inference, September 2025.
+Cheng, K., Hu, W., Wang, Z., Du, P., Li, J. and Zhang, S.
+Enabling Efficient Batch Serving for LMaaS via Gen-
+eration Length Prediction. In 2024 IEEE International
+Conference on Web Services (ICWS), pp. 853–864, July
+2024. doi: 10.1109/ICWS62655.2024.00104.
+Dao, T., Fu, D. Y., Ermon, S., Rudra, A. and Ré, C.
+FLASHATTENTION: Fast and memory-efficient exact
+attention with IO-awareness. In Proceedings of the 36th
+International Conference on Neural Information Process-
+ing Systems, NIPS ’22, pp. 16344–16359, Red Hook, NY,
+USA, November 2022.
+DeepSeek-AI, Guo, D., Yang, D., Zhang, H., Song, J.,
+Zhang, R., Xu, R., Zhu, Q., Ma, S. and Wang, P. et al.
+DeepSeek-R1: Incentivizing Reasoning Capability in
+LLMs via Reinforcement Learning, January 2025a.
+DeepSeek-AI, Liu, A., Feng, B., Xue, B., Wang, B., Wu, B.,
+Lu, C., Zhao, C., Deng, C. and Zhang, C. et al. DeepSeek-
+V3 Technical Report, February 2025b.
+DeepSeek Inc. DeepSeek. https://chat.deepseek.com, May
+2025.
+Du, J., Zhang, H., Wei, T., Zheng, Z., Wu, K., Chen, Z. and
+Lu, Y. EcoServe: Enabling Cost-effective LLM Serving
+
+===== PDF PAGE 12 =====
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+with Proactive Intra- and Inter-Instance Orchestration,
+April 2025.
+Ge, S., Zhang, Y., Liu, L., Zhang, M., Han, J. and Gao, J.
+Model Tells You What to Discard: Adaptive KV Cache
+Compression for LLMs. In The Twelfth International
+Conference on Learning Representations, October 2023.
+Grattafiori, A., Dubey, A., Jauhri, A., Pandey, A., Kadian,
+A., Al-Dahle, A., Letman, A., Mathur, A., Schelten, A.
+and Vaughan, A. et al. The Llama 3 Herd of Models,
+November 2024.
+Holmes, C., Tanaka, M., Wyatt, M., Awan, A. A., Rasley,
+J., Rajbhandari, S., Aminabadi, R. Y., Qin, H., Bakhtiari,
+A. and Kurilenko, L. et al. DeepSpeed-FastGen: High-
+throughput Text Generation for LLMs via MII and
+DeepSpeed-Inference, January 2024.
+Hong, K., Chen, L., Wang, Z., Li, X., Mao, Q., Ma, J.,
+Xiong, C., Wu, G., Han, B. and Dai, G. et al. Semi-PD:
+Towards Efficient LLM Serving via Phase-Wise Disag-
+gregated Computation and Unified Storage, April 2025.
+Hu, C., Huang, H., Hu, J., Xu, J., Chen, X., Xie, T., Wang,
+C., Wang, S., Bao, Y. and Sun, N. et al. MemServe:
+Context Caching for Disaggregated LLM Serving with
+Elastic Memory Pool, December 2024.
+Hu, C., Huang, H., Xu, L., Chen, X., Wang, C., Xu, J.,
+Chen, S., Feng, H., Wang, S. and Bao, Y. et al. ShuffleIn-
+fer: Disaggregate LLM Inference for Mixed Downstream
+Workloads. ACM Trans. Archit. Code Optim., 22(2):77:1–
+77:24, July 2025. doi: 10.1145/3732941.
+HuggingFace. KV cache strategies. https://huggingface.co
+/docs/transformers/v4.51.3/kv_cache, March 2025.
+Jin, Y., Wang, T., Lin, H., Song, M., Li, P., Ma, Y., Shan,
+Y., Yuan, Z., Li, C. and Sun, Y. et al. P/D-Serve: Serving
+Disaggregated Large Language Model at Scale, August
+2024.
+Kao, S.-C., Subramanian, S., Agrawal, G., Yazdanbakhsh,
+A. and Krishna, T. FLAT: An Optimized Dataflow for
+Mitigating Attention Bottlenecks. In Proceedings of the
+28th ACM International Conference on Architectural Sup-
+port for Programming Languages and Operating Systems,
+Volume 2, ASPLOS 2023, pp. 295–310, New York, NY,
+USA, January 2023. doi: 10.1145/3575693.3575747.
+Kwon, W., Li, Z., Zhuang, S., Sheng, Y., Zheng, L., Yu,
+C. H., Gonzalez, J., Zhang, H. and Stoica, I. Efficient
+Memory Management for Large Language Model Serv-
+ing with PagedAttention. In Proceedings of the 29th
+Symposium on Operating Systems Principles, pp. 611–
+626, Koblenz Germany, October 2023. doi: 10.1145/
+3600006.3613165.
+Li, G., Hammoud, H. A. A. K., Itani, H., Khizbullin, D. and
+Ghanem, B. CAMEL: Communicative Agents for "Mind"
+Exploration of Large Language Model Society. In Thirty-
+Seventh Conference on Neural Information Processing
+Systems, November 2023.
+Li, Y., Huang, Y., Yang, B., Venkitesh, B., Locatelli, A., Ye,
+H., Cai, T., Lewis, P. and Chen, D. SnapKV: LLM Knows
+What You are Looking for Before Generation. In The
+Thirty-eighth Annual Conference on Neural Information
+Processing Systems, November 2024.
+Liang, Y., Chen, Z., Zuo, P., Zhou, Z., Chen, X. and Yu,
+Z. Injecting Adrenaline into LLM Serving: Boosting
+Resource Utilization and Throughput via Attention Dis-
+aggregation, March 2025.
+Mehdi, Y. Reinventing search with a new AI-powered
+Microsoft Bing and Edge, your copilot for the web.
+https://blogs.microsoft.com/blog/2023/02/07/reinventing-
+search-with-a-new-ai-powered-microsoft-bing-and-
+edge-your-copilot-for-the-web/, February 2023.
+NVIDIA. Ai-dynamo/nixl. Dynamo, October 2025.
+OpenAI, Achiam, J., Adler, S., Agarwal, S., Ahmad, L.,
+Akkaya, I., Aleman, F. L., Almeida, D., Altenschmidt,
+J. and Altman, S. et al. GPT-4 Technical Report, March
+2024a.
+OpenAI, Hurst, A., Lerer, A., Goucher, A. P., Perelman, A.,
+Ramesh, A., Clark, A., Ostrow, A. J., Welihinda, A. and
+Hayes, A. et al. GPT-4o System Card, October 2024b.
+OpenAI Inc. ChatGPT. https://chat.openai.com, May 2025.
+Patel, P., Choukse, E., Zhang, C., Shah, A., Goiri, Í.,
+Maleki, S. and Bianchini, R. Splitwise: Efficient Gener-
+ative LLM Inference Using Phase Splitting. In 2024
+ACM/IEEE 51st Annual International Symposium on
+Computer Architecture (ISCA), pp. 118–132, June 2024.
+doi: 10.1109/ISCA59077.2024.00019.
+Perplexity Inc. Perplexity. https://www.perplexity.ai, May
+2025.
+Qin, R., Li, Z., He, W., Zhang, M., Wu, Y., Zheng, W. and
+Xu, X. Mooncake: A KVCache-centric Disaggregated
+Architecture for LLM Serving, July 2024.
+Qin, R., Li, Z., He, W., Cui, J., Ren, F., Zhang, M., Wu,
+Y., Zheng, W. and Xu, X. Mooncake: Trading More
+Storage for Less Computation — A KVCache-centric
+Architecture for Serving LLM Chatbot. In 23rd USENIX
+Conference on File and Storage Technologies (FAST 25),
+pp. 155–170, Santa Clara, CA, 2025.
+
+===== PDF PAGE 13 =====
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+Qwen, Yang, A., Yang, B., Zhang, B., Hui, B., Zheng, B.,
+Yu, B., Li, C., Liu, D. and Huang, F. et al. Qwen2.5
+Technical Report, January 2025.
+Ruan, C., Chen, Y., Tian, D., Shi, Y., Wu, Y., Li, J. and Li, C.
+DynaServe: Unified and Elastic Execution for Dynamic
+Disaggregated LLM Serving, May 2025.
+Sheng, Y., Cao, S., Li, D., Zhu, B., Li, Z., Zhuo, D., Gon-
+zalez, J. E. and Stoica, I. Fairness in Serving Large
+Language Models. In 18th USENIX Symposium on Oper-
+ating Systems Design and Implementation (OSDI 24), pp.
+965–988, 2024.
+Singh, G., Wang, X., Hu, Y., Yu, T. T. L., Xing, L., Jiang,
+W., Wang, Z., Xiaolong, B., Li, Y. and Xiong, Y. et al.
+Efficiently Serving Large Multimodal Models Using EPD
+Disaggregation. In Forty-Second International Confer-
+ence on Machine Learning, June 2025.
+Srivatsa, V., He, Z., Abhyankar, R., Li, D. and Zhang, Y.
+Preble: Efficient Distributed Prompt Scheduling for LLM
+Serving. In The Thirteenth International Conference on
+Learning Representations, October 2024.
+Strati, F., Mcallister, S., Phanishayee, A., Tarnawski, J. and
+Klimovic, A. DéjàVu: KV-cache Streaming for Fast,
+Fault-tolerant Generative LLM Serving. In Proceedings
+of the 41st International Conference on Machine Learn-
+ing, pp. 46745–46771, July 2024.
+Sun, B., Huang, Z., Zhao, H., Xiao, W., Zhang, X., Li, Y.
+and Lin, W. Llumnix: Dynamic Scheduling for Large
+Language Model Serving. In 18th USENIX Symposium
+on Operating Systems Design and Implementation (OSDI
+24), pp. 173–191, 2024.
+Team, G., Anil, R., Borgeaud, S., Alayrac, J.-B., Yu, J.,
+Soricut, R., Schalkwyk, J., Dai, A. M., Hauth, A. and
+Millican, K. et al. Gemini: A Family of Highly Capable
+Multimodal Models, June 2024a.
+Team, G., Georgiev, P., Lei, V. I., Burnell, R., Bai, L., Gulati,
+A., Tanzer, G., Vincent, D., Pan, Z. and Wang, S. et al.
+Gemini 1.5: Unlocking multimodal understanding across
+millions of tokens of context, December 2024b.
+Touvron, H., Martin, L., Stone, K., Albert, P., Almahairi,
+A., Babaei, Y., Bashlykov, N., Batra, S., Bhargava, P.
+and Bhosale, S. et al. Llama 2: Open Foundation and
+Fine-Tuned Chat Models, July 2023.
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones,
+L., Gomez, A. N., ukasz Kaiser, Ł. and Polosukhin, I.
+Attention is All you Need. In Advances in Neural Infor-
+mation Processing Systems, volume 30, 2017.
+Wang, G., Xie, Y., Jiang, Y., Mandlekar, A., Xiao, C., Zhu,
+Y., Fan, L. and Anandkumar, A. Voyager: An Open-
+Ended Embodied Agent with Large Language Models.
+Transactions on Machine Learning Research, November
+2023.
+Wang, Y., Chen, Y., Li, Z., Kang, X., Fang, Y., Zhou, Y.,
+Zheng, Y., Tang, Z., He, X. and Guo, R. et al. BurstGPT:
+A Real-World Workload Dataset to Optimize LLM Serv-
+ing Systems. In Proceedings of the 31st ACM SIGKDD
+Conference on Knowledge Discovery and Data Mining
+V.2, KDD ’25, pp. 5831–5841, New York, NY, USA,
+August 2025. doi: 10.1145/3711896.3737413.
+Wu, B., Liu, S., Zhong, Y., Sun, P., Liu, X. and Jin, X.
+LoongServe: Efficiently Serving Long-Context Large
+Language Models with Elastic Sequence Parallelism. In
+Proceedings of the ACM SIGOPS 30th Symposium on
+Operating Systems Principles, SOSP ’24, pp. 640–654,
+New York, NY, USA, November 2024a. doi: 10.1145/
+3694715.3695948.
+Wu, B., Zhong, Y., Zhang, Z., Liu, S., Liu, F., Sun, Y.,
+Huang, G., Liu, X. and Jin, X. Fast Distributed Inference
+Serving for Large Language Models, September 2024b.
+Yang, A., Li, A., Yang, B., Zhang, B., Hui, B., Zheng, B.,
+Yu, B., Gao, C., Huang, C. and Lv, C. et al. Qwen3
+Technical Report, May 2025.
+Yu, G.-I., Jeong, J. S., Kim, G.-W., Kim, S. and Chun, B.-G.
+Orca: A Distributed Serving System for Transformer-
+Based Generative Models. In 16th USENIX Symposium
+on Operating Systems Design and Implementation (OSDI
+22), pp. 521–538, Carlsbad, CA, 2022.
+Yuan, Z., Shang, Y., Zhou, Y., Dong, Z., Zhou, Z., Xue,
+C., Wu, B., Li, Z., Gu, Q. and Lee, Y. J. et al. LLM
+Inference Unveiled: Survey and Roofline Model Insights,
+May 2024.
+Zhen, R., Li, J., Ji, Y., Yang, Z., Liu, T., Xia, Q., Duan, X.,
+Wang, Z., Huai, B. and Zhang, M. Taming the Titans: A
+Survey of Efficient LLM Inference Serving, April 2025.
+Zhong, Y., Liu, S., Chen, J., Hu, J., Zhu, Y., Liu, X., Jin,
+X. and Zhang, H. DistServe: Disaggregating Prefill and
+Decoding for Goodput-optimized Large Language Model
+Serving. In 18th USENIX Symposium on Operating Sys-
+tems Design and Implementation (OSDI 24), pp. 193–210,
+Santa Clara, CA, 2024.
+Zhou, Z., Ning, X., Hong, K., Fu, T., Xu, J., Li, S., Lou, Y.,
+Wang, L., Yuan, Z. and Li, X. et al. A Survey on Efficient
+Inference for Large Language Models, July 2024.
+
+===== PDF PAGE 14 =====
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+Table 1: Workloads and SLO settings in evaluation.
+Trace # Requests Model Request Rate (req/s) TTFT TPOT
+Azure Code 8819
+Qwen3-8B 2.6 - 25.7 6s 0.1s
+Qwen3-32B 0.6 - 6.4 10s 0.125s
+Llama-3.1-70B 0.6 - 2.6 10s 0.2s
+Azure Conversation 19366
+Qwen3-8B 5.5 - 55.3 3s 0.15s
+Qwen3-32B 2.8 - 13.8 6s 0.175s
+Llama-3.1-70B 1.4 - 8.3 3s 0.2s
+BurstGPT clip 6009
+Qwen3-8B 1.7 - 31.8 1s 0.075s
+Qwen3-32B 0.8 - 8.4 2s 0.1s
+Llama-3.1-70B 0.8 - 3.4 2s 0.15s
+Mooncake clip 1756 Qwen3-8B 0.7 - 4.4 60s 0.2s
+Qwen3-32B 0.3 - 0.5 150s 0.2s
+A EVALUATION WORKLOAD
+We choose four real-world LLM serving traces as the work-
+load. Each trace records request information processed by
+the inference serving system over a period, including arrival
+time and input/output lengths. Figure 10 presents the cu-
+mulative distribution functions (CDFs) of input and output
+lengths across these traces. Detailed information about the
+workloads used in evaluation is shown in Table 1.
+• Azure LLM Inference Traces (Patel et al., 2024): It is
+a 1-hour serving trace collected from Azure LLM infer-
+ence services, including both coding and conversation
+scenarios.
+• BurstGPT (Wang et al., 2025): It is an LLM serving
+workload with 5.29 million traces from regional Azure
+OpenAI GPT services over 121 days. We take a 1-hour
+clip from the original trace for evaluation.
+• Mooncake Conversation Trace (Qin et al., 2025): It is a
+1-hour conversation trace containing a significant portion
+of long context requests. Replaying the full trace will
+exceed the serving capacity of all the tested systems, so we
+only take the first ten minutes of requests for evaluation.
+CDF
+1.00
+0.75
+0.50
+0.25
+0.00
+Azure Code Azure Conversation BurstGPT Mooncake Conversation
+1.00
+0.75
+0.50
+0.25
+0.00
+1.00
+0.75
+0.50
+0.25
+0.00
+101 102 103 104 105
+# Input Tokens
+100 101 102 103 104
+# Output Tokens
+10 1 101 103 105
+# Input / # Output
+Figure 10: Input and output length distribution of different
+traces.

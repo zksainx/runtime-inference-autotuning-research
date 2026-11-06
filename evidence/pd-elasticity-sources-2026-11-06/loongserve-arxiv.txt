@@ -1,0 +1,11 @@
+URL: https://arxiv.org/abs/2404.09526
+Fetched at UTC: 2026-11-06T04:02:59.486178+00:00
+
+(cs)
+[Submitted on 15 Apr 2024 (
+v1
+), last revised 29 Oct 2024 (this version, v2)]
+Title:
+LoongServe: Efficiently Serving Long-Context Large Language Models with Elastic Sequence Parallelism
+Authors:
+Bingyang Wu

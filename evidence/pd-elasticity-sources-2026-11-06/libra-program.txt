@@ -1,0 +1,8 @@
+URL: https://www.usenix.org/conference/nsdi26/technical-sessions
+Fetched at UTC: 2026-11-06T04:08:33.409290+00:00
+
+We build a likely invariant analysis engine that captures such properties as feedback for seed test selection in UPFUZZ, the automated testing engine for the distributed storage system upgrade procedure. UPFUZZ has detected 15 previously unknown upgrade failures caused by data format incompatibilities  in the latest stable versions of Cassandra, HBase, and HDFS; developers have confirmed 8 of them. 7 are triggered exclusively with UPFUZZ’s data format analysis. The detected bugs have severe consequences, with 6 crashing the cluster and 4 causing data loss or corruption.
+Libra: Flexible Request Partitioning and Scheduling for Serving Unbalanced and Dynamic LLM Workloads
+Chaoyi Ruan,
+National University of Singapore;
+Yinhe Chen, Dongqi Tian, and Yandong Shi,

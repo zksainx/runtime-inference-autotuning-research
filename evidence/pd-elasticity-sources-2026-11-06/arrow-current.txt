@@ -1,0 +1,11 @@
+URL: https://arxiv.org/abs/2505.11916
+Fetched at UTC: 2026-11-06T04:02:59.189488+00:00
+
+(cs)
+[Submitted on 17 May 2025 (
+v1
+), last revised 6 Nov 2025 (this version, v2)]
+Title:
+Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture
+Authors:
+Yu Wu

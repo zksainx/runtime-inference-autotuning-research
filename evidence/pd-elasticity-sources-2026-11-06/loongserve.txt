@@ -1,0 +1,7 @@
+URL: https://sigops.org/s/conferences/sosp/2024/schedule.html
+Fetched at UTC: 2026-11-06T04:00:36.999872+00:00
+
+Anand Iyer (Georgia Tech), Mingyu Guan (Georgia Tech), Yinwei Dai (Princeton University), Rui Pan (Princeton University), Swapnil Gandhi (Stanford University), Ravi Netravali (Princeton University)
+LoongServe: Efficiently Serving Long-Context Large Language Models with Elastic Sequence Parallelism
+Bingyang Wu (Peking University), Shengyu Liu (Peking University), Yinmin Zhong (Peking University), Peng Sun (Shanghai AI Lab), Xuanzhe Liu (Peking University), Xin Jin (Peking University)
+Boxed Lunch: 12:30–13:30

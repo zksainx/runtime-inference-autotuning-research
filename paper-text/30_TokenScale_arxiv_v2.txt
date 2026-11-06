@@ -1,0 +1,1757 @@
+Source: 30_TokenScale_arxiv_v2.pdf
+Pages: 14
+
+===== PDF PAGE 1 =====
+arXiv:2512.03416v2 [cs.DC] 4 Nov 2026
+TokenScale: Timely and Accurate Autoscaling for Disaggregated
+LLM Serving with Token Velocity
+Ruiqi Lai∗
+NTU Singapore
+Singapore
+Hongrui Liu∗
+NTU Singapore
+Singapore
+Chengzhi Lu†
+NTU Singapore
+Singapore
+Siyu Cao‡
+SMU
+Singapore
+Li Leqi‡
+Huawei
+China
+Zonghao Liu
+NTU Singapore
+Singapore
+Siyang Shao‡
+Georgia Tech
+USA
+Yixin Zhang‡
+C.F. Investment
+China
+Luo Mai
+Univ. of Edinburgh
+United Kingdom
+Dmitrii Ustiugov
+NTU Singapore
+Singapore
+Abstract
+The architectural shift to prefill-decode disaggregation in LLM serv-
+ing improves resource utilization but struggles with the bursty
+nature of modern workloads. Existing autoscaling policies, often
+retrofitted from monolithic systems like those in AIBrix and Dist-
+Serve, rely on lagging indicators such as GPU utilization or coarse-
+grained request counts. This results in slow reactions to load spikes,
+leading to significant SLO violations and costly overprovisioning.
+We introduce TokenScale, an autoscaling framework that resolves
+this performance mismatch through two innovations. First, we pro-
+pose Token Velocity, a novel metric that unifies the prefill, network,
+and decode stages by quantifying their rate of work. As a lead-
+ing indicator of system backpressure, it enables proactive scaling.
+Second, Convertible Decoders allow decoder GPUs to dynamically
+execute prefill tasks during traffic spikes, creating a rapid-response
+buffer that absorbs bursts and eliminates the initialization latency
+of new prefillers. By uniting a predictive metric with a flexible
+system design, TokenScale significantly boosts the performance
+and efficiency of disaggregated LLM serving infrastructure. Our
+evaluation with production traces demonstrates that TokenScale
+improves the performance/cost by 1.3-6.4×over state-of-the-art
+systems, including DistServe, BlitzScale, AIBrix, and SplitWise.
+CCS Concepts
+• Computer systems organization →Cloud computing.
+Keywords
+LLM inference serving, autoscaling, cloud computing, quality of
+service
+ACM Reference Format:
+Ruiqi Lai, Hongrui Liu, Chengzhi Lu, Siyu Cao, Li Leqi, Zonghao Liu, Siyang
+Shao, Yixin Zhang, Luo Mai, and Dmitrii Ustiugov. 2026. TokenScale: Timely
+and Accurate Autoscaling for Disaggregated LLM Serving with Token Ve-
+locity. In ACM Symposium on Cloud Computing Volume 2 (SoCC ’26 Vol.
+2), November 18–20, 2026, Singapore, Singapore. ACM, New York, NY, USA,
+14 pages. https://doi.org/10.1145/3828161.3857885
+1 Introduction
+Large language model (LLM) inference has rapidly emerged as
+a dominant workload in modern AI infrastructure, placing sub-
+stantial pressure on GPU efficiency, memory capacity, and request
+scheduling in production serving systems. The architectural shift
+to prefill/decode (PD) disaggregation is reshaping LLM serving,
+promising to optimize expensive accelerator resources by separat-
+ing the compute-intensive prefill and memory-intensive decode
+stages [33, 34, 51]. This separation is designed to prevent perfor-
+mance interference and enable fine-grained scaling based on the
+distinct resource needs of each phase [50, 51].
+Serving LLM inference efficiently at scale is a challenging prob-
+lem: modern LLM workloads are often bursty, characterized by
+short-term albeit highly frequent spikes in requests as well as input
+and output tokens [40, 43]. Azure production trace [40] reveals that
+a system can experience traffic bursts during 47% of its operational
+time, with each burst lasting only 2.3 seconds on average. This
+creates a severe performance mismatch, as policies designed to
+manage disaggregated resources are often ill-equipped for such
+dynamic traffic. The consequence is not just poor performance, but
+significant Service Level Objective (SLO) violations in Time-to-First-
+Token (TTFT) and Time-Per-Output-Token (TPOT), often forcing
+operators into substantially overprovisioning of their expensive
+GPU clusters. An effective scaling policy in a large-scale LLM serv-
+ing must react to traffic changes both accurately and rapidly. In a
+PD-disaggregated system, this requires rapidly scaling upstream
+prefillers to handle resource bursts, while equipping downstream
+decoders with accurate leading indicators.
+Unfortunately, existing strategies fail on both fronts because
+they are fundamentally mismatched with the PD disaggregation
+architecture. For scaling the prefiller or decoder instance number,
+many previously explored scaling policies are directly adopted
+from conventional cloud microservices [17, 20] and monolithic,
+non-PD disaggregation LLM serving designs, which also often rely
+on legacy metrics. For example, scaling policies used by AIBrix [38],
+DistServe [51], and BlitzScale [50] rely on coarse-grained request
+counts (e.g., RPS, concurrency) that obscure the fine-grained, token-
+level bottlenecks that are root causes of performance issues, lead-
+ing to up to 30% SLO violations and 14% higher GPU costs. Oth-
+ers [22, 46, 48, 52] use lagging indicators, such as time-averaged
+GPU utilization; these react too slowly, scaling up only after a
+∗Both authors contributed equally to this work.
+†Corresponding author.
+‡Work done while at NTU Singapore.
+This work is licensed under a Creative Commons Attribution 4.0 International License.
+SoCC ’26 Vol. 2, Singapore, Singapore
+© 2026 Copyright held by the owner/author(s).
+ACM ISBN 979-8-4007-2816-7/2026/11
+https://doi.org/10.1145/3828161.3857885
+
+===== PDF PAGE 2 =====
+SoCC ’26 Vol. 2, November 18–20, 2026, Singapore, Singapore System Leading metric PD stage aware Rapid scaling
+AIBrix[38] ✗ ✗ ✗
+DistServe[51] ✗ ✓ ✗
+SplitWise[33] ✗ ✓ ✓
+BlitzScale[50] ✗ ✗ ✓
+TokenScale (ours) ✓ ✓ ✓
+Table 1: TokenScale vs. state-of-the-art systems for scaling
+PD-disaggregated LLM serving.
+burst has already overwhelmed the system and caused performance
+degradation. Also, some works [8, 10, 47] that use reactive policies
+trigger scaling only after SLOs have already been breached. These
+approaches treat the system as a black box, thereby fundamentally
+misunderstanding its state and leading to poor performance and
+costly responses.
+Additionally, to serve sudden request bursts under SLO, prior
+studies have also explored mechanism optimizations such as rapid
+instance initialization through accelerated model loading [11, 50]
+and instance conversion [33]. However, the initialization overhead
+is not limited to model loading, but also includes the non-trivial cost
+of framework initialization. In contrast, instance conversion [33]
+avoids repeated initialization, but naively switching an instance
+between prefiller and decoder roles can still lead to mutual interfer-
+ence, as the conversion degrades the performance of the instance
+in its original serving category.
+We show that an effective scaling system for PD disaggregation
+must integrate three co-design components: the leading metric,
+the stage-aware policy, and the burst adaption mechanism. First, it
+requires an LLM-native scaling metric that can expose dominant
+resource bottlenecks across the prefill and decode stages before
+performance degrades. This metric should also react instantly to
+traffic changes, providing sufficient time for scaling decisions. Sec-
+ond, the scaling policy must be stage-aware: scale prefillers rapidly
+to meet TTFT SLOs while precisely managing decoders to sus-
+tain TPOT SLOs. Finally, the burst adaptation mechanism must
+be purpose-built to mitigate the SLO violation caused by the high
+initialization latency of new LLM instances. We collate the state-of-
+the-art methods in Table 1, listing their lack of the leading metric
+for scaling and other limitations. We introduce TokenScale, an au-
+toscaling framework that resolves the performance mismatch in
+the PD disaggregation architecture with two innovations, including
+the Token Velocity and the Convertible Decoder. To replace lagging
+and coarse-grained signals, we introduce the Token Velocity metric
+as the foundation of the scaling policy. Token Velocity quantifies an
+instance’s maximum token-processing capability under its current
+resource allocation, revealing bottlenecks across different stages.
+Unlike request counts or utilization metrics, Token Velocity is a
+fine-grained, predictive indicator of system capacity. We define dis-
+tinct velocity metrics for each stage: prefill velocity, measuring GPU
+compute throughput; network velocity, capturing KV-Cache (KVC)
+transfer rates; and decode velocity, reflecting how quickly decoders
+release GPU memory. By monitoring the ratio between incoming
+token rates and stage-specific velocities, the policy can accurately
+and proactively scale, preventing SLO violations.
+Lai et al.
+Figure 1: Disaggregated LLM serving system architecture.
+Additionally, we design the Convertible Decoder as the burst
+adaptation mechanism. This mechanism enables some of the de-
+coders to temporarily operate as prefillers, absorbing traffic bursts
+by exploiting the observation that both instance types share model
+weights and that memory-intensive decoders often have spare com-
+pute cycles. When a burst arrives, the system immediately routes
+the excessive prefill requests to the Convertible Decoders. To pre-
+vent resource contention with ongoing decoding tasks, we use an
+SLO-aware restricted prefill strategy. This involves carefully sizing
+prefill chunks and reserving a dedicated portion of GPU memory
+and compute, ensuring that neither the co-located decoding tasks
+nor the new prefill tasks can violate their TTFT or TPOT SLOs.
+After processing the prefill chunks, the instance seamlessly tran-
+sitions to decoding them. To precisely estimate the appropriate
+number of Convertible Decoders and avoid interference between
+prefill and decode, we adapt an online profiler to determine the
+number of Convertible Decoders based on past traffic.
+We evaluate TokenScale as a control plane orchestrating a clus-
+ter of inference engines deployed on top of vLLM [21] and LM-
+Cache [28], when replaying sampled production traces [40] against
+Llama and Qwen models of various sizes and tensor parallelism
+degrees on Nvidia A100 and AMD MI308X GPUs. Compared to
+state-of-the-art baselines, including AIBrix [38], BlitzScale [50],
+DistServe [51], and SplitWise [33], TokenScale outperforms all
+baselines across both hardware platforms. Compared to the above
+baselines, TokenScale improves the performance/cost by 1.3-6.4×,
+decreasing SLO violation rate from 12-87% to 4-23% while reducing
+GPU costs by 0.2-13%.
+2 Background and Motivation
+2.1 LLM Serving Workload
+LLM inference generates tokens sequentially from input prompts by
+processing each token through decoder layers with self-attention
+and feed-forward components. The LLM inference process can be
+divided into two phases: the Prefill phase and the Decode phase.
+During the prefill phase, KVCs are constructed for all input to-
+kens, which is a highly-parallel compute-intensive process. The
+subsequent decode phase is autoregressive, sequentially generating
+output tokens. In each iteration, it reuses the KVC of previously gen-
+erated tokens and computes only the KVC for the last token before
+sampling the next output token. This process can result in substan-
+tial memory consumption, but it is much less compute-intensive
+than the prefill phase. LLM serving systems can be characterized
+with two key SLOs: TTFT and TPOT characterized by the execu-
+tion of the prefill and decode phases, which evaluate the system’s
+interactivity and the fluency of output generation [40, 51].
+
+===== PDF PAGE 3 =====
+TokenScale : Timely and Accurate Autoscaling for Disaggregated LLM Serving with Token Velocity # of Requests
+8
+6
+4
+2
+0
+Traffic Running average Spike
+# of Tokens(x1000)
+30
+20
+10
+0
+Requests/s
+30
+20
+10
+0
+RPS
+FLOPS
+BW
+Mem
+RPS
+FLOPS
+SoCC ’26 Vol. 2, November 18–20, 2026, Singapore, Singapore
+4
+2
+0
+Norm. Res. Required
+Requests/s
+30
+20
+10
+0
+BW
+Mem
+4
+2
+0
+Norm. Res. Required
+0 5 10 15 20
+Time (s)
+300 350 400 450 500
+Time Elapsed(s)
+300 350 400 450 500
+Time Elapsed(s)
+Figure 2: Traffic represented as requests (left) and tokens
+(right) in a production code trace [40]. Bursts are the spikes
+above the running average.
+% of Requests
+125
+100
+75
+50
+25
+0
+Azure Code
+Azure Conv
+BurstGPT 1
+BurstGPT 2
+% of Tokens
+125
+100
+75
+50
+25
+0
+Azure Code
+Azure Conv
+BurstGPT 1
+BurstGPT 2
+1.0 1.5 2.0 2.5 3.0 3.5 4.0
+Overprovision Factor
+1.0 1.5 2.0 2.5 3.0 3.5 4.0
+Overprovision Factor
+(a) Request bursts percentage.
+(b) Token bursts percentage.
+Figure 3: Percentage of burst traffic while varying the over-
+provisioning ratios in four production traces [40, 43].
+2.2 Serving LLM with PD Disaggregation
+Due to the differences between the prefill and decode phases, par-
+ticularly in their compute and memory requirements, batching
+requests across the two phases may cause performance interfer-
+ence [33, 51]. Therefore, many recent systems [33, 34, 51] disag-
+gregate the prefill and decode phases, executing them on different
+GPUs. As shown in Fig. 1, when a request arrives, it is first sent to
+a prefiller. After the prefiller computes the KVC of the prompt, it
+sends the KVC to a decoder via high-speed interconnects such as
+RDMA or NVLink. Using the received KVC, the decoder generates
+output tokens. By separating the compute-intensive prefill phase
+from decode, both TTFT and TPOT become more stable.
+Furthermore, the PD disaggregated architecture enables flexible
+pooling and autoscaling of GPU resources allocated for prefiller and
+decoder instances. While prior works [33, 34, 51] have showcased
+the performance advantages of the PD disaggregation, defining
+the workload requirements and system implications for PD system
+autoscaling is key to achieving cost-efficient operation under the
+strict SLOs.
+2.3 Workload Implications for PD
+Disaggregated Systems
+2.3.1 Bursty traffic in production. Similar to other cloud applica-
+tions, LLM serving workloads often exhibit highly bursty behavior,
+as shown by prior studies of production traces [40, 46]. In LLM
+inference workloads, bursts can occur along two dimensions: re-
+quests per second (RPS) and input tokens per second (TPS). We
+examine both types of bursts using production inference traces
+from Azure [40] and BurstGPT [43]. We apply a 1-minute sliding
+window, same as [40], to compute the average request and token
+(a) Prefiller.
+0 5 10 15 20
+Time (s)
+(b) Decoder.
+Figure 4: Utilization of compute (Comp) and memory capac-
+ity (Mem) on a single-GPU Prefiller and Decoder instances,
+and network bandwidth (Net) normalized to their maximum
+values in the A100 cluster, when serving a burst of requests
+with Llama-3.1-8B.
+rates, assuming a system that gradually scales following the run-
+ning average can deliver a throughput equal to these long-term
+average rates. Fig. 2 illustrates that, when the system serves Azure
+conversational trace, a significant fraction of traffic comes as bursts,
+exceeding the running-average trendline, causing queuing and re-
+source contention.
+Next, we evaluate whether static overprovisioning of cluster
+resources can avoid the contention caused by the burstiness. We
+model an autoscaling system that allocates 𝑋 times more resources,
+hence delivering 𝑋 times more throughput than the running av-
+erage, sweeping 𝑋 from 1 to 4. Fig. 3 shows the percentage of
+requests or tokens exceeding this provisioned throughput under
+different overprovisioning factors. Clearly, naive resource overpro-
+visioning cannot handle bursty traffic. For example, Fig. 3a shows
+that the BurstGPT 2 trace has around 25% of requests beyond the
+throughput of a 3×overprovisioned system. Fig. 3b reveals the
+same conclusion in terms of token arrival rates. Thus, while helpful,
+overprovisioning alone is not a panacea for LLM serving clusters.
+2.3.2 Scaling requirements for PD stages in the presence of bursts.
+To avoid overprovisioning, we need to define the requirements
+for cost-efficient dynamic resource scaling for both prefiller and
+decoder instances, given their resource usage differences (§2.1). We
+conduct an experiment showing the time between burst arrival and
+SLO violations, which we refer to as reaction window. We set up two
+prefillers and one decoder in the A100 cluster (setup details are in
+§5), hosting a Llama-3.1-8B model. We simulate a bursty workload
+that starts with stable RPS=8 and changes to RPS=16 at 4s, which
+lasts for 4 seconds before returning to the stable traffic.
+Prefiller stage. As shown in Fig. 4, when PD disaggregated LLM
+serves the bursty workload, the prefiller encounters the burst first.
+The prefiller requires more GPU computation resources to handle
+the request immediately, while network bandwidth and GPU mem-
+ory demands remain stable. Such an immediate change in compute
+demand results in the TTFT violations almost immediately, leaving
+a limited reaction window for the prefiller to handle the burst. Such
+a contradiction necessitates the need for a specifically designed
+burst adaptation mechanism.
+R1: Located upstream in the PD pipeline, the prefiller de-
+mands rapid scaling to handle sudden resource bursts
+Decoder stage. As illustrated in Fig. 4b, the decoder’s resource de-
+mand increases with a distinct delay, contrasting with the prefiller’s
+
+===== PDF PAGE 4 =====
+SoCC ’26 Vol. 2, November 18–20, 2026, Singapore, Singapore Lai et al.
+immediate surge. The demand sequence begins with network band-
+width, followed by compute resources and GPU memory. Notably,
+the decoder’s memory consumption does not peak immediately
+following the burst. This lag allows the decoder to react in time,
+provided the autoscaler can foresee the incoming traffic surge. Such
+behavior emphasizes the necessity of an accurate leading indicator
+to reflect shifts in incoming traffic.
+R2: Decoder locates at the downstream of the PD pipeline.
+It requires a leading indicator that forecasts future trends
+to react accurately.
+2.4 Limitations of Existing Work
+2.4.1 Inaccurate and delayed scaling policy. Over the last decade,
+researchers have explored designs of serverless systems, such as
+AWS Lambda [3], Google Cloud Run [1], Knative [17], which scale
+underlying resources following traffic changes in microservices and
+serverless applications. Many existing LLM systems [38, 45, 50, 51]
+directly inherit the scaling approaches from these serverless sys-
+tems, retrofitting their policies and mechanisms, which we classify
+in the following three categories:
+Request-based scaling policies are widely used by current PD
+disaggregation systems, such as AIBrix [38], DistServe [51], BlitzS-
+cale [50], and Aegaeon [45]. Based on the point of measurement,
+request-based policies are categorized into two types: concurrency-
+based policies, which track the number of requests actively in the
+queue, and RPS-based policies, which track the rate of requests
+entering the system. The concurrency-based policy triggers scaling
+by checking whether the number of requests in the queue within
+a sliding window exceeds a specified threshold [38, 50]. However,
+when the system experiences a burst of requests, changes in con-
+currency occur with a delay, which violates the requirement for
+scaling prefillers R1. This is because the sliding window averages
+out bursty traffic through overlapping requests, thereby reducing
+its apparent impact on overall utilization. RPS-based policies [51]
+trigger scaling when the RPS exceeds a predefined threshold. For ex-
+ample, DistServe derives such thresholds from offline-profiled static
+throughput estimates, which do not capture the runtime demand
+variation of decoders across workloads with different input/output-
+length distributions. However, RPS alone cannot accurately capture
+resource bottlenecks, leading to suboptimal decisions in determin-
+ing the number of decoder instances and thus violating the scaling
+requirement R2.
+Utilization-based scaling policies monitor the resource utiliza-
+tion of the PD disaggregation system, including both the resource
+utilization of the instance in the PD disaggregation system and LLM
+serving performance [22, 38, 46, 48, 52]. For example, AIBrix [38],
+in its HPA, KPA, APA policies adopted from Knative [17], scales in-
+stances by monitoring the average GPU memory utilization across
+all instances within the window and triggers the scaling when the
+utilization exceeds the threshold. However, the lag in GPU resource
+utilization, particularly in memory usage, prevents utilization-based
+scaling policies from accurately determining both the necessity of
+scaling and the appropriate number of instances. Hence, such poli-
+cies risk violating the stringent prefiller requirements R1 while
+simultaneously failing to accommodate the demands of the decoder
+R2.
+Performance-based scaling policies target overall system per-
+formance within PD disaggregation systems, considering metrics
+such as TTFT and TPOT [8, 10, 47]. However, these systems trig-
+ger scaling only after SLOs are violated, which is much later than
+resource shortage manifests.
+2.4.2 Inefficient burst adaptation mechanisms. Current work also
+tries to adapt to the burst workload with two main mechanisms
+of optimization: 1) quick initialization of the instance [11, 50] and
+2) the instance role conversion [33]. For the former, Serverless-
+LLM [11] proposes caching model weights in the server’s host
+memory, accelerating model loading speed; BlitzScale [50] proposes
+parallelizing model loading with computation, allowing instances to
+start processing requests; before the model weights are fully loaded.
+Medusa [49] accelerates startup by restoring offline-materialized
+KV-cache state and CUDA graphs to avoid expensive runtime pro-
+filing and graph capture. These methods, nevertheless, leave the
+remaining initialization delays on the critical path. For the latter,
+SplitWise [33] proposes a mechanism to convert existing prefill
+instances into their counterparts, and vice versa, to absorb sud-
+den requests and token bursts. However, this method may lead
+to substantial interference between co-resident prefill and decode
+tasks, as we reveal in §6.1, because the method relies on conversion
+as a best-effort fallback rather than a precise scaling mechanism.
+Moreover, SplitWise neither bounds the interference introduced by
+conversion nor distinguishes the different burst characteristics of
+the prefill and decode stages. Thus, none of these works manages
+to fulfill R1 or R2.
+3 Core Methods
+In this section, we introduce the Token Velocity metric and the
+concept of Convertible Decoders to address each stage’s scaling
+requirements in a PD disaggregation system.
+3.1 Design Principles
+We start by formulating two design principles based on the scaling
+requirements discussed in §2.3.2.
+3.1.1 Accurately balancing the PD resources. This principle is ap-
+plied to guide the scaling of the decoder (R2). The number of re-
+quests received by prefillers subsequently causes an increase in the
+resource demands for decoders down the PD disaggregation system.
+At the same time, if decoders’ resources saturate, decoders backpres-
+sure the prefillers, which become unable to send KV-Cache (KVC)
+data at the same rate. Finally, the same applies to the network band-
+width connecting prefillers and decoders as a middle stage of the PD
+disaggregation system. Hence, the system must proactively balance
+decoder resource allocation with the number of active prefillers to
+avoid both performance degradation and resource waste.
+3.1.2 Timely scaling tailoring to prefiller rapid resource demand
+bursts. Scaling LLM inference engines often violates the R1 require-
+ment for rapid prefillers scaling, incurring high start-up overheads
+to allocate GPU memory, load model parameters and initialize the
+runtime. This process typically requires 3-10 seconds, depending
+on the model size and tensor parallelism level [49], significantly
+degrading prefillers’ performance, i.e., TTFT, in the presence of
+
+===== PDF PAGE 5 =====
+TokenScale : Timely and Accurate Autoscaling for Disaggregated LLM Serving with Token Velocity SoCC ’26 Vol. 2, November 18–20, 2026, Singapore, Singapore
+Requests
+Token Arrival Rate
+Prefille Stage
+Prefiller
+Prefiller
+Prefiller
+Autoscaler
+Scaling Instructions
+Network Stage
+Utilization and Performance Based (Threshold 70%)
+Utilization
+70%
+x5 x2
+Scale
+Scale
+Decode Stage
+Decoder
+Decoder
+Slow!
+Slow!
+Request based (Threshold 4 req/s)
+Req/s
+x5
+x2
+4
+Scale
+Figure 5: Overview of Token Velocity in prefill, network, and
+decode stages. 𝜆′ denotes the combined rate of input and
+predicted output tokens. Token velocity denotes the maxi-
+mum token processing rate at the prefill (𝑉𝑃), network (𝑉𝑁),
+and decode (𝑉𝐷) stages. The autoscaler adjusts the number of
+prefillers (𝐼𝑃) and decoders (𝐼𝐷) based on the ratio between
+the token arrival rate and the corresponding stage velocity,
+ensuring that no stage becomes a bottleneck.
+bursty request and token rates. Thus, the system must minimize
+the prefiller start-up delays to meet the TTFT SLO.
+3.2 Token Velocity
+To apply the first principle, we introduce a leading indicator Token
+Velocity: the maximum number of tokens an instance can output
+per second. Traditionally, evaluating system bottlenecks is diffi-
+cult because prefillers, networks, and decoders operate at different
+speeds. Token Velocity solves this by acting as a universal common
+denominator that unifies prefill ingestion, network transfer, and
+decoder output speeds. Consequently, by measuring the incoming
+token arrival rate against this unified Token Velocity, the system
+can instantly calculate the precise number of instances needed,
+allowing it to react to traffic bursts in real time.
+Due to the differences in resource requirements in each stage of
+the PD disaggregation system (§2.3.2), we calculate Token Velocity
+for each stage with a different method.
+• Prefill Velocity (𝑉𝑃) is the maximum speed at which prefillers can
+process input tokens. 𝑉𝑃 is bound by GPU compute and is constant
+for a combination of a GPU generation and LLM model.
+• Network Velocity (𝑉𝑁) is the maximum transmission speed at
+which prefillers can transfer KVC to decoders, typically over RDMA
+network or NVLink. 𝑉𝑁 depends on network bandwidth and KVC
+size.
+• Decode Velocity (𝑉𝐷) is the maximum rate at which decoders
+drain tokens, measured as the number of tokens completed per unit
+time when the decoder is saturated, which can be expressed as:
+𝑉𝐷 =
+𝑟∈𝑅𝐿𝑟
+, (1)
+𝑇𝑃𝑂𝑇 ×𝐿𝑜
+where 𝑅is the set of completed requests, 𝐿𝑟 is the number of tokens
+in request 𝑟, 𝐿𝑜 is the average output length, and 𝑇𝑃𝑂𝑇 represents
+the measured Time-Per-Output-Token metric. It differs from gener-
+ation throughput: from a memory perspective, generation through-
+put measures how quickly GPU memory is allocated during token
+generation, whereas Decode Velocity reflects how quickly memory
+is released as tokens are finalized. The decoder’s Token Velocity is
+bounded by available GPU memory capacity. When the memory is
+Mistake!
+Token Velocity Based (Threshold 8 tok/s)
+Tok/s
+x5
+x2
+8
+Scale
+Scale
+Fast and Accurate!
+T1
+T2
+Figure 6: Comparison of scaling policies. Two traffic bursts
+occur at times 𝑇1 and 𝑇2: at 𝑇1, five requests with two tokens
+each; at 𝑇2, two requests with five tokens each. In both cases,
+each instance has a Token Velocity of 8 tokens/s, but only
+the Token Velocity-based policy responds promptly and ac-
+curately to both bursts.
+full, the decoder will backpressure the prefiller and network stages.
+This metric connects decoders with the earlier stages, ensuring that
+input and output rates remain balanced, preventing bottlenecks in
+the decode stage. Results in §6.2.2 confirm that Decode Velocity is
+an effective metric for capturing decoder-side pressure.
+As illustrated in Fig. 5, the autoscaler monitors the token arrival
+rate 𝜆and the token velocities (𝑉𝑃,𝑉𝑁,𝑉𝐷)at each stage, dynami-
+cally adjusting the number of prefiller and decoder instances (𝐼𝑃
+and 𝐼𝐷 are the required number of prefillers/decoders) to ensure
+that no stage becomes a bottleneck. For the prefill and network
+stages, Token Velocity remains constant because their throughput
+is primarily bounded by GPU computation and network bandwidth.
+In contrast, the decode stage exhibits variable Token Velocity, as
+the decoder’s output speed depends on the input and output token
+lengths of each request. Once these lengths are determined, the
+decoder’s velocity can be approximated as constant. To estimate
+the required number of decoders, incoming requests are classified
+into different types based on their input and output lengths, and the
+instance number for each type is computed as the ratio between its
+incoming token rate and profiled Token Velocity. Summing these
+per-type requirements yields the number of decoders.
+Fig. 6 illustrates why Token Velocity-based scaling policy can
+outperform existing policies (§2.4) with an example of two bursts
+arriving into a system serving stable inference traffic. In this exam-
+ple, the first is a request burst that carries many requests with a few
+tokens, while the second is a token burst that carries a few requests
+with many tokens. At 𝑇1, a utilization-based policy reacts slowly
+to both bursts. As discussed in §2.4, the resource utilization has a
+significant lag between the traffic spikes. Such lag would cause a
+high scaling latency and lead to SLO violations. A request-based
+
+===== PDF PAGE 6 =====
+SoCC ’26 Vol. 2, November 18–20, 2026, Singapore, Singapore Token Velocity (tok/s)
+107
+106
+105
+104
+7B
+14B
+32B
+Token Velocity (tok/s)
+107
+106
+105
+104
+7B
+14B
+32B
+Prefill Network Decode
+Prefill Network Decode
+(a) A100 cluster.
+(b) H100 cluster.
+Figure 7: Token Velocity of prefill, network, and decode stages
+of Qwen models (7B, 14B, 32B) in A100 and H100 GPU clusters.
+Decoder velocity varies with input length and concurrency
+(indicated with error bars).
+policy reacts to bursts only when the arrival rate exceeds a prede-
+fined threshold (e.g., 4 req/s here). However, at time 𝑇2, the burst is
+token-intensive rather than request-intensive. Although the num-
+ber of requests remains below the threshold, the total token volume
+(10 tokens at 𝑇2) exceeds the instance’s maximum processing rate
+of 8 tokens/s. As a result, the request-based policy underestimates
+the actual workload and fails to trigger scaling. In contrast, a To-
+ken Velocity-based policy correctly detects both request and token
+bursts and swiftly and accurately scales the instances.
+3.3 Token Velocity Characterization in LLM
+Deployments
+Token Velocity serves as a unified metric for characterizing resource
+bottlenecks across the prefill, network, and decode stages, enabling
+system architects to quantify and compare token throughput under
+different models and hardware configurations. In this section, we
+systematically characterize Token Velocity across these three stages
+under various model sizes and GPU clusters.
+As shown in Fig. 7, we evaluate three Qwen-2.5 models: (7B, 14B,
+and 32B) on two GPU clusters: an A100 cluster with 4 A100-40GB
+GPUs and 200 Gbps RDMA; an H100 cluster with 8 H100-80GB
+GPUs and 2880 Gbps RDMA. For each configuration, we plot Token
+Velocity of the prefill, network, and decode stages, assuming all
+GPUs within a node are fully utilized for a single stage. For the
+decode stage, whose Token Velocity depends on request and token
+patterns, we use error bars to represent its range of variation. Across
+all settings, the network bandwidth is significantly higher than
+Token Velocity of both prefill and decode stages, suggesting that
+while prefillers and decoders require careful scaling to maintain
+balanced performance, network bandwidth does not become the
+provisioning bottleneck in these setups. In production deployments
+where bandwidth is constrained or shared, the network can become
+a bottleneck; TokenScale accounts for this case by bounding prefiller
+capacity with the network velocity (§4.3.1).
+3.4 Convertible Decoder
+Given the prefillers’ upstream location in the PD disaggregation
+system, the system must scale prefillers as soon as it detects an
+incoming burst to avoid violating R1. Hence, we introduce Convert-
+ible Decoders, which are a subset of decoders that the system can
+quickly convert into prefillers upon a burst, and give back to the
+pool of decoders after the load spike on prefillers is over. Effectively,
+converting a decoder into a prefiller takes less than a millisecond
+to update the gateway routing rules to redirect the burst part of
+Lai et al.
+Figure 8: TokenScale architecture overview.
+the request to the Convertible Decoder, because prefillers and de-
+coders share the same model weights. Specifically, when a burst
+request arrives, the controller redirects the burst part of the request
+to the Convertible Decoder. In the Convertible Decoder, the prefill-
+ing phase employs an SLO-aware restricted prefill mechanism to
+maintain high TTFT and TPOT SLO attainment. After prefilling is
+finished, the same instance seamlessly continues with the decoding
+phase.
+To ensure that Convertible Decoders effectively absorb bursty
+prefill requests without degrading the performance of active decod-
+ing tasks, TokenScale implements constraints on them. First, we
+regulate the prefill chunk size and allocate profile guided GPU mem-
+ory reservations to maintain a stable token velocity that respects
+established SLOs. Furthermore, to avoid resource overprovisioning,
+an online profiling strategy dynamically determines the maximum
+number of convertible instances by monitoring peak burst sizes in
+traffic. By applying both restrictions, TokenScale limits the impact
+of sudden surges in traffic demand on the strict SLO of both pre-
+fill and decode requests. These bounds are validated empirically
+(§6.2.1).
+4 TokenScale Design
+In this section, we introduce TokenScale to address the different
+scaling requirements of the prefill and decode phases with the key
+design described in §3.
+4.1 TokenScale System Architecture
+TokenScale introduces a controller comprising several components,
+shown in Fig. 8, that manage prefiller and decoder instances across
+the PD disaggregated deployment cluster. Upon receiving requests,
+the Gateway (❶) records the number of incoming requests and their
+input token length, while also predicting the output length of each
+request with the output prediction model generated by the Offline
+Profiler (❹). The Online Profiler (❸) continuously monitors arriv-
+ing traffic over a fixed window, and uses the maximum burst size
+within this window to update the number of Convertible Decoders.
+Then the Router (❷) employs a burst detector to distinguish burst
+traffic from stable traffic and routes them to appropriate instances
+based on request patterns with the Load Balancer. Burst requests
+will be routed directly to the Convertible Decoders to finish their
+prefill and decode there, while stable requests are routed to regular
+
+===== PDF PAGE 7 =====
+TokenScale : Timely and Accurate Autoscaling for Disaggregated LLM Serving with Token Velocity SoCC ’26 Vol. 2, November 18–20, 2026, Singapore, Singapore
+prefiller and decoder in their respective groups. Meanwhile, the
+Scaler (❺) monitors traffic patterns collected by the Gateway and
+the runtime status of prefillers and decoders, and makes scaling
+decisions based on Token Velocity generated by the Offline Profiler.
+Given the distinct scaling requirements, the Scaler uses dedicated
+Autoscalers for prefillers and decoders.
+4.2 Offline Profiler
+The key responsibility of the Offline Profiler is to construct models
+for the output predictor and to estimate the Token Velocity of the
+prefiller and decoder for the Autoscaler.
+4.2.1 Output prediction model. Accurately estimating decoder To-
+ken Velocity requires predicting the length of each request. To-
+kenScale adopts a lightweight output predictor similar to prior
+works [14, 40], which classifies requests based on input prompt
+content into different buckets by input-output lengths.
+4.2.2 Token velocity estimation. According to § 3.2, Token Velocity
+refers to the maximum token release speed that the prefiller or
+decoder can achieve. This value is determined by both the model
+and the hardware characteristics; therefore, we perform offline
+profiling for each model-GPU pair to obtain its Token Velocity.
+To estimate the prefill velocity, we gradually increase the request
+rate to the prefiller until its output rate saturates, which defines the
+maximum output velocity.
+For the network velocity, we record the number of tokens trans-
+mitted from the prefiller to the decoder along with the correspond-
+ing transmission time. Based on these measurements, we compute
+network velocity as the maximum token transmission rate between
+the prefiller and the decoder. In the following sections, we discount
+network velocity as it does not become the provisioning bottleneck
+in our evaluated RDMA setups, as we empirically demonstrate
+in §3.3; it is still incorporated in the prefiller autoscaler to cover
+bandwidth-constrained deployments.
+Decode velocity is more complex to characterize because it varies
+across different types of requests. To derive this, we first overpro-
+vision the prefillers, sending request patterns, such as long input
+short output or short input medium output (see the full set of buck-
+ets in Tab. 3 in §5), and similarly sweep the request rate from low
+to high until the decoder reaches its peak output rate. The result-
+ing maximum output rate for each request type is recorded as its
+decode velocity. We showcase the effectiveness of this method by
+evaluating its prediction vs. the optimal number of decoders for a
+production trace in §6.2.2.
+4.3 Scaling Decoders and Prefillers at Runtime
+TokenScale’s Scaler determines the number of prefillers and de-
+coders from the ratio between the current token arrival rate and
+their Token Velocities. It then allocates the minimum instances
+required to provide sufficient Token Velocity for the incoming traf-
+fic. By projecting resource demand at traffic arrival, this strategy
+leaves enough reaction time for decoders downstream in the PD
+disaggregation system.
+4.3.1 Prefiller autoscaler. For prefillers, the required number of
+instances can be denoted as:
+𝜆×(1−𝑟𝑘𝑣𝑐)
+𝐼𝑃
+=
+𝑚𝑖𝑛(𝑉𝑃,𝑉𝐵𝑊), (2)
+where 𝜆 is the input token arrival rate, 𝑟𝑘𝑣𝑐 is the average KVC
+hit ratio. 𝜆×(1−𝑟𝑘𝑣𝑐)denotes the actual tokens that need to be
+processed by prefillers during specific time window. 𝑉𝑃 and 𝑉𝑁 are
+the prefiller and network velocities. Once the new 𝐼𝑃 is different
+from the current instance number, the prefiller autoscaler triggers
+the autoscaling of the prefiller instance to boot up new instances
+or stop current running instances.
+4.3.2 Decoder autoscaler. TokenScale manages two types of de-
+coders: regular decoders and Convertible Decoders, and calculates
+the total number of decoders as:
+𝜆′(𝑏)
+𝐼𝐷
+= ∑︁
+𝐼(𝑏) = ∑︁
+(3)
+𝑉𝑏
+𝑏∈B
+𝑏∈B
+𝐷
+where 𝐼(𝑏)denotes the decoder number required for bucket 𝑏, 𝜆′(𝑏)
+denotes the current input and output token arrival rate for request
+bucket 𝑏, 𝑉𝑏
+𝐷 denotes the profiled Token Velocity of bucket 𝑏, and
+Brepresents the set of all buckets. The autoscaler triggers scaling
+when the newly computed 𝐼𝐷 differs from the current number of
+decoder instances, following the same principle as for prefillers.
+4.4 Restrictions on Convertible Decoder
+TokenScale uses the Convertible Decoder to handle bursty prefill
+tasks by using chunked prefill in a SLO-aware restricted prefill
+strategy that we design. To avoid interference with prefill and
+decode, we perform SLO-aware restricted prefill in Convertible
+Decoders and limit the maximum number of Convertible Decoders
+based on the maximum burst ratio over the past hour.
+4.4.1 SLO-aware restricted prefill in Convertible Decoders. While
+Convertible Decoders are designed to absorb traffic bursts, their
+configuration requires a careful balance to protect the SLOs of both
+incoming prefill tasks and ongoing decode tasks. The critical per-
+formance determinant for these instances is the chunk size, which
+is defined as the maximum allowable sum of prefill tokens and the
+decode batch size within a single iteration. Selecting an optimal
+chunk size is essential; if the value is too large, the per-iteration
+latency increases significantly, which can lead to TPOT SLO viola-
+tions. Conversely, choosing a small chunk size slows down prefill
+tasks. Thus, the chunk size must be sufficient to ensure that prefill
+tasks are processed without exceeding the TTFT SLO.
+For each model and hardware configuration, we profile the Con-
+vertible Decoder by gradually increasing the chunk size and se-
+lecting the largest one that still meets the TPOT SLO. Unlike the
+conventional chunked prefill method [4] that aims to reduce re-
+source contention, our method maximizes prefill efficiency while
+keeping the TPOT within its SLO target.
+Within each iteration, Token Velocity for prefill tasks in a Con-
+vertible Decoder is defined by the difference between the chunk
+size and the decode batch size as:
+𝑉𝑃′
+𝐷 =
+chunk_size−batch_size
+, (4)
+TPOT𝑆𝐿𝑂
+where the average decode batch size batch_size is estimated using
+available GPU memory divided by the average memory usage of the
+request in the trace, and TPOT𝑆𝐿𝑂 is the TPOT SLO requirement.
+
+===== PDF PAGE 8 =====
+SoCC ’26 Vol. 2, November 18–20, 2026, Singapore, Singapore Lai et al.
+Algorithm 1 Routing Policy for Prefiller in TokenScale
+Require: Prefill request 𝑟
+1: for each prefiller 𝑝 do
+2: if inflight_tokens(𝑝)
+≤𝑆𝐿𝑂(𝑟)then
+𝑉𝑝
+3: Assign 𝑟 →𝑝; return
+4: end if
+5: end for
+6: for each Convertible Decoder 𝑑 do
+7: if inflight_tokens(𝑑)
+𝑉𝑃′
+≤𝑆𝐿𝑂(𝑟)then
+𝐷
+8: Assign 𝑟 →𝑑; return
+9: end if
+10: end for
+11: Enqueue 𝑟 to wait for an available prefiller
+Note that Convertible Decoders process no more than one prefill
+task at a time, returning to the decoder mode upon the prefill
+task’s completion. Therefore, TokenScale reserves a portion of GPU
+memory for prefill tasks, which is calculated as:
+𝑀𝑒𝑚𝑅𝑒𝑠𝑒𝑟𝑣𝑒𝑑= 𝑉𝑃′
+𝐷 ×𝑀𝑒𝑚𝑇 ×TTFT𝑆𝐿𝑂, (5)
+where 𝑉𝑃′
+𝐷 represents the Token Velocity of the Convertible De-
+coder and 𝑀𝑒𝑚𝑇 is the memory footprint of each token.
+4.4.2 Number of Convertible Decoders. The number of convertible
+decoders is determined through online profiling based on the burst
+characteristics of a fixed-size sliding window. To ensure the system
+can absorb the largest anticipated surge, it monitors the traffic
+across two time scales: instant traffic and a per-minute window
+running average.
+Following the methodology in §2.3, we identify the maximum
+burst size as:
+𝐵= max
+𝑖∈𝑡
+𝑇𝑃𝑆(𝑖)−𝑇𝑃𝑆𝑡
+avg, (6)
+where the 𝑡 is the sliding window size of the traffic, the 𝑇𝑃𝑆(𝑖)
+represents the token per second of each time point during the
+sliding window, and the 𝑇𝑃𝑆𝑡
+avg denotes the average TPS during
+the sliding window. The online profiler determines and periodically
+adjusts the number of convertible decoders 𝐼𝐷
+𝑟 as the ratio between
+the maximum burst size and the calculated prefill velocity of the
+Convertible Decoder in Eq. 4 as follows:
+𝐵
+𝐼𝐷
+𝑟
+=
+. (7)
+𝑉𝑃′
+𝐷
+4.5 Load Balancing Policy
+As an on-demand scaling system, TokenScale can create and
+terminate instances at any time, resulting in heterogeneous resource
+utilization across instances. Therefore, the load balancing policy is
+crucial to avoid SLO violations.
+4.5.1 Prefill load balancing policy. Although TTFT SLOs are tight,
+prefill task completion time is highly predictable because it is pro-
+portional to the input prompt length. Hence, we adopt a two-round
+strategy described in Alg. 1. In the first round, the router checks
+whether any prefiller can satisfy the TTFT SLO. The waiting time
+is estimated as the ratio of in-flight tokens to the prefiller’s Token
+Velocity. If no prefiller can accommodate the request, the router
+enters the second round and iterates over all Convertible Decoders.
+For each convertible decoder, it compares the in-flight tokens with
+its prefill Token Velocity to determine whether it can serve the
+incoming request within the TTFT SLO. If neither round finds a
+feasible worker, the router enqueues the request until a prefiller
+becomes available. As system load changes, due to decoder utiliza-
+tion changes or the initialization of additional prefilling instances,
+TokenScale Scaler re-evaluates Convertible Decoders and re-assigns
+queued requests accordingly.
+4.5.2 Decode load balancing policy. For decode requests, TPOT
+violations occur either due to insufficient memory or because the
+maximum batch size is capped. For each incoming decode request,
+the router first uses the output predictor to classify it into a request
+type (e.g., short input and long output). It then checks all decoders
+and routes the request to the decoder with the fewest in-flight re-
+quests of that type to balance the per-type load across decoders.
+Convertible decoders are excluded from routing once their mem-
+ory utilization exceeds the predefined threshold. On Convertible
+Decoders, the router further prioritizes decode requests over prefill
+tasks to ensure that decoding is not preempted by prefill execution.
+4.6 Multi-turn Workloads and Session Affinity
+Production deployments may enforce session-affinity routing, e.g.,
+to reuse the prefix KVC of multi-turn conversations on the same
+decoder. Such constraints shrink the pool of decoders eligible to act
+as Convertible Decoders, since a decoder that also serves affinity-
+bound decode requests has less residual capacity for prefill. This
+work focuses on single-turn workloads; we leave extending To-
+kenScale to multi-turn workloads with session affinity to future
+work.
+4.7 TokenScale Implementation
+TokenScale is built on top of vLLM [21]v0.9.2, using LMCache [28]
+as the KVC transfer backend to support PD disaggregation infer-
+ence. We support asynchronous KVC transfer in LMCache by using
+dedicated I/O threads on the prefiller and decoder to perform send
+and receive operations independent of the main computation. This
+design, built on the NIXL communication backend, allows KVC
+movement to proceed in parallel with computation and prevents
+additional latency. We build TokenScale control plane with 6000
+Golang LoC. We integrate metrics reporting with Prometheus to
+retain compatibility with vLLM monitoring subsystems.
+The decoder-to-prefiller conversion is implemented by routing
+prefill tasks to the Convertible Decoder at a higher priority, so
+vLLM co-schedules them with ongoing decodes under the SLO-
+aware chunk size.
+5 Experimental Methodology
+Hardware setup. To demonstrate TokenScale’s performance on
+different hardware, we evaluate TokenScale on two GPU clusters:
+AMD cluster and Nvidia cluster. The AMD cluster is equipped with
+8 MI308X nodes; each node has 8 MI308X GPUs with four 200
+Gb/s RDMA links through Mellanox BlueField-3, providing 800
+Gb/s aggregate inter-node RDMA bandwidth. The Nvidia cluster
+consists of 16 nodes, each equipped with 4 A100-40GB GPUs with
+two Mellanox ConnectX-6 NICs (total 200 Gbps RDMA). In our
+evaluation, we model a scenario where the provider maintains a
+fixed-size pool of GPU nodes and allocates them on demand to the
+
+===== PDF PAGE 9 =====
+TokenScale : Timely and Accurate Autoscaling for Disaggregated LLM Serving with Token Velocity SoCC ’26 Vol. 2, November 18–20, 2026, Singapore, Singapore
+served workload. Unallocated GPUs and nodes remain on standby
+or may be allocated to other workloads (out of our scope).
+Software setup. We deploy TokenScale on top of vLLM [21] v0.9.2,
+using LMCache [28] v0.3.0 as the KVC transfer backend. The eval-
+uation runs on PyTorch v2.7.1 and CUDA v12.8. We adopt the
+ServerlessLLM model loader [11] to minimize the vLLM and model
+initialization delays. For the output predictor, we finetune a 110M
+BERT-base model [35] on 8 AMD MI308X GPUs on ShareGPT
+trace. The model classifies each request’s output length bucket
+from its input prompt. For traces with actual prompt content, such
+as ShareGPT [5], we directly apply this output predictor. For traces
+without prompt content, such as the Azure Conversation and Azure
+Code traces [40], we set the output predictor at the same accuracy
+as measured on the ShareGPT trace. The accuracy and overhead of
+the predictor are evaluated in §6.2.3. For the online profiler, we use
+a 1-hour window to accurately estimate the required Convertible
+Decoder capacity. The impact of window size is evaluated in §6.2.4.
+Models setup. In our evaluation, we use two models: a dense model
+Llama-3.1-8B, and a MoE model Qwen-3-30B-A3B. Both models
+are served in half precision (bfloat16). We deploy the Llama-3.1-8B
+with a tensor parallelism degree of one (TP=1) on the Nvidia cluster.
+We deploy the Qwen-3-30B-A3B with a tensor parallelism degree
+of four (TP=4) on the Nvidia cluster and a tensor parallelism degree
+of one (TP=1) on the AMD cluster. Following ServerlessLLM [11],
+we cache the model weight on each node’s CPU memory to achieve
+low initialization latency (about 5s for Llama-3.1-8B and 8s for
+Qwen-3-30B-A3B).
+Baselines. We compare TokenScale against four representative
+baselines under the PD disaggregation: We re-implement the au-
+toscaling policies atop our vLLM-based prototype, carefully control-
+ling for autoscaling sampling frequency, traffic metrics smoothing,
+and instance cold-start latency, to isolate the implications of the au-
+toscaling control plane from other optimization and configuration
+differences in the runtime versions the authors used.
+System Threshold unit Azure Conv. Azure Code Mixed
+P D P D P D
+AIBrix P: req, D: % 7 70% 7 70% 11 70%
+BlitzScale P: req, D: req 7 45 7 38 11 41
+DistServe req/s 14 28 8 20 12 23
+SplitWise req/s 14 28 8 20 12 23
+TokenScale P: tok/s, D: N/A 14K N/A 14K N/A 14K N/A
+Table 2: Scaling thresholds for Llama-3.1-8B (TP=1) on A100
+under different traces.
+S–S S–M S–L M–S M–M M–L L–S L–M L–L
+Input 256 256 256 1K 1K 1K 8K 8K 8K
+Output 100 350 610 100 350 610 100 350 610
+Tok. Vel. 23,535 8,146 5,138 33,106 9,794 5,766 39,551 11,310 6,495
+Table 3: Per-bucket decoder Token Velocity (Tok. Vel.) for
+Llama-3.1-8B (TP=1) on A100.
+• AIBrix uses a request-based autoscaler for prefillers, monitor-
+ing concurrency, and a utilization-based autoscaler for decoders,
+tracking GPU memory usage. The prefiller threshold is the ratio of
+maximum prefill throughput to the trace’s average prefill length,
+while the decoder threshold is 70% GPU memory.
+• BlitzScale employs a request-based autoscaler for both prefillers
+and decoders and implements live autoscaling, which enables pre-
+fillers to start KVC computation during model loading. We emulate
+ideal live autoscaling by recording scaling decisions and executing
+scale-up actions proactively, effectively removing model loading
+latency from the critical path. Prefiller thresholds use the ratio of
+the maximum prefill throughput to the trace’s average prefill length,
+decoder thresholds are based on the ratio between available KVC
+memory and the average memory footprint of requests.
+• DistServe. DistServe scales both prefillers and decoders using
+a simulator that accounts for the input request rate, the profiled
+model, and the hardware characteristics to maximize goodput.
+• SplitWise uses the same scaling policy and threshold determina-
+tion as DistServe, but with mixed pool enabled, where prefillers and
+decoders can be converted into instances with mixed continuous
+batching to absorb traffic bursts in the corresponding stage.
+We provide an example of the scaling thresholds of all evaluated sys-
+tems for Llama-3.1-8B on the A100 cluster in Table 2. The decoder
+thresholds in TokenScale are not directly applicable, because they
+are dynamically determined by per-bucket Token Velocity, which
+varies with the numbers of input and output tokens. As described in
+§4.2, we derive the per-bucket Token Velocity by sweeping the re-
+quest rate until token output rate saturates. We provide an example
+for Llama-3.1-8B in Table 3.
+Workload Generation. We evaluate TokenScale using traces from
+the Azure [40], BurstGPT [43] and ShareGPT [5]. To examine perfor-
+mance under different workloads, we construct three representative
+traces: Azure Conversation (conv), Azure Code (code), and a Mixed
+trace (mix) combining all Azure Conversation, Azure Code, and
+BurstGPT traces with equal request rates. Since ShareGPT does not
+contain request arrival patterns, we use the Azure Conversation
+trace’s timestamps to send ShareGPT requests. We use a custom
+load generator to replay these traces while preserving their in-
+put/output token distributions and request arrival patterns. As the
+Azure and BurstGPT traces provide arrival times and input/output
+lengths but no session identifiers or prompts, requests are replayed
+independently Following [40], where the Azure trace was collected
+on an 11-node H100 cluster serving Llama-2-70B, we scale the Azure
+Conversation trace according to the ratio between the maximum
+memory capacity of our setup and that of their deployment. The
+sampled trace yields an average throughput of 22 RPS. We then
+recursively downsample Azure Code and Mixed to the same RPS
+for consistent comparison across workloads. Because Azure traces,
+BurstGPT and ShareGPT contain at most 8K input tokens, we ad-
+ditionally evaluate TokenScale under long-context workloads by
+scaling request input lengths by 4×when serving Qwen-3-30B-A3B.
+Metrics. We use SLO attainment rate to evaluate an autoscaling
+system’s performance and the average utilized GPU numbers during
+trace run to measure its cost. We follow the SLO standards defined
+in prior works [2, 40], which assign different TTFT targets based on
+input length: 250 ms for short requests (< 256 tokens), 400 ms for
+medium requests (< 1024 tokens), and 2000 ms for long requests
+(up to 8192 tokens). The TPOT SLO is fixed at 100 ms.
+
+===== PDF PAGE 10 =====
+SoCC ’26 Vol. 2, November 18–20, 2026, Singapore, Singapore AIBrix BlitzScale DistServe SplitWise TokenScale
+80% Provision
+100% Provision
+120% Provision
+SLO Attain(%)
+100
+50
+0
+26.5 27.0 27.5
+Cost(# of GPU)
+29 30
+Cost(# of GPU)
+32 33 34
+Cost(# of GPU)
+(a) Performance vs. cost. Top-left is better.
+Norm. Perf/Cost
+5
+0
+1.0
+80% Provision
+6.4
+4.1 4.2
+2.5
+0.0
+100% Provision
+3.3
+2.5 2.5
+1.0 1.3
+3.0 2.8
+2.5
+120% Provision
+5
+0
+3.8
+2.3
+1.0
+(b) Normalized performance/cost.
+Figure 9: Comparison of performance vs. cost of Qwen-3-30B-
+A3B model running ShareGPT traces on AMD cluster. We
+sweep the provisioning ratios to compare different systems’
+performance under 80%, 100% and 120% resource provisioning.
+AIBrix BlitzScale DistServe SplitWise TokenScale
+conv
+code
+mixed
+SLO Attain(%)
+100
+80
+60
+9.0 9.5
+Cost(# of GPU)
+3.7 3.8 3.9
+Cost(# of GPU)
+7.0 7.5
+Cost(# of GPU)
+(a) Llama-3.1-8B
+conv
+code
+mixed
+SLO Attain(%)
+100
+60
+20
+42 44 46
+Cost(# of GPU)
+18 20
+Cost(# of GPU)
+40 42
+Cost(# of GPU)
+(b) Qwen-3-30B-A3B
+Figure 10: Comparison of performance vs. cost across differ-
+ent scaling systems, traces, model configurations: (a) Llama-
+3.1-8B, TP=1; (b) Qwen-3-30B-A3B, TP=4 on the Nvidia cluster.
+Top-left is better.
+6 Evaluation Results
+In this section, we evaluate the design and performance of Token-
+Scale under various workload patterns and scaling scenarios. We
+conduct two end-to-end experiments on AMD and Nvidia clusters.
+On the AMD cluster, we conduct a study comparing performance
+and cost under different resource provisioning levels of TokenScale
+and all baselines. On the Nvidia cluster, we further demonstrate To-
+kenScale’s performance across different models, traces and tensor
+parallelism configurations. Next, we analyze the effectiveness of
+key components in TokenScale, including burst adaptation, compar-
+ison of provisioned vs. required instance number, output predictor’s
+impact on TokenScale, and online profiler’s accuracy. We then con-
+duct an ablation study to quantify the contribution of components
+to overall performance.
+6.1 End-to-End Experiments
+6.1.1 End-to-end experiments on AMD cluster with different pro-
+visioning ratios. To compare different autoscaling policies under
+Lai et al.
+various resource provisioning levels, we apply a provisioning ra-
+tio to autoscalers. For example, a provisioning ratio of 80% scales
+the autoscaler’s instance count by 0.8. As shown in Fig. 9a, Token-
+Scale consistently improves the SLO attainment rate by 26.6-64.4%,
+16.9-57.6%, and 13.1-66.4% under 80%, 100%, and 120% resource
+provisioning, respectively, with 0.2-5.5%, 2.7-6.1%, and 3.9-7.8%
+lower cost. Overall, TokenScale improves the SLO attainment rate
+by 13.1-66.4% with 0.2-7.8% lower cost. Fig. 9b shows the normal-
+ized performance/cost, over all provisioning levels, TokenScale
+improves performance/cost by 1.3-6.4×. This demonstrates Token-
+Scale’s ability to deliver the right amount of resources to achieve
+SLO attainment across varying provisioning levels.
+6.1.2 End-to-end experiments on Nvidia cluster with different traces
+and models. Fig. 10 demonstrates that TokenScale achieves higher
+SLO attainment with fewer GPUs than all baselines across differ-
+ent workloads and model sizes. As shown in Fig. 10a, TokenScale
+improves SLO attainment from 62-88% to 89-96% across workloads
+while using 6-13% fewer GPUs on average for the Llama-3.1-8B.
+For the Qwen-3-30B-A3B (Fig. 10b), even under long-context work-
+loads, TokenScale improves SLO attainment from 32-87% to 81-90%
+while using 3-11% fewer GPUs than the baselines.
+This advantage arises because baseline systems rely on
+concurrency-based autoscalers for prefillers, which respond subop-
+timally to sudden traffic bursts and lead to noticeable fluctuations in
+prefiller instances. TokenScale benefits from two key design factors:
+1) the Token Velocity-based scaling policy accurately estimates re-
+source demand, enabling timely and balanced provisioning without
+over-/under-scaling; and 2) the Convertible Decoder, supported by
+accurate online profiling and dedicated memory reservation, can
+absorb bursty prefill traffic without degrading decoder throughput.
+In our experiments, a single Convertible Decoder, as determined by
+the online profiler, is sufficient to absorb bursts in the production
+traces we used. As for SplitWise, it fails to avoid prefill-decode inter-
+ference, leading to performance degradation. Under SplitWise, most
+prefillers operate with chunked prefilling, preventing them from
+reaching optimal prefill throughput. Moreover, decoders without
+memory reservation cannot immediately convert when the decode
+memory is saturated.
+6.2 Effectiveness of TokenScale Design
+6.2.1 Adaptation to burst workload. We analyze how TokenScale
+adapts to burst workloads. In this experiment, we start the system
+from 1 prefiller and 1 Convertible Decoder to serve a stable traffic
+of 1 RPS. At time 𝑡 = 10𝑠, the RPS is scaled to 10 to emulate a
+traffic burst. Fig. 11a shows that TokenScale experiences only a
+slight TTFT increase, rising to about 50 ms, and quickly recovers
+at 𝑡 = 14s. In contrast, all other baselines exhibit significant TTFT
+surges, reaching above 1000ms, and recover much later than To-
+kenScale. TokenScale maintains low TTFT by redirecting bursty
+requests to the Convertible Decoder. We further evaluate the mech-
+anism’s impact on Convertible Decoder throughput and observe
+only a drop of less than 10% at 𝑡 = 12 s (Fig. 11b). In contrast,
+while SplitWise also redirects bursty traffic to decoders, it lacks a
+dedicated memory reservation mechanism like the TokenScale Con-
+vertible Decoder. Consequently, this leads to severe prefill-decode
+
+===== PDF PAGE 11 =====
+TokenScale : Timely and Accurate Autoscaling for Disaggregated LLM Serving with Token Velocity SoCC ’26 Vol. 2, November 18–20, 2026, Singapore, Singapore
+TTFT(ms)
+103
+TokenScale
+SplitWise
+DistServe
+BlitzScale
+AIBrix
+RPS
+10
+5
+RPS
+0 5 10 15 20 25 30
+Time (s)
+Overhead (ms)
+10
+5
+0
+SLO Attain(%)
+(a) TTFT
+AMD Nvidia
+100
+75
+50
+25
+0
+10.0
+7.5
+5.0
+2.5
+0.0
+50 60 70 80 90 100
+Output Predictor Accuracy(%)
+Cost(# of GPU)
+Throughput (tok/s)
+600
+400
+200
+0
+TokenScale
+SplitWise
+DistServe
+BlitzScale
+RPS
+AIBrix
+10
+5
+RPS
+0 5 10 15 20 25 30
+Time (s)
+# of Instances
+20
+10
+0
+TokenScale
+SplitWise
+DistServe
+BlitzScale
+AIBrix
+Required
+0.6
+0.4
+0.2
+0.0
+AIBrix BlitzScale DistServe SplitWise TokenScale
+# of Instances
+10
+5
+0
+TokenScale
+SplitWise
+DistServe
+BlitzScale
+AIBrix
+Required
+0.4
+0.2
+0.0
+(b) Decoder throughput
+Figure 11: TTFT and decode throughput vs. time for different
+systems running the bursty trace in the presence of a 10×
+burst at 𝑡 = 10𝑠 for Llama-3.1-8B.
+0 20 40 60 80 100
+Time(s)
+Pearson Correlation Coefficient
+(a) Prefiller.
+0 20 40 60 80 100
+Time(s)
+Pearson Correlation Coefficient
+(b) Decoder.
+AIBrix BlitzScale DistServe SplitWise TokenScale
+Figure 12: Left: Required instance number (black) versus the
+number of instances provisioned by different autoscaling
+policies (colored). The black curve denotes the ground-truth
+required number of instances, while the colored curves show
+the numbers provisioned by different autoscaling policies.
+Right: Pearson correlation coefficients between the provi-
+sioned and required instance numbers. Note that SplitWise
+uses the same scaling policy as DistServe and therefore ex-
+hibits the same trend and results.
+interference, causing both higher TTFT and lower decoder through-
+put. Overall, TokenScale reacts much faster to changes in traffic
+than the baselines, due to its Convertible Decoder and rapid pre-
+filler scaling policy, while incurring only a negligible degradation
+in decode throughput.
+6.2.2 Provisioned vs. required number of instances. We evaluate
+how different scaling policies provision instances under a trace.
+We measure the correlation between the provisioned and required
+number of instances over time across different scaling strategies to
+assess the effectiveness of the proposed Token Velocity-based policy
+and mechanisms. To determine the required number of instances,
+we provision sufficient GPUs for both the prefiller and decoder,
+and then derive the ground-truth instance requirements for each
+(a) Predictor’s overhead.
+(b) Sensitivity study.
+Figure 13: TokenScale’s output predictor study includes (a)
+overhead on two GPU clusters for the ShareGPT trace. (b)
+sensitivity of TokenScale to its output predictor accuracy.
+Red dashed line denotes measured accuracy on ShareGPT
+trace.
+component by multiplying their measured resource utilization by
+the total GPU capacity allocated. Prefilling throughput and decoder
+memory occupancy are used as utilization metrics for prefillers and
+decoders, respectively.
+Fig. 12 compares the number of instances each system provisions
+against the ground truth. For prefillers, TokenScale achieves the
+highest correlation coefficient (0.63) between allocated and required
+instance counts. DistServe and SplitWise also correlate relatively
+well, as they derive scaling thresholds from an accurate LLM simula-
+tor, but their request-based policies lag behind workload dynamics.
+In contrast, AIBrix and BlitzScale fluctuate significantly, as their
+concurrency-based autoscalers react slowly to bursts and scale up
+only once requests queue. For decoders, TokenScale achieves a
+correlation coefficient of 0.44, about twice that of the baselines,
+since its pre-profiled decoder velocities (Tab. 3) enable proactive
+and accurate scaling, whereas the baselines scale decoders with
+significant delay and inaccuracy.
+6.2.3 Output predictor. In this section, we first evaluate the accu-
+racy and overhead of TokenScale’s output predictor, then study
+TokenScale’s sensitivity to predictor accuracy. We measure the pre-
+dictor’s accuracy as the fraction of prompts correctly classified
+into their corresponding output token buckets on the ShareGPT
+trace. The predictor achieves an accuracy of 60% with an overhead
+of 5 ms on the AMD cluster and 8 ms on the Nvidia cluster, as
+shown in Fig. 13a. The overheads are both negligible compared to
+the 2000 ms prefiller SLO. To further study how predictor accuracy
+affects TokenScale’s performance, we conduct a controlled experi-
+ment by sweeping the accuracy of the output predictor. We replace
+the original output predictor with a simulated one with varying
+accuracy from 100% to 50% and run the ShareGPT trace under each
+setting, measuring both SLO attainment and GPU usage. As shown
+in Fig. 13b, TokenScale maintains high SLO performance across all
+accuracy levels: when accuracy drops from 100% to 50%, the SLO at-
+tainment rate decreases by merely 2% while cost increases slightly
+by 6%. This demonstrates TokenScale’s robustness to predictor
+accuracy since prediction errors cause only minor overprovision-
+ing without degrading overall performance. Moreover, as the red
+dashed line shows our current predictor’s accuracy 60%, these re-
+sults highlight TokenScale’s potential for further cost reduction as
+more accurate prediction methods become available.
+6.2.4 Online profiler accuracy. TokenScale’s online profiler sizes
+the Convertible Decoder pool based on the maximum burst size
+
+===== PDF PAGE 12 =====
+SoCC ’26 Vol. 2, November 18–20, 2026, Singapore, Singapore Accuracy (%)
+99.8
+99.6
+99.4
+mixed
+conv
+code
+shareGPT
+SLO Attain(%)
+TTFT TPOT Total
+100
+80
+0.5 1.0 1.5
+Window Size(h)
+B
+B+P
+B+P+D
+TokenScale
+Figure 14: Online profiler ac-
+curacy vs. window size. The
+profiler predicts Convertible
+Decoder capacity for the next
+interval based on traffic ob-
+served in the previous win-
+dow.
+Figure 15: SLO attainment
+of DistServe (B), its versions
+with TokenScale’s prefiller
+autoscaler (B+P) and Token-
+Scale’s prefiller and decoder
+autoscalers (B+P+D), and To-
+kenScale.
+observed in the previous time window. We evaluate its accuracy
+by sweeping the window size from 1min to 2 hours. As shown in
+Fig. 14, the accuracy approaches 99.9% with a 1-hour window, the
+configuration used in our evaluation, showing that the provisioned
+Convertible Decoders suffice to absorb the vast majority of bursts.
+6.3 Ablation Study
+We evaluate the contribution of each TokenScale component to
+SLO attainment with the mixed trace. We use DistServe as the
+baseline (B), as it outperforms other baselines under the same cost,
+then replace its prefiller autoscaler with that of TokenScale (B+P),
+and further add the TokenScale decoder autoscaler (B+P+D), i.e.,
+TokenScale without Convertible Decoders. As shown in Fig. 15, the
+baseline achieves an overall attainment of 78%. B+P improves TTFT
+attainment from 87% to 91%, as the TokenScale prefiller autoscaler
+scales prefillers promptly instead of waiting for queue buildup.
+B+P+D further boosts TPOT attainment from 80% to 99% and overall
+attainment to 90%, owing to the coordinated scaling of prefillers
+and decoders. Finally, adding Convertible Decoders raises TTFT
+attainment to 94% without significantly affecting TPOT, as they
+smoothly absorb prefill surges. Overall, the full TokenScale design
+achieves the best SLO attainment.
+7 Related Work
+LLM serving without scaling. Many prior works handle burst
+workloads of LLMs without autoscaling. Some methods rely on SLO-
+aware routing strategies that drop requests when necessary [6, 53]
+while others [9, 21, 44, 53] overprovision resources to mitigate per-
+formance degradation. Works like [23, 41] adjust model and KVC
+configurations to react to traffic changes. In contrast, TokenScale
+handles bursts through timely and accurate scaling, obviating the
+need for dropping requests, overprovisioning, and heavy modifi-
+cation to model structure. Related to PD-disaggregated serving,
+Mooncake [34] optimizes the KV-cache-centric serving substrate,
+while Beyond the Buzz [30] studies the design space of disaggre-
+gated inference. TokenScale instead addresses online stage-aware
+autoscaling for bursty PD workloads.
+Autoscaling in Conventional Serverless Systems. Prior work
+in serverless autoscaling focused on request-level prediction to pre-
+warm function instances and mitigate cold starts [7, 16, 27, 31, 36, 37,
+39]. Others optimize warm-start paths and instance caching [12, 13,
+Lai et al.
+32]. Open-source systems such as Knative [18, 19] adapt utilization-
+based metrics with panic windows for fast reaction. While valuable,
+these methods are ill-suited for PD-disaggregated LLM serving, as
+they focus on making fast scaling decisions, whereas we show that
+for PD systems scaling speed is much more critical than scaling
+decision-making due to the high initialization time of the instances.
+In contrast, TokenScale is stage-aware by design, accounting for the
+different speeds of scaling the prefill and decode stages, and their
+position in the PD pipeline, and using the Convertible Decoder to
+bridge the initialization gap.
+Autoscaling LLM serving systems. To improve resource effi-
+ciency in LLM serving, many approaches explore autoscaling for
+LLM serving that draw inspiration from the above works. Some
+systems [29, 38, 45, 50, 51] adopt request-based autoscaling policies,
+which fail to accurately capture underlying resource bottlenecks.
+As we show in §3.2, other systems [22, 38, 42, 46, 48, 52] scale based
+on GPU utilization or end-to-end performance metrics, but these
+metrics lag behind request and token burst arrival. Recent sys-
+tems [15, 24, 25] dynamically adjust the P/D ratio or instance count
+based on queueing feedback or workload forecasting, but such re-
+active or forecast-driven scaling cannot timely capture short-lived
+request and token bursts. In contrast to retrofitting the policies
+and mechanisms from cloud computing or relying on reactive or
+forecast-drive capacity scaling, TokenScale uses the leading Token
+Velocity metric and the Convertible Decoder mechanism to drive
+system scaling, avoiding performance interference between the
+co-running prefill and decode tasks, as in SplitWise’s mixed-pool
+PD instances [33], by design.
+Accelerating LLM instance initialization. Several works fo-
+cus on reducing the initialization delays of LLM instances. Some
+works optimize critical steps in model initialization including CUDA
+Graph capturing [49], model weights loading [11, 26, 50]. Other
+works mitigate initialization overhead by reusing inference engine
+components [14, 45]. While these approaches reduce initialization
+time, achieving zero-delay tolerance for prefillers remains a chal-
+lenge. Moreover, TokenScale is complementary to these methods,
+which can further reduce the decoder start-up time.
+8 Conclusion
+The rise of disaggregated LLM serving architectures requires a
+move beyond reactive autoscaling. We presented TokenScale, a
+proactive scaling framework that combines two innovations: Token
+Velocity, a leading metric that drives scaling of prefill, network, and
+decode resources, and the Convertible Decoder to adapt to bursty
+workloads. Our evaluation shows that by scaling accurately and
+rapidly, TokenScale achieves lower latency and higher utilization
+than state-of-the-art systems under volatile workloads.
+Acknowledgments
+We thank the anonymous reviewers for their valuable feedback, the
+HyScale members for the fruitful discussions about this work, and
+Yao Fu for helpful feedback and writing suggestions. This research
+is supported by the Ministry of Education, Singapore, under its
+Academic Research Fund Tier 2 (MOE-T2EP20124-0002) and Tier 1
+Seed (RS26/23).
+
+===== PDF PAGE 13 =====
+TokenScale : Timely and Accurate Autoscaling for Disaggregated LLM Serving with Token Velocity SoCC ’26 Vol. 2, November 18–20, 2026, Singapore, Singapore
+References
+[1] [n. d.]. Google Cloud Run. Available at https://cloud.google.com/run.
+[2] [n. d.]. MLPerf Inference: Datacenter. Available at https://mlcommons.org/
+benchmarks/inference-datacenter/.
+[3] [n. d.]. Understanding Lambda function scaling - AWS Documentation. Available
+at https://docs.aws.amazon.com/lambda/latest/dg/lambda-concurrency.html.
+[4] Amey Agrawal, Nitin Kedia, Ashish Panwar, Jayashree Mohan, Nipun Kwatra,
+Bhargav S. Gulavani, Alexey Tumanov, and Ramachandran Ramjee. 2024. Taming
+Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve. In Proceedings
+of the 18th Symposium on Operating System Design and Implementation (OSDI).
+117–134.
+[5] bunnycore. [n. d.]. ShareGPT Datasets. Available at https://huggingface.co/
+collections/bunnycore/sharegpt-datasets.
+[6] Siyuan Chen, Zhipeng Jia, Samira Khan, Arvind Krishnamurthy, and Phillip B.
+Gibbons. 2025. SLOs-Serve: Optimized Serving of Multi-SLO LLMs.
+CoRR abs/2504.08784 (2025). https://doi.org/10.48550/ARXIV.2504.08784
+arXiv:2504.08784
+[7] Lazar Cvetkovic, François Costa, Mihajlo Djokic, Michal Friedman, and Ana
+Klimovic. 2024. Dirigent: Lightweight Serverless Orchestration. In SOSP. 369–
+384.
+[8] Jiangsu Du, Hongbin Zhang, Taosheng Wei, Zhenyi Zheng, Jiazhi Jiang, Kaiyi
+Wu, Zhiguang Chen, and Yutong Lu. 2026. Efficient LLM Serving on Commodity
+GPU Clusters with Data-Reduced Cross-Instance Orchestration. In 20th USENIX
+Symposium on Operating Systems Design and Implementation, OSDI 2026, Seattle,
+WA, USA. USENIX Association, 1787–1802. https://www.usenix.org/conference/
+osdi26/presentation/du
+[9] Jiangfei Duan, Runyu Lu, Haojie Duanmu, Xiuhong Li, Xingcheng Zhang, Dahua
+Lin, Ion Stoica, and Hao Zhang. 2024. MuxServe: Flexible Spatial-Temporal
+Multiplexing for Multiple LLM Serving. In Forty-first International Conference on
+Machine Learning, ICML 2024, Vienna, Austria, July 21-27, 2024. OpenReview.net.
+[10] Jingqi Feng, Yukai Huang, Rui Zhang, Sicheng Liang, Ming Yan, and Jie Wu.
+2025. WindServe: Efficient Phase-Disaggregated LLM Serving with Stream-based
+Dynamic Scheduling. In Proceedings of the 52nd Annual International Symposium
+on Computer Architecture, ISCA 2025, Tokyo, Japan, June 21-25, 2025. ACM, 1283–
+1295. https://doi.org/10.1145/3695053.3730999
+[11] Yao Fu, Leyang Xue, Yeqi Huang, Andrei-Octavian Brabete, Dmitrii Ustiugov, Yu-
+vraj Patel, and Luo Mai. 2024. ServerlessLLM: Low-Latency Serverless Inference
+for Large Language Models. In Proceedings of the 18th Symposium on Operating
+System Design and Implementation (OSDI). 135–153.
+[12] Alexander Fuerst, Abdul Rehman, and Prateek Sharma. 2023. Ilúvatar: A Fast
+Control Plane for Serverless Computing. In HPDC23. 267–280.
+[13] Alexander Fuerst and Prateek Sharma. 2021. FaasCache: keeping serverless
+computing alive with greedy-dual caching. In Proceedings of the 26th International
+Conference on Architectural Support for Programming Languages and Operating
+Systems (ASPLOS-XXVI). 386–400.
+[14] Junhao Hu, Jiang Xu, Zhixia Liu, Yulong He, Yuetao Chen, Hao Xu, Jiang Liu, Jie
+Meng, Baoquan Zhang, Shining Wan, Gengyuan Dan, Zhiyu Dong, Zhihao Ren,
+Changhong Liu, Tao Xie, Dayun Lin, Qin Zhang, Yue Yu, Hao Feng, Xusheng Chen,
+and Yizhou Shan. 2025. DEEPSERVE: Serverless Large Language Model Serving
+at Scale. In Proceedings of the 2025 USENIX Annual Technical Conference, USENIX
+ATC 2025, Boston, MA, USA, July 7-9, 2025, Deniz Altinbüken and Ryan Stutsman
+(Eds.). USENIX Association, 57–72. https://www.usenix.org/conference/atc25/
+presentation/hu-junhao
+[15] Shashwat Jaiswal, Kunal Jain, Yogesh Simmhan, Anjaly Parayil, Ankur Mallick,
+Rujia Wang, Renee St. Amant, Chetan Bansal, Victor Ruhle, Anoop Kulkarni,
+Steve Kofsky, and Saravan Rajmohan. 2025. SageServe: Optimizing LLM Serving
+on Cloud Data Centers with Forecast Aware Auto-Scaling. Proceedings of the
+ACM on Measurement and Analysis of Computing Systems 9, 3 (2025), 1–24. https:
+//doi.org/10.1145/3771576
+[16] Artjom Joosen, Ahmed Hassan, Martin Asenov, Rajkarn Singh, Luke Nicholas
+Darlow, Jianfeng Wang, and Adam Barker. 2023. How Does It Function?: Charac-
+terizing Long-term Trends in Production Serverless Workloads. In Proceedings of
+the 2023 ACM Symposium on Cloud Computing (SOCC). 443–458.
+[17] Knative. 2026. About autoscaling - Knative. Available at https://knative.dev/
+docs/serving/autoscaling/.
+[18] Knative. 2026. Additional autoscaling configuration for Knative Pod Autoscaler.
+Available at https://knative.dev/docs/serving/autoscaling/kpa-specific/.
+[19] Kubernetes. 2026. Horizontal Pod Autoscaling - Kubernetes. Available at
+https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/.
+[20] Kubernetes. 2026. Kubernetes. Available at https://kubernetes.io.
+[21] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng,
+Cody Hao Yu, Joseph Gonzalez, Hao Zhang, and Ion Stoica. 2023. Efficient
+Memory Management for Large Language Model Serving with PagedAttention.
+In Proceedings of the 29th ACM Symposium on Operating Systems Principles (SOSP).
+611–626.
+[22] Weiqing Li, Guochao Jiang, Xiangyong Ding, Zhangcheng Tao, Chuzhan Hao,
+Chenfeng Xu, Yuewei Zhang, and Hao Wang. 2025. FlowKV: A Disaggregated
+Inference Framework with Low-Latency KV Cache Transfer and Load-Aware
+Scheduling. CoRR abs/2504.03775 (2025).
+[23] Zhuohan Li, Lianmin Zheng, Yinmin Zhong, Vincent Liu, Ying Sheng, Xin Jin,
+Yanping Huang, Zhifeng Chen, Hao Zhang, Joseph E. Gonzalez, and Ion Stoica.
+2023. AlpaServe: Statistical Multiplexing with Model Parallelism for Deep Learn-
+ing Serving. In Proceedings of the 17th Symposium on Operating System Design
+and Implementation (OSDI). 663–679.
+[24] Junhan Liao, Minxian Xu, Wanyi Zheng, Yan Wang, Kejiang Ye, Rajkumar Buyya,
+and Chengzhong Xu. 2026. DOPD: A Dynamic PD-Disaggregation Architecture
+for Maximizing Goodput in LLM Inference Serving. IEEE Transactions on Services
+Computing 19, 2 (2026), 1134–1147. https://doi.org/10.1109/TSC.2026.3670011
+[25] Yanying Lin, Shijie Peng, Yanbo Li, Shutian Luo, Haiying Shen, Kejiang Ye,
+and Chengzhong Xu. 2026. Workload-Adapted Resource Allocation for LLM
+Distributed Serving in Serverless Clusters. IEEE Transactions on Parallel and
+Distributed Systems 37, 6 (2026), 1442–1457. https://doi.org/10.1109/TPDS.2026.
+3683122
+[26] Chongpeng Liu, Xiaojian Liao, Hancheng Liu, Limin Xiao, and Jianxin Li.
+2025. PipeBoost: Resilient Pipelined Architecture for Fast Serverless LLM Scal-
+ing. CoRR abs/2503.17707 (2025). https://doi.org/10.48550/ARXIV.2503.17707
+arXiv:2503.17707
+[27] Qingyuan Liu, Yanning Yang, Dong Du, Yubin Xia, Ping Zhang, Jia Feng, James R.
+Larus, and Haibo Chen. 2024. Harmonizing Efficiency and Practicability: Opti-
+mizing Resource Utilization in Serverless Computing with Jiagu. In USENIX24.
+1–17.
+[28] Yuhan Liu, Yihua Cheng, Jiayi Yao, Yuwei An, Xiaokun Chen, Shaoting Feng,
+Yuyang Huang, Samuel Shen, Rui Zhang, Kuntai Du, and Junchen Jiang.
+2025. LMCache: An Efficient KV Cache Layer for Enterprise-Scale LLM In-
+ference. CoRR abs/2510.09665 (2025). https://doi.org/10.48550/ARXIV.2510.09665
+arXiv:2510.09665
+[29] Cunchi Lv, Xiao Shi, Zhengyu Lei, Jinyue Huang, Wenting Tan, Xiaohui Zheng,
+and Xiaofang Zhao. 2025. Dilu: Enabling GPU Resourcing-on-Demand for Server-
+less DL Serving via Introspective Elasticity. In Proceedings of the 30th ACM
+International Conference on Architectural Support for Programming Languages and
+Operating Systems, Volume 1, ASPLOS 2025, Rotterdam, The Netherlands, 30 March
+2025 - 3 April 2025, Lieven Eeckhout, Georgios Smaragdakis, Kaitai Liang, Adrian
+Sampson, Martha A. Kim, and Christopher J. Rossbach (Eds.). ACM, 311–325.
+https://doi.org/10.1145/3669940.3707251
+[30] Tiyasa Mitra, Ritika Borkar, Nidhi Bhatia, Shivam Raj, Hongkuan Zhou, Yan Ru
+Pei, Vishwanath Venkatesan, Kyle Kranen, Ramon Matas, Dheevatsa Mudigere,
+Ritchie Zhao, Maximilian Golub, Arpan Dutta, Suresh Nambi, Sailaja Mad-
+duri, Dharmesh Jani, Brian Pharris, Itay Neeman, and Bita Darvish Rouhani.
+2026. Beyond the Buzz: A Pragmatic Take on Inference Disaggregation. In
+Proceedings of the Ninth Conference on Machine Learning and Systems, ML-
+Sys 2026, Bellevue, WA, USA, A. Chowdhery and Z. Jia (Eds.), Vol. 8. ml-
+sys.org, 2001–2015. https://proceedings.mlsys.org/paper_files/paper/2026/hash/
+d49cee5f3a79d97d719df255689d83d7-Abstract-Conference.html
+[31] Viyom Mittal, Shixiong Qi, Ratnadeep Bhattacharya, Xiaosu Lyu, Junfeng Li,
+Sameer G. Kulkarni, Dan Li, Jinho Hwang, K. K. Ramakrishnan, and Timothy
+Wood. 2021. Mu: An Efficient, Fair and Responsive Serverless Framework for
+Resource-Constrained Edge Clouds. In Proceedings of the 2021 ACM Symposium
+on Cloud Computing (SOCC). 168–181.
+[32] Djob Mvondo, Mathieu Bacou, Kevin Nguetchouang, Lucien Ngale, Stéphane
+Pouget, Josiane Kouam, Renaud Lachaize, Jinho Hwang, Tim Wood, Daniel Hag-
+imont, Noël De Palma, Bernabé Batchakui, and Alain Tchana. 2021. OFC: an
+opportunistic caching system for FaaS platforms. In Proceedings of the 2021 Eu-
+roSys Conference. 228–244.
+[33] Pratyush Patel, Esha Choukse, Chaojie Zhang, Aashaka Shah, Íñigo Goiri, Saeed
+Maleki, and Ricardo Bianchini. 2024. Splitwise: Efficient Generative LLM Infer-
+ence Using Phase Splitting. In Proceedings of the 51st International Symposium on
+Computer Architecture (ISCA). 118–132.
+[34] Ruoyu Qin, Zheming Li, Weiran He, Mingxing Zhang, Yongwei Wu, Weimin
+Zheng, and Xinran Xu. 2025. Mooncake: A KVCache-centric Disaggregated
+Architecture for LLM Serving. In 23rd USENIX Conference on File and Storage
+Technologies FAST. 155–170.
+[35] Haoran Qiu, Weichao Mao, Archit Patke, Shengkun Cui, Saurabh Jha, Chen Wang,
+Hubertus Franke, Zbigniew T. Kalbarczyk, Tamer Başar, and Ravishankar K. Iyer.
+2024. Efficient Interactive LLM Serving with Proxy Model-based Sequence Length
+Prediction. arXiv:2404.08509 [cs.DC] https://arxiv.org/abs/2404.08509
+[36] Rohan Basu Roy, Tirthak Patel, and Devesh Tiwari. 2022. IceBreaker: warming
+serverless functions better with heterogeneity. In Proceedings of the 26th Inter-
+national Conference on Architectural Support for Programming Languages and
+Operating Systems (ASPLOS-XXVII). 753–767.
+[37] Mohammad Shahrad, Rodrigo Fonseca, Iñigo Goiri, Gohar Irfan Chaudhry, Paul
+Batum, Jason Cooke, Eduardo Laureano, Colby Tresness, Mark Russinovich, and
+Ricardo Bianchini. 2020. Serverless in the Wild: Characterizing and Optimizing
+the Serverless Workload at a Large Cloud Provider. In USENIX ATC. 205–218.
+[38] Jiaxin Shan, Varun Gupta, Le Xu, Haiyang Shi, Jingyuan Zhang, Ning Wang,
+Linhui Xu, Rong Kang, Tongping Liu, Yifei Zhang, Yiqing Zhu, Shuowei Jin,
+
+===== PDF PAGE 14 =====
+SoCC ’26 Vol. 2, November 18–20, 2026, Singapore, Singapore [39] [40] [41] [42] [43] [44] [45] Gangmuk Lim, Binbin Chen, Zuzhi Chen, Xiao Liu, Xin Chen, Kante Yin, Chak-
+Pong Chung, Chenyu Jiang, Yicheng Lu, Jianjun Chen, Caixue Lin, Wu Xiang,
+Rui Shi, and Liguang Xie. 2025. AIBrix: Towards Scalable, Cost-Effective Large
+Language Model Inference Infrastructure. CoRR abs/2504.03648 (2025).
+Arjun Singhvi, Arjun Balasubramanian, Kevin Houck, Mohammed Danish Shaikh,
+Shivaram Venkataraman, and Aditya Akella. 2021. Atoll: A Scalable Low-Latency
+Serverless Platform. In Proceedings of the 2021 ACM Symposium on Cloud Com-
+puting (SOCC). 138–152.
+Jovan Stojkovic, Chaojie Zhang, Íñigo Goiri, Josep Torrellas, and Esha Choukse.
+2025. DynamoLLM: Designing LLM Inference Clusters for Performance and En-
+ergy Efficiency. In IEEE International Symposium on High Performance Computer
+Architecture(HPCA). 1348–1362.
+Zhaoyuan Su, Zeyu Zhang, Tingfeng Lan, Zirui Wang, Haiying Shen, Juncheng
+Yang, and Yue Cheng. 2026. MorphServe: Efficient and Workload-Aware
+LLM Serving via Runtime Quantized Layer Swapping and KV Cache Resiz-
+ing. In Proceedings of the Ninth Conference on Machine Learning and Systems,
+MLSys 2026, Bellevue, WA, USA, A. Chowdhery and Z. Jia (Eds.), Vol. 8. ml-
+sys.org, 1056–1075. https://proceedings.mlsys.org/paper_files/paper/2026/hash/
+8144a9d62e506af0fcdeac0e456b2710-Abstract-Conference.html
+Biao Sun, Ziming Huang, Hanyu Zhao, Wencong Xiao, Xinyi Zhang, Yong Li,
+and Wei Lin. 2024. Llumnix: Dynamic Scheduling for Large Language Model
+Serving. In Proceedings of the 18th Symposium on Operating System Design and
+Implementation (OSDI). 173–191.
+Yuxin Wang, Yuhan Chen, Zeyu Li, Xueze Kang, Yuchu Fang, Yeju Zhou, Yang
+Zheng, Zhenheng Tang, Xin He, Rui Guo, et al. 2025. Burstgpt: A real-world
+workload dataset to optimize llm serving systems. In Proceedings of the 31st ACM
+SIGKDD Conference on Knowledge Discovery and Data Mining V. 2. 5831–5841.
+Tian Xia, Ziming Mao, Jamison Kerney, Ethan J. Jackson, Zhifei Li, Jiarong Xing,
+Scott Shenker, and Ion Stoica. 2026. SkyWalker: A Locality-Aware Cross-Region
+Load Balancer for LLM Inference. In Proceedings of the 21st European Conference
+on Computer Systems, EuroSys 2026. ACM, 1349–1364. https://doi.org/10.1145/
+3767295.3769353
+Yuxing Xiang, Xue Li, Kun Qian, Yufan Yang, Diwen Zhu, Wenyuan Yu, Ennan
+Zhai, Xuanzhe Liu, Xin Jin, and Jingren Zhou. 2025. Aegaeon: Effective GPU
+Pooling for Concurrent LLM Serving on the Market. In Proceedings of the ACM
+SIGOPS 31st Symposium on Operating Systems Principles, SOSP 2025, Lotte Hotel
+World, Seoul, Republic of Korea, October 13-16, 2025, Youjip Won, Youngjin Kwon,
+Ding Yuan, and Rebecca Isaacs (Eds.). ACM, 1030–1045. https://doi.org/10.1145/
+3731569.3764815
+Lai et al.
+[46] Chuhao Xu, Zijun Li, Quan Chen, Han Zhao, Xueyan Tang, and Minyi Guo. 2026.
+Towards Resource-Efficient Serverless LLM Inference with SLINFER. In IEEE
+International Symposium on High Performance Computer Architecture, HPCA 2026,
+Sydney, Australia, January 31 - February 4, 2026. IEEE, 1–18. https://doi.org/10.
+1109/HPCA68181.2026.11408548
+[47] Zahra Yousefijamarani, Xinglu Wang, Qian Wang, Morgan Lindsay Heisler, Taha
+Shabani, Niloofar Gholipour, Parham Yassini, Hong Chang, Kan Chen, Qiantao
+Zhang, et al. 2025. HyperFlexis: Joint Design of Algorithms and Systems for
+Multi-SLO Serving and Fast Scaling. arXiv preprint arXiv:2508.15919 (2025).
+[48] Minchen Yu, Rui Yang, Chaobo Jia, Zhaoyuan Su, Sheng Yao, Tingfeng Lan,
+Yuchen Yang, Zirui Wang, Yue Cheng, Wei Wang, Ao Wang, and Ruichuan
+Chen. 2026. FaaScale: Unlocking Fast LLM Scaling for Serverless Inference.
+In Proceedings of the Ninth Conference on Machine Learning and Systems, ML-
+Sys 2026, Bellevue, WA, USA, A. Chowdhery and Z. Jia (Eds.), Vol. 8. ml-
+sys.org, 353–366. https://proceedings.mlsys.org/paper_files/paper/2026/hash/
+6e32c247076c2c0fb381e022c02d2c78-Abstract-Conference.html
+[49] Shaoxun Zeng, Minhui Xie, Shiwei Gao, Youmin Chen, and Youyou Lu. 2025.
+Medusa: Accelerating Serverless LLM Inference with Materialization. In Pro-
+ceedings of the 30th ACM International Conference on Architectural Support for
+Programming Languages and Operating Systems, Volume 1, ASPLOS 2025, Rotter-
+dam, The Netherlands, 30 March 2025 - 3 April 2025, Lieven Eeckhout, Georgios
+Smaragdakis, Kaitai Liang, Adrian Sampson, Martha A. Kim, and Christopher J.
+Rossbach (Eds.). ACM, 653–668. https://doi.org/10.1145/3669940.3707285
+[50] Dingyan Zhang, Haotian Wang, Yang Liu, Xingda Wei, Yizhou Shan, Rong Chen,
+and Haibo Chen. 2025. BlitzScale: Fast and Live Large Model Autoscaling with
+O(1) Host Caching. In 19th USENIX Symposium on Operating Systems Design
+and Implementation, OSDI, Lidong Zhou and Yuanyuan Zhou (Eds.). USENIX
+Association, 275–293.
+[51] Yinmin Zhong, Shengyu Liu, Junda Chen, Jianbo Hu, Yibo Zhu, Xuanzhe Liu,
+Xin Jin, and Hao Zhang. 2024. DistServe: Disaggregating Prefill and Decoding
+for Goodput-optimized Large Language Model Serving. In Proceedings of the 18th
+Symposium on Operating System Design and Implementation (OSDI). 193–210.
+[52] Kan Zhu, Haiyang Shi, Le Xu, Jiaxin Shan, Arvind Krishnamurthy, Baris
+Kasikci, and Liguang Xie. 2025. PolyServe: Efficient Multi-SLO Serving at
+Scale. CoRR abs/2507.17769 (2025). https://doi.org/10.48550/ARXIV.2507.17769
+arXiv:2507.17769
+[53] Ruidong Zhu, Ziyue Jiang, Zhi Zhang, Xin Liu, Xuanzhe Liu, and Xin Jin. 2025.
+Cannikin: No Lagger of SLO in Concurrent Multiple LoRA LLM Serving. IEEE
+Trans. Parallel Distributed Syst. 36, 9 (2025), 1972–1984. https://doi.org/10.1109/
+TPDS.2025.3590014

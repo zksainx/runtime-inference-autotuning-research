@@ -1,0 +1,11 @@
+URL: https://arxiv.org/abs/2511.20982
+Fetched at UTC: 2026-11-06T04:02:59.593684+00:00
+
+(cs)
+[Submitted on 26 Nov 2025 (
+v1
+), last revised 9 Mar 2026 (this version, v3)]
+Title:
+DOPD: A Dynamic PD-Disaggregation Architecture for Maximizing Goodput in LLM Inference Serving
+Authors:
+Junhan Liao

@@ -1,0 +1,11 @@
+URL: https://acmsocc.org/2026/socc26-program-papers.html
+Fetched at UTC: 2026-11-06T04:08:32.716533+00:00
+
+Becoming a Sponsor
+ACM Symposium on Cloud Computing 2026
+Shangri-La Rasa Sentosa Resort, Sentosa, Singapore
+November 18-20, 2026
+14:40
+TokenPipe: Stage-aware Autoscaling for Disaggregated LLM Serving with Token Velocity
+Ruiqi Lai, Chengzhi Lu, Hongrui Liu (NTU Singapore), Siyu Cao (Singapore Management University), Li Leqi (Huawei), Zonghao Liu (NTU Singapore), Siyang Shao (Georgia Institute of Technology), Yixin Zhang (Century Frontier Investment), Luo Mai (University of Edinburgh), Dmitrii Ustiugov (NTU Singapore)
+15:00
