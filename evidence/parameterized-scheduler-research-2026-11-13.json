@@ -1,0 +1,504 @@
+{
+  "checked_on": "2026-11-13",
+  "record_created_at_utc": "2026-11-13T07:11:33.506435+00:00",
+  "timezone": "Asia/Shanghai",
+  "scope": "Third proposal: parameterized inference scheduling expressiveness, state/resource invariants and runtime adaptation. Six new conference papers plus focused fixed-source framework audit. Proposed contracts and proof sketches are not implemented or machine checked.",
+  "counts": {
+    "local_papers_total": 39,
+    "new_papers": 6,
+    "new_verified_conference_papers": 6,
+    "all_verified_venue_or_program_entries": 31,
+    "all_preprint_or_unresolved_entries": 8
+  },
+  "primary_source_verification": {
+    "method": "Official conference/proceedings pages or author conference project pages opened with the web tool on 2026-11-13; local PDFs downloaded from the recorded primary source URLs. No search-result-only identity claims.",
+    "sources": [
+      {
+        "url": "https://web.mit.edu/pifo/",
+        "supports": "34: title, author and conference identity"
+      },
+      {
+        "url": "https://www.usenix.org/conference/nsdi16/technical-sessions/presentation/mittal",
+        "supports": "35: title, author and conference identity"
+      },
+      {
+        "url": "https://www.usenix.org/conference/nsdi19/presentation/saeed",
+        "supports": "36: title, author and conference identity"
+      },
+      {
+        "url": "https://web.mit.edu/decima/",
+        "supports": "37: title, author and conference identity"
+      },
+      {
+        "url": "https://www.usenix.org/conference/osdi24/presentation/sheng",
+        "supports": "38: title, author and conference identity"
+      },
+      {
+        "url": "https://proceedings.mlr.press/v306/li26n.html",
+        "supports": "39: title, author and conference identity"
+      },
+      {
+        "url": "https://docs.flashinfer.ai/api/attention.html",
+        "supports": "FlashInfer 0.7.4: fixed_split_size backend/graph constraints; tensor-core decode is not generally parameter-free."
+      },
+      {
+        "url": "https://docs.nvidia.com/cuda/archive/13.2.0/cuda-programming-guide/04-special-topics/cuda-graphs.html",
+        "supports": "CUDA 13.2 graph-update capability and restrictions; not proof that an inference framework exposes the update."
+      }
+    ]
+  },
+  "papers": [
+    {
+      "id": "34",
+      "title": "Programmable Packet Scheduling at Line Rate",
+      "venue": "SIGCOMM 2016",
+      "identity_url": "https://web.mit.edu/pifo/",
+      "download_url": "https://web.mit.edu/pifo/pifo-sigcomm.pdf",
+      "version_note": "Official proceedings PDF or author conference manuscript linked by the primary venue/project page; local PDF inspected on 2026-11-13.",
+      "pdf_file": "papers/34_PIFO_SIGCOMM2016.pdf",
+      "pdf_bytes": 545127,
+      "pdf_sha256": "de37c8924cff71da26b5b84478f4872ad3e51255fef6c091fa7e0f0c7e9704d2",
+      "physical_pdf_pages": 14,
+      "text_file": "paper-text/34_PIFO_SIGCOMM2016.txt",
+      "text_sha256": "59add264245a0f5ad84fe1c2640d07f3e139850f5c44dec891bcb1a1a8bda61f",
+      "reading_scope": "Focused mechanism and theorem-assumption reading; not an independent reproduction or exhaustive full-paper numerical audit.",
+      "interpretation": "Rank/time/hierarchy abstraction. The rank transaction is program code, not only numeric configuration. Limitations include reranking buffered packets of a flow.",
+      "anchors": [
+        {
+          "label": "Rank transactions and hierarchy",
+          "line_start": 175,
+          "line_end": 194,
+          "physical_pdf_pages": [
+            2
+          ],
+          "line_block_sha256": "5cdbd6202f87ac7c6ff0491a46fa6bec13852be6c86af10d36e226ee37e8947c"
+        },
+        {
+          "label": "Expressiveness limitation and pFabric counterexample",
+          "line_start": 588,
+          "line_end": 625,
+          "physical_pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "90b0ab8f6f23333062b0875fe33f71f0ba4ead9cc84635303c194bfc9d91edbb"
+        }
+      ]
+    },
+    {
+      "id": "35",
+      "title": "Universal Packet Scheduling",
+      "venue": "NSDI 2016",
+      "identity_url": "https://www.usenix.org/conference/nsdi16/technical-sessions/presentation/mittal",
+      "download_url": "https://www.usenix.org/system/files/conference/nsdi16/nsdi16-paper-mittal.pdf",
+      "version_note": "Official proceedings PDF or author conference manuscript linked by the primary venue/project page; local PDF inspected on 2026-11-13.",
+      "pdf_file": "papers/35_UniversalPacketScheduling_NSDI2016.pdf",
+      "pdf_bytes": 929359,
+      "pdf_sha256": "c922d06c545a3dfbd7c67cb329a461b8605f099c54952a175a74ebc762299722",
+      "physical_pdf_pages": 22,
+      "text_file": "paper-text/35_UniversalPacketScheduling_NSDI2016.txt",
+      "text_sha256": "8c848e3037197131f7eba67b41a56ed09cf5c3f1b08afdc576124921ff492ad8",
+      "reading_scope": "Focused mechanism and theorem-assumption reading; not an independent reproduction or exhaustive full-paper numerical audit.",
+      "interpretation": "Replayability is defined with explicit information constraints. Omniscient initialization and black-box initialization have different results; network theorems do not establish LLM impossibility.",
+      "anchors": [
+        {
+          "label": "Initialization information and universality",
+          "line_start": 245,
+          "line_end": 275,
+          "physical_pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "66ef7b17e31be39a134f40fff535aae53dcf726407aded3d50745a89b9514d30"
+        },
+        {
+          "label": "Congestion-point replay bounds",
+          "line_start": 306,
+          "line_end": 324,
+          "physical_pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "fafaf649a58be33d45e92b78acac1a8d763e6b1ec12af908c1ca909580aa525a"
+        }
+      ]
+    },
+    {
+      "id": "36",
+      "title": "Eiffel: Efficient and Flexible Software Packet Scheduling",
+      "venue": "NSDI 2019",
+      "identity_url": "https://www.usenix.org/conference/nsdi19/presentation/saeed",
+      "download_url": "https://www.usenix.org/system/files/nsdi19-saeed.pdf",
+      "version_note": "Official proceedings PDF or author conference manuscript linked by the primary venue/project page; local PDF inspected on 2026-11-13.",
+      "pdf_file": "papers/36_Eiffel_NSDI2019.pdf",
+      "pdf_bytes": 510791,
+      "pdf_sha256": "edc600250a63ef1af0e13b436a1c4c422ba47e5581ae36f33e053d72a4e01998",
+      "physical_pdf_pages": 16,
+      "text_file": "paper-text/36_Eiffel_NSDI2019.txt",
+      "text_sha256": "1457451ac27e661e88531d97b119ef502ce0a6bf3743d8afa30ddd3785b8f63f",
+      "reading_scope": "Focused mechanism and theorem-assumption reading; not an independent reproduction or exhaustive full-paper numerical audit.",
+      "interpretation": "Integer priority queues plus per-flow scheduling and enqueue/dequeue reranking. Its packet-processing performance is not evidence of LLM throughput.",
+      "anchors": [
+        {
+          "label": "Flow scheduling and event reranking",
+          "line_start": 365,
+          "line_end": 380,
+          "physical_pdf_pages": [
+            5
+          ],
+          "line_block_sha256": "4c7972369a80e80747c1295386aa001381cfd251e6c998174d4c8bd401a72d21"
+        },
+        {
+          "label": "Four-component abstraction",
+          "line_start": 408,
+          "line_end": 427,
+          "physical_pdf_pages": [
+            5
+          ],
+          "line_block_sha256": "31ad472c08949c1f84ee5ff98f9fc51a6f21f5f20d66d24634a14c14f3235ac0"
+        }
+      ]
+    },
+    {
+      "id": "37",
+      "title": "Learning Scheduling Algorithms for Data Processing Clusters",
+      "venue": "SIGCOMM 2019",
+      "identity_url": "https://web.mit.edu/decima/",
+      "download_url": "https://web.mit.edu/decima/content/sigcomm-2019.pdf",
+      "version_note": "Official proceedings PDF or author conference manuscript linked by the primary venue/project page; local PDF inspected on 2026-11-13.",
+      "pdf_file": "papers/37_Decima_SIGCOMM2019.pdf",
+      "pdf_bytes": 7740766,
+      "pdf_sha256": "b6b50a58ea743049f9bf7d92d2941afff1e4308b40ed208fc348fae8b57904d3",
+      "physical_pdf_pages": 19,
+      "text_file": "paper-text/37_Decima_SIGCOMM2019.txt",
+      "text_sha256": "47ed0f9f35790aa693afc7518682f77e1e4161333ad9c0a669a9fc9507588f9a",
+      "reading_scope": "Focused mechanism and theorem-assumption reading; not an independent reproduction or exhaustive full-paper numerical audit.",
+      "interpretation": "Learned graph-based policy and parallelism decisions establish prior art for fixed inference code with variable policy weights. This is not an LLM hot-update safety result.",
+      "anchors": [
+        {
+          "label": "Design and graph representation",
+          "line_start": 399,
+          "line_end": 410,
+          "physical_pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "22883fb53134ee318eb9e4d573aec67cbb3b5cfa3b7565330167480976d3cb4f"
+        },
+        {
+          "label": "Action-space encoding",
+          "line_start": 555,
+          "line_end": 610,
+          "physical_pdf_pages": [
+            5,
+            6
+          ],
+          "line_block_sha256": "c75decc882185f581b5dc5206b64bfa4a05cdb1d5ab15040136864c91711346a"
+        },
+        {
+          "label": "Policy-gradient training",
+          "line_start": 685,
+          "line_end": 715,
+          "physical_pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "ec4605094dfd00c69c711ad7c763dce586d4b03a17cc3f003c7a410fb3825ffb"
+        }
+      ]
+    },
+    {
+      "id": "38",
+      "title": "Fairness in Serving Large Language Models",
+      "venue": "OSDI 2024",
+      "identity_url": "https://www.usenix.org/conference/osdi24/presentation/sheng",
+      "download_url": "https://www.usenix.org/system/files/osdi24-sheng.pdf",
+      "version_note": "Official proceedings PDF or author conference manuscript linked by the primary venue/project page; local PDF inspected on 2026-11-13.",
+      "pdf_file": "papers/38_VTC_OSDI2024.pdf",
+      "pdf_bytes": 1156204,
+      "pdf_sha256": "72efdc5c9cdddf728b6c61ac00cb8907dcdf56b8edff54d4012f1228530d0a72",
+      "physical_pdf_pages": 25,
+      "text_file": "paper-text/38_VTC_OSDI2024.txt",
+      "text_sha256": "5eb04e06311a3c81f17c79e88bcbd4f06f6371869e910df77e8c9a023808dbca",
+      "reading_scope": "Focused mechanism and theorem-assumption reading; not an independent reproduction or exhaustive full-paper numerical audit.",
+      "interpretation": "Fairness requires persistent client counters, arrival lift and precisely timed service accounting. Dynamic weight or algorithm switching requires new analysis.",
+      "anchors": [
+        {
+          "label": "Algorithm 2 persistent counters, lift and service events",
+          "line_start": 538,
+          "line_end": 581,
+          "physical_pdf_pages": [
+            7
+          ],
+          "line_block_sha256": "9c18fb795d680777e39741c2ef36e5769e37dd4749963f973b456076c770079b"
+        },
+        {
+          "label": "Conditional fairness bounds",
+          "line_start": 688,
+          "line_end": 728,
+          "physical_pdf_pages": [
+            8
+          ],
+          "line_block_sha256": "28f8a150be21248781d47ef0aa971537ed0c810b1aa5f1ef3344690b20240ebd"
+        }
+      ]
+    },
+    {
+      "id": "39",
+      "title": "Beyond Prediction: Tail-Aware Scheduling for LLM Inference",
+      "venue": "ICML 2026",
+      "identity_url": "https://proceedings.mlr.press/v306/li26n.html",
+      "download_url": "https://raw.githubusercontent.com/mlresearch/v306/main/assets/li26n/li26n.pdf",
+      "version_note": "Official proceedings PDF or author conference manuscript linked by the primary venue/project page; local PDF inspected on 2026-11-13.",
+      "pdf_file": "papers/39_TailAwareScheduling_ICML2026.pdf",
+      "pdf_bytes": 797868,
+      "pdf_sha256": "a724614a4c53c6d9c1117b9f0c9d93ab8f6ef53e9c8f963bdb14dcd64418eef7",
+      "physical_pdf_pages": 16,
+      "text_file": "paper-text/39_TailAwareScheduling_ICML2026.txt",
+      "text_sha256": "ff9613b043b055faaf5729f1e18d8f7af2f0cb38d2db473b98bc7fe8944f37c2",
+      "reading_scope": "Focused mechanism and theorem-assumption reading; not an independent reproduction or exhaustive full-paper numerical audit.",
+      "interpretation": "Unified gamma-Boost priority, quantized service/minimum-run hysteresis and online gamma estimation. Queueing tail-optimality assumptions do not directly hold in GPU continuous batching.",
+      "anchors": [
+        {
+          "label": "Boost and queue-model limitations",
+          "line_start": 604,
+          "line_end": 634,
+          "physical_pdf_pages": [
+            5
+          ],
+          "line_block_sha256": "156de3f2e728bc1712d4df0fa649bfd7e4e8bc257131e7a5783e46d2c1c5db52"
+        },
+        {
+          "label": "Unified priority and MemGuard",
+          "line_start": 690,
+          "line_end": 765,
+          "physical_pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "009e41c628bd4321f2206cc3dcd15997568f65e090c59812afa7db8b94c8a5a7"
+        },
+        {
+          "label": "Online parameter estimation",
+          "line_start": 766,
+          "line_end": 801,
+          "physical_pdf_pages": [
+            6,
+            7
+          ],
+          "line_block_sha256": "a75ad70e22e530436d2b0e9a224162dfbc7cc1534a95ecdbb21d3753e3c02d8a"
+        }
+      ]
+    }
+  ],
+  "framework_source_audit": [
+    {
+      "framework": "vllm",
+      "local_checkout": "/Users/kxzhang/vllm",
+      "commit": "3897f95cf17619137536d2a7d325d9c2f39dc38f",
+      "scope": "Fixed committed source, read-only. No pull, implementation change or GPU execution in this audit.",
+      "files": [
+        {
+          "path": "vllm/v1/core/sched/scheduler.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/core/sched/scheduler.py",
+          "git_blob_oid": "3e475a85ab20530fb10492893b84b5e078617683",
+          "source_sha256": "ac2bd3f58cfb8f7b2e8ccb1c60b4d186a0445c10d11d8236962fb87c3ca1e323",
+          "tracked_blob_equals_worktree": true,
+          "interpretation": "Scheduler.schedule and budget/threshold consumption; any new common primitive loop is a proposed extension.",
+          "anchors": [
+            {
+              "label": "def schedule(",
+              "line_start": 619,
+              "line_end": 661,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "618bb1afd84f462091cf352493b1336084c0ce3170e7cdc5cc1dc0de51803ef4"
+            },
+            {
+              "label": "token_budget = self.max_num_scheduled_tokens",
+              "line_start": 639,
+              "line_end": 651,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "cc4f6eb88cef942a964276eb6185f9709787798f0288a59ae48cd4f3984d1a15"
+            },
+            {
+              "label": "long_prefill_token_threshold = (",
+              "line_start": 676,
+              "line_end": 690,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "40cc5da1085941e136109a13b5f654411a8ac421c7b16c41a87b9a0d24b6e432"
+            }
+          ]
+        },
+        {
+          "path": "vllm/v1/attention/backends/composite.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/attention/backends/composite.py",
+          "git_blob_oid": "f77e5e6d95615113528cd2309df222f7374b1ab1",
+          "source_sha256": "9de6fa8f882442cfd51bc5cea46046630cb826a79af88914eed0909de66337f9",
+          "tracked_blob_equals_worktree": true,
+          "interpretation": "Capture/replay must use the same routing child; routing variants can encode semantics rather than performance choices.",
+          "anchors": [
+            {
+              "label": "capture_variant: ClassVar[int]",
+              "line_start": 62,
+              "line_end": 69,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "e40091bbae3ace5658bc3691f6d16a56646ddece6215b14f26060d8ccf2d731a"
+            }
+          ]
+        },
+        {
+          "path": "vllm/v1/cudagraph_dispatcher.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/cudagraph_dispatcher.py",
+          "git_blob_oid": "d6abba301aec0594fcd19a08478a6d8c76121c53",
+          "source_sha256": "105c8f6406e7b8626466c773b970d431d698fc0e298c5812c0c4ce51b6d33326",
+          "tracked_blob_equals_worktree": true,
+          "interpretation": "Graph dispatch is mode/shape dependent, rather than a universal prefill/decode distinction.",
+          "anchors": [
+            {
+              "label": "def dispatch(",
+              "line_start": 230,
+              "line_end": 278,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "5a5c8cbecc9ac2f57cc6c28e3f1ab30ff4e605df7e3d7ae7e866d4227ea57bb8"
+            }
+          ]
+        },
+        {
+          "path": "vllm/v1/attention/backends/flash_attn.py",
+          "source_url": "https://github.com/vllm-project/vllm/blob/3897f95cf17619137536d2a7d325d9c2f39dc38f/vllm/v1/attention/backends/flash_attn.py",
+          "git_blob_oid": "5a5e5641e6d8b92aea2da71033dd2a29805ea8b8",
+          "source_sha256": "f1ae110c6092eb85dcd860bb60527e18a8b98bcaf35233115e943f5b02338ddb",
+          "tracked_blob_equals_worktree": true,
+          "interpretation": "Metadata max_num_splits and graph-conditioned branches exist; no hot setter or safe backend switching is established.",
+          "anchors": [
+            {
+              "label": "max_num_splits: int = 0",
+              "line_start": 540,
+              "line_end": 548,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "3f4bf9fe7285ff40a7be5b36a63dcadb27add90e9f5e99062b5eca8341197911"
+            },
+            {
+              "label": "def _store_scheduler_metadata(",
+              "line_start": 663,
+              "line_end": 692,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "56b373483bc8751b4b8f8911b7509c2394364787dbadddae664cf31d2d50df24"
+            },
+            {
+              "label": "max_num_splits = 0  # 0 means",
+              "line_start": 848,
+              "line_end": 867,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "0de951145285c2e9f60ce5c26c463a4cb4abf384c89b9a133ac2de0876dc5077"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "framework": "sglang",
+      "local_checkout": "/Users/kxzhang/sglang",
+      "commit": "4b83f215f498bc0371587bfae4a9470f24e77737",
+      "scope": "Fixed committed source, read-only. No pull, implementation change or GPU execution in this audit.",
+      "files": [
+        {
+          "path": "python/sglang/srt/managers/schedule_policy.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/managers/schedule_policy.py",
+          "git_blob_oid": "197d7bbacaebde812a1c90fc0c69af88cd6eace1",
+          "source_sha256": "28f57c7a6ef21f386d9083f24cbc4077280dd31e7abbc94667c904f9365aec68",
+          "tracked_blob_equals_worktree": true,
+          "interpretation": "Persistent policy state, cache/tree matching and a queue-size fallback affect scheduling. A single static rank is not proven equivalent.",
+          "anchors": [
+            {
+              "label": "class SchedulePolicy:",
+              "line_start": 187,
+              "line_end": 212,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "87af92455c5bc96e53f4466ccce2eeb6f6f6c002c72b60681adda4a22388325a"
+            },
+            {
+              "label": "def calc_priority(",
+              "line_start": 208,
+              "line_end": 248,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "d423af14fdbeb2cd986b222b6c116d3209b3e97be7cdf6a108107c479346413f"
+            },
+            {
+              "label": "def _determine_active_policy(",
+              "line_start": 301,
+              "line_end": 317,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "e07bcb129e5b1a1b903d2fd8ceabdbb4820ce7c5045570b342e6b77997a79f64"
+            },
+            {
+              "label": "def _compute_prefix_matches(",
+              "line_start": 343,
+              "line_end": 378,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "6441754179a47fb757d204d5dd88c95f693cecec676f4d57b28fbaa16599f71d"
+            }
+          ]
+        },
+        {
+          "path": "python/sglang/srt/layers/attention/flashinfer_backend.py",
+          "source_url": "https://github.com/sgl-project/sglang/blob/4b83f215f498bc0371587bfae4a9470f24e77737/python/sglang/srt/layers/attention/flashinfer_backend.py",
+          "git_blob_oid": "04c0fd1abd47e891d9075dc2f07bfcd4e333e42c",
+          "source_sha256": "a14e377dc9cff5603f90a8c0fce13c9907c7c020e98c3f097905882835f7a5d1",
+          "tracked_blob_equals_worktree": true,
+          "interpretation": "Initialization defaults split sizes to None and reads environment values only in the deterministic branch; ordinary decode/extend and graph paths differ. These are consumption sites, not native hot-update guarantees.",
+          "anchors": [
+            {
+              "label": "self.prefill_split_tile_size = None",
+              "line_start": 434,
+              "line_end": 456,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "5b3b6676f3813f4c30823231f6f6a4bda9702f2788142883bc8bcbfcf04aaf37"
+            },
+            {
+              "label": "fixed_split_size=None,",
+              "line_start": 772,
+              "line_end": 782,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "24de594d2b8ce95c4565d42b3467f38fc418b125b03e30f5eb6e5f1aff45afb1"
+            },
+            {
+              "label": "fixed_split_size=self.decode_split_tile_size,",
+              "line_start": 1012,
+              "line_end": 1024,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "8c98e72b72fff0eee642126613ff42f9e8f6e4b8924589f82d4c3a452ed34c9d"
+            },
+            {
+              "label": "fixed_split_size=self.prefill_split_tile_size,",
+              "line_start": 1080,
+              "line_end": 1092,
+              "physical_pdf_pages": [],
+              "line_block_sha256": "b698bac655acfeee82809825a2574205be57718ab0a844ec143b63d794f5ce3f"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "historical_audit_boundary": {
+    "unchanged_file": "evidence/source-audit-2026-11-03.json",
+    "note": "That historical audit used different /Users/zkx checkouts and commits. This record does not supersede its recorded facts or silently rewrite old source links."
+  },
+  "proof_status": {
+    "expressiveness": "Constructive model argument and target-policy obligations, not verified full algorithm equivalence.",
+    "resource_safety": "Inductive proof sketch conditional on each executor primitive, asynchronous event and adapter preserving invariants.",
+    "approximation": "Margin lemma for a finite decision/trace under explicit stability assumptions; no workload-wide performance guarantee.",
+    "progress_and_fairness": "Conditional restricted-subclass analysis; VTC fairness does not transfer to arbitrary parameter switching."
+  },
+  "focused_verification": {
+    "new_pdf_bytes_and_hashes_match_manifest": true,
+    "new_pdfs_have_headers_and_eof": true,
+    "new_extracted_page_markers_match_parsed_page_counts": true,
+    "new_pdf_page_counts": {
+      "34": 14,
+      "35": 22,
+      "36": 16,
+      "37": 19,
+      "38": 25,
+      "39": 16
+    },
+    "source_evidence_uses_fixed_git_blobs": true,
+    "full_repository_validator_run": false,
+    "no_gpu_or_hot_update_experiment": true
+  }
+}

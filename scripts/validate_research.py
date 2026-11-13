@@ -51,7 +51,7 @@ for doc in ROOT.glob("*.md"):
             broken_links.append({"document": doc.name, "target": target})
 errors.extend(f"broken link: {x}" for x in broken_links)
 bib = (ROOT / "references.bib").read_text()
-bib_count = len(re.findall(r"^@(?:inproceedings|article)\{", bib, re.M))
+bib_count = len(re.findall(r"^@\w+\s*\{", bib, re.M))
 if bib_count != len(papers):
     errors.append("BibTeX entry count differs from manifest")
 report = {
