@@ -1,0 +1,190 @@
+{
+  "checked_on": "2026-11-15",
+  "record_created_at_utc": "2026-11-15T06:53:49.312896+00:00",
+  "scope": "Select and document one research question: SLO-aware PD work-in-progress admission before prefill. Literature/source check only; no remote experiment or implementation.",
+  "selected_question": "How can near-term downstream capacity and actual allocation/transfer/release events govern prefill release under dynamic arrivals and unknown outputs, reducing retained KV and avoidable execution losses while increasing net SLO delivery?",
+  "selection_reason": "Measurable cross-stage state/resource loss, concrete prefill admission actuator, established production hooks and strong baselines, feasible 1P2D opportunity test. No uniqueness or publication-success claim.",
+  "renamed_document": {
+    "previous": "05_研究方案_PD分离下的SLO感知联合路由与长尾控制.md",
+    "current": "05_研究方案_PD分离下的SLO感知在途工作量控制.md"
+  },
+  "prior_evidence": [
+    "evidence/pd-slo-routing-research-2026-11-15.json",
+    "evidence/pd-routing-literature-2026-11-15.json"
+  ],
+  "new_paper": {
+    "id": "51",
+    "title": "Inference without Interference: Disaggregate LLM Inference for Mixed Downstream Workloads",
+    "system": "TetriInfer",
+    "version": "arXiv v1 dated 2024-01-20",
+    "primary_url": "https://arxiv.org/abs/2401.11181v1",
+    "pdf_file": "papers/51_TetriInfer_arxiv_v1.pdf",
+    "pdf_sha256": "5ddb1b4be1981c5d6b70a1a6704b53663a08405b4e8d5b8fc2222a6e25aefdff",
+    "text_file": "paper-text/51_TetriInfer_arxiv_v1.txt",
+    "text_sha256": "79ce65e3b1dbd9883fcb47368c1a4c3d11bcb85d8f17009b966306dd076afa3d",
+    "pages": 15,
+    "findings": [
+      "Initial-chunk dispatch uses predicted resource feasibility and power-of-two choices.",
+      "Decode reserve-dynamic estimates future free memory when the shortest remaining job completes.",
+      "The archived v1 experiments emulate KV transfer latency using preplaced KV and metadata-only network messages."
+    ],
+    "anchors": [
+      {
+        "pattern": "Once a request’s initial chunk is prefilled",
+        "line_start": 881,
+        "line_end": 908,
+        "excerpt": "Once a request’s initial chunk is prefilled, the dispatcher\ninvokes a decentralized load-balancing algorithm to select\na decode instance with sufficient resources to run this re-\nquest’s decode phase. Our algorithm consists of three steps.\nFirst, we categorize decode instances into two sets: α, those\nwith enough resources to execute the chosen request, and β,\nthose without. Recall that the prefill instance has all decode\ninstances’ load information broadcasted from the cluster mon-\nitor (§3.2). With the predicted length range (§3.3.2), finding\ndecode instances with adequate resources for executing this\nrequest’s decode phase is easy. Second, we use the power-\nof-two [25] algorithm to choose two instances from the α\nset randomly. Lastly, from the two instances, we choose the\none that would encounter the least interference if the prefilled\nrequest is sent to it. Based on Figure 5, our goal is to establish\nthe lowest average ratio of heavy decode:light decode, which\nmeans we need to spread heavy decode requests evenly. Fig-\nure 19 proves our algorithm is effective, achieving the lowest\ntotal decoding time compared to other policies.\nOnce a decision is made, the dispatcher sends this request’s\nmetadata and prefilled KV cache to the selected decode in-\nstance. Crucially, there are two key design considerations\nfor transferring KV Cache: (1) transfer granularity and (2)\nnetwork stack for transferring the cache.\nWe begin by discussing granularity. Due to our use of\nchunked prefill, the prefilled KV cache is created in chunks\n7\n\n",
+        "sha256": "9175ffe1b2de5b64a959f6ded089e425abeb35f7428566956959c258d3081224",
+        "physical_pdf_pages": [
+          7
+        ]
+      },
+      {
+        "pattern": "reserve-static and",
+        "line_start": 1014,
+        "line_end": 1048,
+        "excerpt": "To address this limitation, we propose reserve-static and\nreserve-dynamic policies, both aim to prevent triggering\nswaps. Under the reserve-static policy, a request is scheduled\n8\n\n===== PDF PAGE 9 =====\nPrefill to Decode Decode to Prefill\nGlobal\nScheduler\nGlobal\nScheduler\nS1: Notify\nS4: Reply\nS1: Notify\nS4: Reply\nS2: Notify\nPrefill Decode Decode\nDecode\nPrefill Prefill Prefill\nDecode\nS3: Flip S3: Flip\nS2: Drain\nFigure 10: Prefill and Decode Instance Flip.\nonly if its predicted memory usage is smaller than the avail-\nable accelerator memory for the current iteration. In contrast,\nthe reserve-dynamic policy takes a more proactive approach\nby considering the predicted number of remaining tokens.\nSpecifically, a new request is added to the scheduled batch\nonly if there is still spare memory when the shortest remaining\njob in the batch finishes. This approach effectively mitigates\nmemory thrashing while maximizing the advantages of pag-\ning. Our tests in Figure 18 suggest that with our current pre-\ndiction accuracy, these two policies are on par with vLLM’s\ngreedy policy. When the prediction accuracy increases, these\ntwo policies can lower the average JCT by roughly 10%.\n",
+        "sha256": "172c59a0dc066365339645e123b4f75ec9fe9c9d03aa9fdce3448b169ebb3020",
+        "physical_pdf_pages": [
+          8,
+          9
+        ]
+      },
+      {
+        "pattern": "plemented a mock mechanism",
+        "line_start": 1100,
+        "line_end": 1113,
+        "excerpt": "plemented a mock mechanism to emulate varying network\nbandwidth. This mechanism works as follows: for a given\nset of requests, we initially run their prefill phase offline to\nobtain their prefilled KV cache. Before testing, we load these\nprefilled KV caches into the decode instance’s local mem-\nory. When testing starts, the prefill instance transmits only\nthe request metadata to the decode instance, excluding the\nactual prefilled KV cache. Subsequently, the decode instance\ncalculates the latency of the KV cache transfer and waits ac-\ncordingly. This latency is calculated given a specific model\narchitecture and the hardware bandwidth we aim to emulate.\n5 Evaluation\nWe evaluate TetriInfer using public dataset [35] and report\ntime-to-first-token (TTFT), job completion time (JCT), and\n",
+        "sha256": "0a28cdcdbc710050bfa60e60a8d36a37186bb93cf849eb89207f3414ac3bd5e7",
+        "physical_pdf_pages": [
+          9
+        ]
+      }
+    ]
+  },
+  "source_audit": {
+    "repository": "/Users/zkx/sglang",
+    "commit": "f0820d5138c666f6ae67da799eb9fcf68ef6a42e",
+    "scope": "Selected local source paths at this commit, not a claim of latest upstream or deployed capability.",
+    "files": [
+      {
+        "path": "sgl-model-gateway/src/routers/http/decode_gate.rs",
+        "commit": "f0820d5138c666f6ae67da799eb9fcf68ef6a42e",
+        "git_blob": "27431e1f28d88682b6efa68d597acfcb08feb033",
+        "sha256": "9b1061c6ccba93e5df397360bfffaddc00aecf257aee788a3fae881185318ce6",
+        "worktree_matches_commit": true,
+        "anchors": [
+          {
+            "pattern": "pub async fn admit",
+            "line_start": 20,
+            "line_end": 32,
+            "excerpt": "    pub async fn admit(&self, prefill_url: &str, slot: &DecodeSlot) {\n        let gate = Arc::clone(\n            &self\n                .gates\n                .entry(prefill_url.to_string())\n                .or_insert_with(|| Arc::new(Semaphore::new(self.limit))),\n        );\n        let permit = gate.acquire_owned().await.expect(\"gates are never closed\");\n        *slot.0.lock().unwrap() = Some(permit);\n    }\n}\n\n#[derive(Debug, Clone, Default)]\n",
+            "sha256": "2bc3d088007bfaa9114bff34bf65205553c62d59777b2527cb244c2f7b5b9889"
+          }
+        ]
+      },
+      {
+        "path": "sgl-model-gateway/src/routers/http/pd_router.rs",
+        "commit": "f0820d5138c666f6ae67da799eb9fcf68ef6a42e",
+        "git_blob": "ea60c3f299be8d61deae4ad295a6235de0ccd04c",
+        "sha256": "23b661979088d2c56361c2913f5636629cf0462f07039b6c33d7cbca665a1282",
+        "worktree_matches_commit": true,
+        "anchors": [
+          {
+            "pattern": "let slot = decode.is_none()",
+            "line_start": 721,
+            "line_end": 783,
+            "excerpt": "        let slot = decode.is_none().then(DecodeSlot::default);\n        let decode_leg = async {\n            if let (Some(gate), Some(slot)) = (&self.decode_gate, &slot) {\n                let admit = gate.admit(prefill.url(), slot);\n                if tokio::time::timeout(self.request_timeout, admit)\n                    .await\n                    .is_err()\n                {\n                    return Err(error::create_error(\n                        StatusCode::GATEWAY_TIMEOUT,\n                        \"decode_dispatch_timeout\",\n                        \"Timed out waiting to dispatch the decode request\",\n                    ));\n                }\n            }\n            let decode = match decode {\n                Some(decode) => decode,\n                None => self\n                    .select_worker(\n                        context.request_text.as_deref(),\n                        context.model_id,\n                        context.headers.as_ref(),\n                        true,\n                    )\n                    .await\n                    .map_err(Self::handle_server_selection_error)?,\n            };\n            let decode_guard = WorkerLoadGuard::new(decode.clone(), headers);\n            let prepared_decode = async {\n                let body = Self::inject_prefill_dp_rank_for_decode(\n                    Cow::Borrowed(&json_request),\n                    prefill.as_ref(),\n                )?;\n                Self::prepare_worker_request(context.route, decode.as_ref(), body).await\n            }\n            .await\n            .map_err(|e| {\n                error!(\"Failed to prepare PD worker requests: {}\", e);\n                error::internal_error(\"pd_request_preparation_failed\", e)\n            })?;\n            let decode_request = self.build_post_with_headers(\n                &self.client,\n                &prepared_decode.endpoint_url,\n                &prepared_decode.body,\n                headers,\n                false,\n            );\n            events::RequestPDSentEvent {\n                prefill_url: prefill.url(),\n                decode_url: decode.url(),\n            }\n            .emit();\n            let result = decode_request.send().await;\n            if let Some(slot) = &slot {\n                slot.release();\n            }\n            Ok((decode, decode_guard, result))\n        };\n\n        // Run both in this handler task (not a detached tokio::spawn) so a client\n        // disconnect cancels the pending decode request too, keeping the\n        // upstream-cancel behavior from #19524.\n        let prefill_fut = prefill_request.send();\n",
+            "sha256": "91b6b037bfcf34e1f674a4bfe30ff3087705246db1a2be51242528c6ba742cdb"
+          },
+          {
+            "pattern": "if let Some(slot) = &slot {",
+            "line_start": 774,
+            "line_end": 778,
+            "excerpt": "            if let Some(slot) = &slot {\n                slot.release();\n            }\n            Ok((decode, decode_guard, result))\n        };\n",
+            "sha256": "87b1e28b34c17074964230dfbbb643a6dbd337a2441f78f0dadb05d0ddc34088"
+          }
+        ]
+      },
+      {
+        "path": "python/sglang/srt/disaggregation/common/conn.py",
+        "commit": "f0820d5138c666f6ae67da799eb9fcf68ef6a42e",
+        "git_blob": "85aca9bfd24c68e2bdaa75bd5ce8c3c3de8dd7da",
+        "sha256": "c13bdef0b406495bc93746b07bb8329cbf13c35e7adf1e962d96c7eca38a9d42",
+        "worktree_matches_commit": true,
+        "anchors": [
+          {
+            "pattern": "self.defer_decode_allocation = (",
+            "line_start": 450,
+            "line_end": 464,
+            "excerpt": "        self.defer_decode_allocation = (\n            get_disagg().disaggregation_decode_allocation_policy == \"prefill_complete\"\n        )\n        self.deferred_bootstrap = None\n        if self.defer_decode_allocation:\n            if any(state != StateType.DSA for state in args.state_types):\n                raise ValueError(\n                    \"prefill_complete currently supports full-attention and DSA KV pools only\"\n                )\n            if disaggregation_mode == DisaggregationMode.PREFILL:\n                self.deferred_bootstrap = DeferredBootstrap(\n                    envs.SGLANG_DISAGGREGATION_WAITING_TIMEOUT.get()\n                    + envs.SGLANG_DISAGGREGATION_BOOTSTRAP_TIMEOUT.get()\n                )\n\n",
+            "sha256": "a1c080d76aef3f3ed8fe364730b17ea4737bc83861e4bffa35ece88cda534007"
+          }
+        ]
+      },
+      {
+        "path": "python/sglang/srt/disaggregation/prefill.py",
+        "commit": "f0820d5138c666f6ae67da799eb9fcf68ef6a42e",
+        "git_blob": "c8a110b8da6cde1178afa6b9e5dc65d31ec14b38",
+        "sha256": "5d8bd91d14adfb4644280b8963ec0fa8529fb92abbf111614899983c894db13d",
+        "worktree_matches_commit": true,
+        "anchors": [
+          {
+            "pattern": "req.disagg_kv_sender.mark_prefill_complete()",
+            "line_start": 1255,
+            "line_end": 1260,
+            "excerpt": "                    req.disagg_kv_sender.mark_prefill_complete()\n                if not req.pending_bootstrap:\n                    self.send_kv_chunk(req, last_chunk=True)\n                req.time_stats.set_prefill_transfer_queue_entry_time()\n\n            else:\n",
+            "sha256": "c76c7382bd35e016e06ed7e54c56ce3eadd6049f2cc7756df158ae123af2ccd1"
+          },
+          {
+            "pattern": "# Parked: prefill finished before bootstrap completed.",
+            "line_start": 1389,
+            "line_end": 1412,
+            "excerpt": "                # Parked: prefill finished before bootstrap completed.\n                if self.handle_pending_bootstrap(req, poll):\n                    self.send_kv_chunk(req, last_chunk=True)\n                elif (\n                    poll == KVPoll.Bootstrapping\n                    and get_disagg().disaggregation_decode_allocation_policy\n                    != \"prefill_complete\"\n                    and self.req_to_token_pool.available_size() == 0\n                    and (\n                        self.waiting_queue\n                        or (\n                            self.disagg_prefill_bootstrap_queue.queue\n                            and self.req_to_metadata_buffer_idx_allocator.available_size()\n                            == 0\n                        )\n                    )\n                ):\n                    # Decode may have admitted different requests. Yield one\n                    # slot so they can prefill, including peers still waiting\n                    # for a metadata buffer in the bootstrap queue.\n                    self.optimistic_release_and_requeue(req)\n                continue\n\n            if poll in [KVPoll.WaitingForInput, KVPoll.Transferring]:\n",
+            "sha256": "38e5f76662f39b8675060942dc0e1c6590d2dc3a33c45cbe6a4c2bdcde50e8f7"
+          },
+          {
+            "pattern": "elif poll == KVPoll.Success:  # transfer done",
+            "line_start": 1415,
+            "line_end": 1425,
+            "excerpt": "            elif poll == KVPoll.Success:  # transfer done\n                if req.return_routed_experts:\n                    self.batch_result_processor._maybe_collect_routed_experts(req)\n                if not isinstance(req.finished_reason, FINISH_ABORT):\n                    req.finish_outside_step(FINISH_LENGTH(length=0))\n                self.request_retirer.release(req, checkpoint=True)\n                # FIXME: clean up req's data in transfer engine\n                req.disagg_kv_sender.clear()\n                done_reqs.append(req)\n                req.time_stats.set_prefill_kv_transfer_finish_time()\n            elif poll == KVPoll.Failed:\n",
+            "sha256": "be3507b6cc6a62c3e25e8d43d89662facc4fe4bec7ac2ff28c6f6a2fc19923b6"
+          }
+        ]
+      }
+    ],
+    "findings": [
+      "DecodeGate is a fixed per-prefill-URL semaphore for deferred decode dispatch, not a long-lived memory credit.",
+      "PD router releases that slot after decode HTTP send resolves or after prefill response; this differs from source KV release accounting.",
+      "prefill_complete defers decode allocation and limits supported state families to full-attention/DSA at the inspected check.",
+      "P-side source has explicit transfer-complete release and a conditional optimistic release-and-requeue path."
+    ]
+  },
+  "primary_engineering_sources": [
+    {
+      "url": "https://github.com/sgl-project/sglang/issues/25760",
+      "title": "[Roadmap] RFC: SessionAware Router for SGLang",
+      "scope": "Official roadmap covering bucket/load/cache routing and PD coordination."
+    },
+    {
+      "url": "https://github.com/sgl-project/sglang/pull/37843",
+      "scope": "Official shared admission/load-aware routing PR; compare implemented guard policy and distinguish functional/simulation evidence from GPU performance."
+    },
+    {
+      "url": "https://github.com/sgl-project/sglang/pull/38108",
+      "scope": "Official bucket-domain/cache-indexing extension; relevant engineering baseline."
+    },
+    {
+      "url": "https://github.com/sgl-project/sglang/issues/43699",
+      "title": "PD Optimization Roadmap in 2026 Q4",
+      "scope": "Official roadmap for early decode allocation, staging and safe KV release. Source capabilities independently inspected above."
+    }
+  ],
+  "research_boundaries": [
+    "Routing, local scheduler, graph policy and transfer implementation are fixed in primary comparisons.",
+    "Receiver interference and prediction uncertainty are cost/disturbance factors, not separate selected research questions.",
+    "Lower retained KV without increased net goodput establishes occupancy savings only; moving queueing to the frontend is accounted separately.",
+    "Fixed request/byte limits, watermarks, native admission, delayed allocation, P-start binding, and predictive decode reservations are strong baselines."
+  ],
+  "verification": "New PDF parsed and selected original text read; pinned local files match git blobs. Full repository validator not run, as instructed."
+}

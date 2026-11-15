@@ -1,0 +1,1241 @@
+Source: 43_NetKV_arxiv_v1.pdf
+Pages: 12
+
+===== PDF PAGE 1 =====
+arXiv:2606.03910v1 [cs.PF] 2 Jun 2026
+NetKV: Network-Aware Decode Instance Selection
+for Disaggregated LLM Inference
+Mubarak Adetunji Ojewale
+Cloud Competency Centre, National College of Ireland
+mubarak.ojewale@ncirl.ie
+Abstract—Disaggregated LLM inference forces the KV cache
+to traverse the datacenter network before decoding begins, so
+transfer time enters directly into the Time to First Token
+(TTFT) budget. Current schedulers route on compute load and
+prefix-cache locality alone, ignoring the topological distance and
+dynamic congestion between prefill and decode instances. We
+close this gap with a thin operator-to-scheduler interface, the
+network cost oracle, and we prove that ignoring the network
+term renders cache-aware-only scheduling arbitrarily suboptimal
+as context length grows. NetKV, the O(|D|) per-request greedy
+that consumes this oracle, has tier rankings that are provably
+robust to stale telemetry. On a 64-GPU four-tier fat-tree simulator
+driven by Mooncake traces, NetKV reduces mean TTFT by up
+to 21.2% over round-robin and 17.6% over a tuned cache+load-
+aware scheduler, lifts SLO attainment by up to 20.1 percentage
+points, and keeps the Time Between Tokens overhead below
+0.5 ms in every condition tested, with no changes to the transport,
+inference engine, or hardware.
+Index Terms—LLM inference, disaggregated serving, real-time
+scheduling, network-aware placement, KV cache transfer, tail
+latency
+I. INTRODUCTION
+A key requirement for interactive Large Language Model
+(LLM) serving is the ability to deliver the first generated
+token within a Service Level Objective (SLO) on the Time
+to First Token (TTFT), and to sustain a steady inter-token
+rate, called the Time Between Tokens (TBT), once decoding
+has begun. Modern production systems for LLM inference
+have converged on a disaggregated architecture in which the
+compute-intensive prefill phase and the memory-bandwidth-
+bound decode phase run on separate GPU pools [1]–[3]. This
+design is now adopted by every major framework, including
+NVIDIA Dynamo [4], llm-d [5], SGLang [6], and vLLM [7],
+because it eliminates the prefill-decode interference that arises
+when the two phases share a GPU, and allows the two pools
+to be sized independently.
+Disaggregation, however, introduces a new system bottle-
+neck. The Key-Value (KV) cache generated during prefill
+must be transferred across the datacenter network to a decode
+instance before token generation can begin. For a 128K-
+context Llama-3-70B [8] request, the aggregate KV cache is
+approximately 40 GB and, under tensor-parallel (TP) sharding
+with TP=4, this corresponds to roughly 10 GB of data crossing
+each prefill-to-decode GPU pair in parallel. On a 25 Gbps
+Remote Direct Memory Access (RDMA) link, that per-pair
+transfer takes about 3.2 s, easily dominating the TTFT budget.
+The transfer time therefore enters directly into the TTFT,
+and the chosen decode instance determines what fraction
+of the budget is consumed by data movement rather than
+computation.
+The central scheduling decision in disaggregated inference
+can thus be stated as follows. Given a request that has com-
+pleted prefill on instance p, which decode instance d should
+receive its KV cache? Current production schedulers answer
+this question using two signals: compute load (GPU memory
+availability, current batch size, queuing delay) and KV-cache
+locality (whether a candidate decode instance already holds a
+matching prefix from a prior request). Specifically, DistServe
+favours same-node placement at deployment time but has
+no per-request network signal [1]; Mooncake’s Conductor
+scores candidates by cache match and instance load [3]; llm-
+d implements a composite scorer over prefix-cache and load
+within the Kubernetes Gateway API [5]; and Dynamo’s KV-
+aware router directs requests to instances holding matching
+prefix blocks [4]. The positioning is summarised in Table I.
+None of these schedulers, however, incorporates a third signal
+that directly determines transfer latency, namely the network
+cost between the prefill and the decode instance. Mooncake’s
+authors explicitly identify this gap: “More difficulty lies in
+predicting the transfer time because it is determined not only
+by the size of the transferred data but also by the current
+network status, especially whether the sending node is under
+congestion” [3].
+This omission reflects a fundamental information asymme-
+try between two parties. The inference scheduler, operating
+at the application layer, has no visibility into the physical
+network topology, link utilisation, or routing decisions. The
+cluster operator, managing the network fabric, has detailed
+topology and telemetry but no knowledge of upcoming KV
+cache transfers, their sizes, or their latency sensitivity. Neither
+side alone can make a globally optimal placement decision [9].
+We postulate that bridging this gap does not require deep in-
+tegration, but rather a thin, well-defined information-exchange
+interface that we call a network cost oracle. The operator does
+not need to understand inference semantics, and the scheduler
+does not need raw topology data. A small, periodically updated
+signal, specifically a locality-tier classification of instance pairs
+together with per-tier bandwidth estimates and congestion
+indicators, is sufficient to make the network bottleneck visible
+to the scheduler.
+We make a threefold contribution. (1) We formalise decode-
+instance selection as an online optimisation jointly over com-
+
+===== PDF PAGE 2 =====
+pute load, cache locality, and network transfer cost, and we
+prove that ignoring the network term renders cache-aware-
+only scheduling arbitrarily suboptimal as context length grows
+(Proposition 1 in §IV). (2) We propose NetKV, an O(|D|) per-
+request greedy algorithm that consumes the oracle output, and
+we prove a sufficient condition under which its tier rankings
+are robust to stale congestion telemetry (Proposition 2 in §V).
+NetKV is deployable as a scoring plugin to existing schedulers
+and requires no changes to the transport layer, the inference
+engine, or the network hardware. (3) We evaluate NetKV
+on a 64-GPU four-tier fat-tree cluster simulator driven by
+Mooncake production traces (§VI). Across seven experiments
+and five baselines, NetKV reduces mean TTFT by up to 21.2%
+over round-robin and 17.6% over a tuned cache+load-aware
+scheduler, improves SLO attainment by up to 20.1 percentage
+points, and keeps the TBT overhead below 0.5 ms in every
+condition we tested. The improvements scale with context
+length, network oversubscription, and background congestion,
+the regimes in which the network bottleneck of disaggregation
+is most acute.
+II. BACKGROUND AND RELATED WORK
+A. Disaggregated LLM Inference
+LLM inference comprises two phases with distinct compu-
+tational profiles. The prefill phase processes the entire input
+prompt in a single forward pass and is compute-bound. The
+decode phase generates output tokens autoregressively, one
+per step, and is memory-bandwidth-bound. Colocating both
+phases on the same GPU leads to mutual interference: long
+prefills block decode batches and inflate the TBT, while decode
+batches fragment GPU memory that prefill would otherwise
+use.
+DistServe [1] introduced prefill-decode disaggregation and
+co-optimised GPU allocation and parallelism strategies for
+each phase independently. Splitwise [2] proposed a similar
+phase-splitting architecture with layer-level pipelining that
+overlaps KV cache transfer with computation. Mooncake [3]
+built a production-scale disaggregated platform for Kimi (the
+Moonshot AI chatbot), featuring a KV-cache-centric dis-
+tributed store that leverages CPU DRAM, SSD, and RDMA
+for cache persistence. FlowKV [10] addresses transfer latency
+through contiguous memory layout and fused transfer kernels,
+reporting up to a 96% reduction in per-transfer latency relative
+to its own naive baseline. Sarathi-Serve [11] softens the prefill-
+decode boundary via chunked prefill but does not eliminate
+the need to transport KV state across instances. All of these
+systems acknowledge KV cache transfer as the principal
+overhead of disaggregation. DistServe mitigates it by prefer-
+ring same-node placement, Splitwise overlaps transfer with
+computation, Mooncake optimises the storage and retrieval
+path, and FlowKV optimises the transfer mechanism itself.
+None of them, however, makes per-request decode placement
+decisions as a function of dynamic network state or topological
+distance, which is the gap that NetKV addresses.
+B. KV-Cache-Aware Request Routing
+A parallel line of work optimises request routing based on
+KV-cache locality. llm-d [5] implements prefix-cache-aware
+routing within the Kubernetes Gateway API Inference Exten-
+sion, scoring decode pods by prefix match length. NVIDIA
+Dynamo [4] provides a KV-aware router that directs requests
+to instances holding matching prefix blocks, together with
+a KV Block Manager for hierarchical cache offloading. Al-
+paServe [12] places model replicas to optimise Service Level
+Objective (SLO) attainment under bursty workloads. Server-
+lessLLM [13] introduces locality-aware checkpoint loading.
+Llumnix [14] supports live request migration across decode
+instances for load rebalancing. These systems demonstrate that
+cache-aware routing produces large TTFT gains over cache-
+blind baselines. Their per-request routing decisions, however,
+remain topology-agnostic. A decode pod with a 90% prefix hit
+on a congested cross-pod link can yield a worse TTFT than
+a cold-cache pod on the same rack. NetKV adds the network
+dimension to this decision, enabling the scheduler to reason
+about the tradeoff between cache locality and transfer cost.
+C. Network-Aware Scheduling for ML Workloads
+Network-aware scheduling has been extensively studied
+for distributed training. CASSINI [15] models the periodic
+communication patterns of training jobs as geometric abstrac-
+tions, enabling interleaving of communication phases across
+jobs that share network links. vClos [16] jointly optimises
+topology, routing, communication patterns, and GPU assign-
+ments. TopoOpt [17] co-optimises network topology and par-
+allelisation strategy using reconfigurable optical interconnects.
+These systems exploit a key property of training, namely
+that communication is periodic, deterministic, and known
+in advance: an AllReduce of fixed message size at every
+iteration. Inference communication is fundamentally different.
+KV cache transfers are request-driven, stochastic, and variable
+in size, with the payload proportional to the input sequence
+length. The communication graph changes with every request,
+so CASSINI’s circle-based abstraction and TopoOpt’s offline
+topology co-optimisation are inapplicable. NetKV addresses
+this by treating network-aware scheduling as an online deci-
+sion problem integrated with the per-request scheduling loop.
+D. Positioning
+GORGO [18] studies a related tradeoff between KV cache
+reuse and network latency at the geo-distributed level, where
+WAN latencies are measured in hundreds of milliseconds
+to several seconds. NetKV operates intra-cluster, where the
+information asymmetry between scheduler and operator is
+most acute and where topology granularity (rack, pod, spine)
+directly determines transfer performance. Helix [19] formu-
+lates LLM placement on heterogeneous GPUs as a max-flow
+problem on the cluster’s compute-network graph, but solves
+an offline placement problem rather than per-request routing
+within an already-placed pool, and is therefore complemen-
+tary to NetKV. Cloud providers such as AWS SageMaker
+HyperPod, NVIDIA Run:ai, and Kubernetes Topology Aware
+
+===== PDF PAGE 3 =====
+TABLE I: Positioning of NetKV relative to existing systems.
+System Cache Net. Per-req Inf.
+DistServe [1] × ×a ✓ ✓
+Mooncake [3] ✓ × ✓ ✓
+llm-d [5]/Dynamo [4] ✓ × ✓ ✓
+CASSINI [15]/TopoOpt [17] N/A ✓ × ×
+Helix [19] × ✓b × ✓
+GORGO [18] ✓ ✓c ✓ ✓
+NetKV ✓ ✓ ✓ ✓
+a Placement only. b Offline, link-level.c Geo/WAN.
+Scheduling support topology-aware initial placement but not
+per-request routing within an already-placed pool. Table I
+summarises this positioning. NetKV is, to our knowledge, the
+first system to incorporate network topology and dynamic con-
+gestion awareness into per-request decode-instance selection
+for disaggregated LLM inference.
+III. SYSTEM MODEL
+A. Cluster Architecture
+We consider a GPU cluster organised as a multi-tier fat-
+tree [20], which is the dominant datacenter network archi-
+tecture for AI workloads. The cluster consists of N GPU
+instances partitioned into a prefill pool Pand a decode pool
+D. Instances are organised into locality domains determined
+by the physical topology and indexed by tier. Tier 0 in-
+stances share the same physical node and communicate over
+NVLink or PCIe at 100–600 GB/s. Tier 1 instances share a
+rack and communicate over RDMA over Converged Ethernet
+(RoCE) [21] through a Top-of-Rack (ToR) switch at 25–
+100 Gbps. Tier 2 instances share a pod and traverse a single
+aggregation or spine hop at 10–25 Gbps. Tier 3 instances
+cross pod boundaries through the core layer at 5–12 Gbps. Let
+τ(p,d) ∈{0,1,2,3}denote the locality tier of an instance
+pair (p,d). The static bandwidth for tier k is Bk and the
+base latency is Lk, both known to the operator from hardware
+specifications and topology.
+B. Request and KV Cache Model
+Requests arrive according to a stochastic process. Each
+request r has input length ℓr tokens. After prefill on instance
+p, the scheduler selects a decode instance. The KV cache size
+is deterministic given the model and sequence length:
+sr = 2·nlayers·nkv heads·dhead·ℓr·belem (1)
+where nlayers, nkv heads, dhead are model parameters and belem
+is bytes per element (2 for FP16). For Llama-3-70B [8] (80
+layers, 8 KV heads, 128 head dim, Grouped-Query Attention
+(GQA) [22]), the aggregate KV size is 320 KB/token; under
+TP=4, each shard is 80 KB/token.
+We use block-level prefix matching with block size Btok =
+16 tokens. Writing hr for the request’s block-hash sequence
+and Kd for the cache contents at instance d, the cache hit
+length is λr(d) = Btok ·|LCPblock(hr,Kd)|, the number of
+tokens covered by the longest common block-aligned prefix.
+The effective transfer size is:
+seff
+r (d) = sr· 1−
+λr(d)
+ℓr
+(2)
+C. Decode Instance State
+Each decode instance d ∈Dmaintains local state visible
+to the scheduler: md (available GPU memory), qd (queued
+requests), βd (current batch size), and Kd (set of prefix block
+hashes in the KV cache). We model the iteration time as
+¯
+titer(β) = a + bβ, a piecewise-linear function fitted from
+published profiling data [1].
+D. Network Cost Model
+The transfer time from prefill instance pto decode instance
+d for effective payload s is:
+Ttransfer(p,d,s) = s
+Beff(p,d) + Lτ(p,d) (3)
+where effective bandwidth depends on three factors:
+Beff(p,d) = Bτ(p,d)·(1−cτ(p,d))
+1 + nτ
+inflight(p) (4)
+The three factors are: (1) the static tier bandwidth Bτ(p,d),
+determined by hardware and topology; (2) the external con-
+gestion factor cτ(p,d) ∈ [0,1), reflecting current utilisation
+by traffic external to the scheduler’s in-flight KV transfers;
+and (3) the self-contention count nτ
+inflight(p), the number of
+concurrent KV transfers the scheduler has in flight from p on
+tier τ.
+The external and self-contention terms are kept separate
+to avoid double counting. The operator’s telemetry pipeline
+excludes the scheduler’s own KV flows when computing cτ,
+which is straightforward when KV transfers use a marked
+Differentiated Services Code Point (DSCP) class or a ded-
+icated Quality-of-Service (QoS) queue, and nτ
+inflight accounts
+for them directly. When telemetry cannot separate the two,
+the scheduler sets nτ
+inflight ≡0 and relies on cτ alone.
+The form of (4) composes two standard approximations:
+Bτ(1−cτ) is the residual-bandwidth approximation used in
+fluid analyses of TCP and RDMA congestion control [21], [23]
+when the network is below saturation, and 1/(1 + nτ
+inflight) is
+the steady-state share assumed by max-min fairness among the
+scheduler’s in-flight flows plus the new one, the fairness model
+Data Center Quantized Congestion Notification (DCQCN)
+converges to over its convergence horizon [21]. The product
+form treats external traffic and the scheduler’s own flows as
+sharing a fair queue independently, which is exact when the
+two populations are stationary and uncorrelated. The oracle
+refresh interval ∆oracle ≥1 s used throughout this work is far
+longer than the DCQCN convergence horizon, so the steady-
+state approximation is the right operating regime.
+The decision to collapse per-link congestion to per-tier
+aggregates is a deliberate simplification. It is exact for Tier 0
+and Tier 1, where a single ToR uplink carries all cross-rack
+traffic for a server or rack, and it is approximate for Tier 2 and
+
+===== PDF PAGE 4 =====
+Tier 3, where Equal-Cost Multi-Path (ECMP) routing spreads
+flows across multiple spine links and two cross-pod flows
+can experience different link-level congestion. We discuss the
+sensitivity to ECMP hash collisions in §VII.
+Worked example. Consider a 32K-token retrieval-augmented
+generation (RAG) request on Llama-3-70B. The aggregate KV
+cache is sr = 320 KB ×32,768 ≈10 GB (2.5 GB per TP=4
+shard). The scheduler weighs two candidate decode instances:
+• d1, on the same pod as the prefill instance (tier τ=2,
+B2=50 Gbps ≈6.25 GB/s), with a 50% prefix hit and one
+of the scheduler’s own KV transfers already in flight on that
+tier (n2
+inflight = 1);
+• d2, on a different pod (τ=3, B3=25 Gbps ≈3.125 GB/s),
+with a much warmer 90% prefix hit and an idle tier
+(n3
+inflight = 0).
+Under a moderate background congestion of c2 = c3 = 0.2,
+the effective transfer sizes are seff
+r (d1) = 5 GB and seff
+r (d2) =
+1 GB. Applying (4):
+Beff(d1) = 6.25·0.8
+1+1 = 2.5 GB/s,
+Beff(d2) = 3.125·0.8
+1+0 = 2.5 GB/s.
+The transfer times are Ttransfer(d1) = 5/2.5 = 2.0 s and
+Ttransfer(d2) = 1/2.5 = 0.4 s, so the warm-cache cross-pod
+candidate d2 wins by a factor of five even though it sits on
+the slower tier. Now perturb the cross-pod congestion alone
+to c3 = 0.5, keeping every other parameter fixed. The cross-
+pod effective bandwidth drops to 1.56 GB/s, Ttransfer(d2) rises
+to 0.64 s, and the relative gap collapses from 5×to 3×. As
+soon as queuing differences favour d1 by a few hundred mil-
+liseconds, the same-pod candidate wins. This example exhibits
+all three terms of the cost model: cache locality favours d2,
+network distance favours d1, and dynamic congestion is the
+term that flips the verdict.
+E. Network Cost Oracle Interface
+The oracle is the sole information exchange required be-
+tween operator and scheduler. The operator sends the scheduler
+four maps every ∆oracle seconds: a static tier_map from
+instance pairs to {0,1,2,3}, a static tier_bandwidth map
+from tier to Gbps, a static tier_latency map from tier to
+microseconds, and a dynamic congestion map from tier
+to [0,1). Optionally, the scheduler may send a per-transfer
+TransferIntent containing source, destination, payload
+size, and priority, allowing the operator to anticipate large
+flows.
+The static components derive from existing cluster topology
+labels such as topology.kubernetes.io/zone (for
+Kubernetes) and rack labels, and the static bandwidths are
+hardware specifications. Only the congestion signal is new,
+and it is computable from standard switch telemetry (In-
+band Network Telemetry, sFlow, or SNMP counters) with
+a lightweight aggregation service. The interface therefore
+requires no changes to the transport layer (NIXL, NCCL,
+RDMA), the inference engine (vLLM, SGLang), or the net-
+work hardware.
+IV. PROBLEM FORMULATION
+A. Objective
+Given request rcompleting prefill on instance p, the sched-
+uler selects a decode instance to minimise the post-prefill
+latency, which equals TTFT minus the prefill time:
+d∗= arg min d∈Dr
+Ttransfer(p,d,seff
+r (d)) + Tqueue(d) + Tdecode(d),
+(5)
+where the three terms are the network cost, the queuing delay,
+and the first decode-step time. The feasible set Dr = {d ∈
+D|md ≥seff
+r (d) + mmin}is defined by memory constraints,
+with mmin a per-instance reserve held back for activations and
+one additional decode step. This objective directly minimises
+TTFT, the primary real-time constraint.
+The objective treats transfer, queuing, and the first decode
+step as additive. This corresponds to the execution model
+in which the decode instance waits for the full KV cache
+to land before scheduling its first step. Production systems
+that pipeline transfer with computation (Splitwise, Dynamo,
+Mooncake) reduce the visible Ttransfer contribution but do not
+eliminate it under tight memory budgets or long contexts.
+Our serial model is therefore a conservative upper bound,
+and internal comparisons remain valid since all baselines are
+evaluated under the same model.
+B. Component Models
+Continuous-batching engines admit new requests at every
+iteration boundary, so the queuing delay is modelled as
+Tqueue(d) = max(0, qd−(βmax−βd))·¯
+titer(βd). (6)
+A request joins the active batch immediately if free slots exist,
+and otherwise it waits one iteration per blocked predecessor.
+The first decode step, after the request joins the batch on d,
+takes
+Tdecode(d) = ¯
+titer(βd + 1). (7)
+C. The Three-Way Tradeoff
+The objective encodes a tradeoff that is absent from current
+schedulers and that involves cache locality, compute load, and
+the network path. A warm-cache instance on a congested
+cross-pod link may be slower than a cold-cache same-rack
+instance, because the cache hit reduces seff
+r but the low Beff
+on the cross-pod path more than offsets that reduction. Sym-
+metrically, a lightly loaded distant instance has a low Tqueue
+but a high Ttransfer, while a heavily loaded nearby instance has
+the opposite profile. The cache-versus-load tradeoff is already
+present in cache+load-aware (CLA) schedulers (used as our
+baseline in §VI); NetKV subsumes it and adds the network
+dimension on top.
+Proposition 1 (Suboptimality of network-oblivious schedul-
+ing): Consider two tiers with bandwidth ratio k= B1/B3 ≥1
+and two feasible instances: d1 (same-rack, hit ratio ρ1) and d2
+(cross-pod, ρ2 ≥ρ1). A pure cache-aware scheduler picks d2,
+but d1 achieves lower TTFT whenever:
+(1−ρ1) <k·
+1−c1
+1−c3
+·(1−ρ2)
+(8)+ B1 (1−c1 )
+sr
+Tqueue(d2)−Tqueue(d1).
+
+===== PDF PAGE 5 =====
+Algorithm 1: NetKV Decode Instance Selection
+Input: Request r, prefill instance p, pool D, oracle O
+Output: Selected decode instance d∗
+1: Dr ←{d∈D|md ≥seff
+r (d) + mmin}
+2: if |Dr |= 0 then reject(r)
+3: for each d∈Dr do
+4: τ ←O.tier map(p,d)
+5: Beff ←O.B[τ]·(1−O.c[τ]) /(1+ninflight[τ][p])
+6: λ←Btok ·|LCPblock(hr ,Kd)|
+7: seff ←sr·(1−λ/ℓr )
+8: Txfer ←seff/Beff + O.L[τ]
+9: Tqueue ←max(0, qd−(βmax−βd))·¯
+titer(βd)
+10: Tdecode ←¯
+titer(βd+1)
+11: C[d] ←Txfer + Tqueue + Tdecode
+12: end for
+13: d∗←arg mind∈Dr C[d]
+14: ninflight[τ(p,d∗)][p] += 1 // decremented in transfer-done
+callback
+15: return d∗
+Proof. d1 achieves lower post-prefill latency than d2 when
+sr(1−ρ1)/(B1(1−c1)) + Tqueue(d1) <sr(1−ρ2)/(B3(1−
+c3)) + Tqueue(d2). Substituting B3 = B1/k, dividing by
+sr/(B1(1−c1)), and rearranging gives the result. □
+Numerical example. With ρ1=0, ρ2=0.5, equal congestion,
+equal queues, and k=4 (a realistic same-rack versus cross-
+pod ratio), the inequality reads 1 <4·0.5 = 2 and holds. The
+network-oblivious choice therefore doubles the transfer time.
+The gap widens with context length, since sr scales linearly
+with ℓr and amplifies the transfer term while Tqueue remains
+constant, and the gap also widens with congestion asymmetry
+(c3 >c1).
+V. ALGORITHM
+A. NetKV Scheduling Algorithm
+Algorithm 1 integrates into the existing scheduling loop.
+Lines 5–8 add network cost computation, which is a tier
+lookup, two multiplications, and one division per candidate.
+The prefix cache lookup on line 6 is already performed by
+cache-aware schedulers, so NetKV adds negligible overhead
+on top of the existing scoring path.
+B. Complexity
+The algorithm is O(|Dr|) per decision. In our 64-GPU eval-
+uation with TP=4, the candidate pool after memory filtering
+satisfies |Dr|≤12. The oracle values (B[τ], c[τ]) are cached
+locally and refreshed every ∆oracle seconds, with a default of
+1 s, so the per-decision network overhead is effectively zero.
+C. Self-Contention Tracking
+The counter nτ
+inflight(p) on line 14 prevents the scheduler
+from over-committing to nearby decode instances when it
+dispatches multiple requests from the same prefill instance in
+quick succession. It is incremented on dispatch and decre-
+mented by polling the inference engine’s existing transfer-
+complete API: in vLLM, this is KVConnectorBase_-
+V1.get_finished(finished_req_ids), which re-
+turns the sets of request IDs whose KV-cache send and receive
+operations have completed and is the same call the engine
+already uses to release prefill-side buffers; Dynamo exposes
+an equivalent completion event through its KV router. No new
+transport-layer notification is required. We cap the counter at
+a configurable maximum (default 16, roughly the NIC’s satu-
+rated flow count) to prevent runaway under sustained overload.
+This signal is available at no cost since the scheduler itself
+initiated the transfers, and it provides a significant fraction of
+NetKV’s benefit even when the operator does not yet expose
+dynamic congestion data.
+D. Oracle Staleness Analysis
+The congestion signal cτ is refreshed every ∆oracle seconds;
+between refreshes the scheduler reads a stale valueˆ
+cτ.
+Proposition 2 (Staleness tolerance for tier ranking): Let
+|ˆ
+cτ−c∗
+τ|≤ϵ for all tiers. For candidates on tiers τ,τ′ with
+Bτ ≥Bτ′ , if Bτ(1−c∗
+τ) > Bτ′ (1−c∗
+τ′ ), the stale ordering
+preserves the true ordering when:
+Bτ(1−c∗
+τ)−Bτ′ (1−c∗
+τ′ )
+ϵ<
+(9)
+Bτ + Bτ′
+Proof. The worst-case ranking inversion has the stale oracle
+inflate the slower tier and deflate the faster:ˆ
+cτ = c∗
+τ + ϵ,
+ˆ
+cτ′ = c∗
+τ′−ϵ. Thenˆ
+Beff(τ) = Bτ(1−c∗
+τ)−Bτϵandˆ
+Beff(τ′) =
+Bτ′ (1−c∗
+τ′ )+Bτ′ ϵ. Ordering is preserved (ˆ
+Beff(τ) >ˆ
+Beff(τ′))
+iff Bτ(1−c∗
+τ)−Bτ′ (1−c∗
+τ′ ) >(Bτ + Bτ′ )ϵ, yielding (9). □
+Numerical interpretation. With B1/B3 = 4 (a 4:1 over-
+subscribed fat-tree, matching our evaluation) and moderate
+congestion c∗
+1 = c∗
+3 = 0.3, the bound becomes ϵ < (4·
+0.7−1·0.7)/(4 + 1) = 0.42. The oracle can therefore err
+by up to 42 percentage points before the tier ordering inverts,
+which is a sizeable tolerance. At the other extreme, if the
+faster tier is near saturation (c∗
+τ →1), the right-hand side of
+(9) becomes negative and no staleness tolerance exists. This is
+expected, because at saturation the tier ordering is determined
+by instantaneous congestion rather than by static bandwidth.
+Note that Proposition 2 addresses inversion of the bandwidth
+ordering only. The queue and cache terms in the full cost C(d)
+are unaffected by oracle staleness, so the composite cost is at
+least as well ranked under stale congestion as the bandwidth
+term alone.
+VI. EVALUATION
+A. Experimental Setup
+We evaluate NetKV in simulation. We do not have access to
+a physical GPU cluster for this work; all results below come
+from a discrete-event, flow-level simulator described in §VI-B,
+configured to model a 64-H100 cluster. Where we say “we
+run Llama-3-70B” or “each request’s KV transfer is realised
+as four parallel flows,” we mean the simulator executes the
+inference timing model and the network model under those
+parameters. The validation status of the simulator and the
+provenance of the timing model are discussed below.
+The simulated cluster is a fat-tree of 2 pods, 2 racks per
+pod, 2 servers per rack, and 8 GPUs per server (64 H100-
+class GPUs total). The per-tier bandwidths are B0=450 GB/s
+
+===== PDF PAGE 6 =====
+(NVLink), B1=100 Gbps (ToR), B2=50 Gbps (2:1 oversub-
+scription), and B3=25 Gbps (4:1 oversubscription); base la-
+tencies are L0=1 µs, L1=3 µs, L2=8 µs, L3=15 µs. The
+simulator models Llama-3-70B [8] at TP=4 on both prefill
+and decode, yielding 16 instances in total (4 prefill, 12
+decode) with βmax = 64 and continuous batching [24]; each
+request’s KV transfer is modelled as four parallel GPU-to-
+GPU flows sharing the source NIC. TP=4 is chosen over the
+more common TP=8 because it yields 16 instances on the
+64-GPU cluster (versus 8 at TP=8), which exposes the four-
+tier topology richly enough for the locality-aware experiments.
+Llama-3-70B in FP16 fits at TP=4 with comfortable headroom
+for KV cache and activations (35 GB of weights per GPU
+plus 45 GB of free High Bandwidth Memory (HBM)); Experi-
+ment 7 sanity-checks the TP=4 choice by scaling the simulated
+topology while holding the per-instance configuration fixed.
+The inference-timing component of the simulator is the
+iteration time¯
+titer(β) and prefill latency Tprefill(ℓ). Lacking
+hardware to profile, we fit these as piecewise-linear functions
+¯
+titer(β) = a + bβ and Tprefill(ℓ) = cℓ + d from three
+published sources: DistServe [1], vLLM v0.6 benchmarks,
+and the MLPerf Inference v5.0 datacenter results [25] (using,
+in particular, the Juniper Networks 32×H100 Llama-2-70B
+offline submission as an aggregate sanity check). The fitted
+aggregate falls within 25% of the MLPerf number at the
+matching TP and batch-size configuration. We bias the fit
+toward faster decode than the published midpoint, so the
+network term occupies a smaller fraction of TTFT than the
+optimistic interpretation would suggest; the TTFT improve-
+ments we report are therefore a lower bound on what the
+fitted-conservative regime supports.
+The workload is driven by the Mooncake production
+traces [3], comprising 23K real requests with arrival times-
+tamps and input/output lengths. Timestamps are compressed
+by a single multiplicative factor to achieve the target arrival
+rate while preserving the burstiness of the original trace. We
+define three workload profiles. The chatbot profile filters to
+inputs no larger than 8K tokens with prefix-sharing probability
+pshare = 0.3 and a 2 s TTFT SLO. The RAG/enterprise profile
+filters to inputs in [4K,64K] with pshare = 0.7 and a 5 s
+SLO. The long-context profile filters to inputs above 16K with
+pshare = 0.1 and a 10 s SLO. Each run simulates 5 s of warmup
+and 15 s of measurement, and every data point is repeated with
+five independent seeds for variance.
+We compare against five baselines: round-robin (RR);
+load-aware (LA) minimising Tqueue + Tdecode; cache-aware
+(CA) maximising prefix hit length with load as tiebreaker;
+cache+load-aware (CLA*) with per-workload tuned weights
+matching the scoring component of Mooncake’s Conductor
+and llm-d’s composite scorer; and NetKV-Static, which adds
+the static tier map and the self-contention counter nτ
+inflight
+to CLA* but withholds the live congestion oracle (labelled
++Self-Contention in the ablation plots and Table IV, reflecting
+the component it adds on top of NetKV-Topo-Only). CLA*
+weights are tuned by a 10×10 grid search in (wcache,wload) ∈
+[0.1,2.0]2 at 80% capacity, on a tuning slice at Mooncake-
+trace seconds [0,30) disjoint from the measurement window at
+[60,75). Selected weights are (1.0,1.0) for chatbot and RAG,
+(1.5,0.7) for long-context; the NetKV-Full advantage varies
+by less than 1.5 pp across the 3 ×3 neighbourhood of these
+points, and an off-design retune at 250% load preserves the
+gap within 0.8 pp. Reported metrics: TTFT (mean, P50, P95,
+P99), TBT (mean, P95), SLO attainment, goodput, per-tier
+link utilisation, and mean transfer time. TBT is¯
+titer(β) at the
+moment each request enters the decode batch.
+B. Simulator Design and Validation
+Our evaluation uses a discrete-event, flow-level simulator
+that models each request from arrival through prefill, KV trans-
+fer, decode, and completion. The fat-tree fabric is captured at
+flow granularity with per-link max-min fair sharing, the model
+used by RDMA congestion control [23]. Each flow’s path is
+determined by ECMP, modelled as uniform random uplink
+assignment at flow start so correlated flows can collide even
+below capacity; on every flow arrival or completion, all co-
+existing flows on shared links are immediately re-evaluated.
+Background traffic is modelled as a steady-state link utilisation
+parameterised by a single offered-load fraction, the standard
+mean-field approximation in fluid analyses of datacenter net-
+works [23], [26]; it is exact for our cost model when the
+oracle’s 1 s refresh interval exceeds the autocorrelation horizon
+of the background flows. Experiment 3 sweeps the offered-
+load fraction in {0,0.05,0.1,0.2,0.4}.
+The compute model uses the piecewise-linear iteration-
+time and prefill-latency fits described above. The continuous-
+batching engine admits new requests at iteration boundaries,
+so a request arriving mid-iteration waits for the current step to
+complete before joining the active batch. Each decode instance
+maintains a running batch with memory tracking, eviction of
+completed requests, and an LRU-managed KV-block cache.
+Scheduler decisions are made using only the state that would
+be available to a real scheduler: per-instance compute metrics
+refreshed at each scheduling event, and oracle-provided net-
+work metrics refreshed every ∆oracle seconds. The scheduler
+cannot observe per-flow network state or future arrivals.
+We validated the network model against analytical predic-
+tions: a single flow on an uncontested path matches its tier
+bandwidth within 0.1%, N co-existing flows on a bottleneck
+each receive 1/N of capacity, and fair-share reallocation after
+flow completion converges within one time step. The infer-
+ence timing model was cross-validated against DistServe [1],
+vLLM [7], and MLPerf [25] numbers within 25%. The 5 s
+warm-up window ensures cold-cache and empty-queue tran-
+sients do not contaminate the 15 s measurement window.
+C. Experiment 1: Load Sweep
+We sweep the request rate from 50% to 250% of the per-
+workload calibrated capacity on each of the three workload
+profiles. Table II shows the RAG profile in detail; the per-
+workload summary is reported at the end of the subsection.
+Table II shows that NetKV-Full achieves the lowest TTFT
+at every rate, and the gap widens with load. At 100% load,
+
+===== PDF PAGE 7 =====
+TABLE II: Load sweep, RAG profile: mean TTFT (mean±std
+over five seeds), TBT, SLO attainment, and transfer time at
+selected rates. Best value per rate in bold. Goodput tracks SLO
+attainment ×throughput (omitted for space).
+Rate Scheduler TTFT (ms) TBT (ms) SLO Xfer (ms)
+100%
+RR 1969±9 12.74 0.907 993
+CLA* 1812±15 12.71 0.923 835
+NetKV-Full 1598±10 12.94 0.944 620
+200%
+RR 2171±4 13.01 0.887 1194
+CLA* 1995±25 12.88 0.906 1018
+NetKV-Full 1710±9 13.29 0.933 733
+250%
+RR 2224±4 13.13 0.882 1246
+CLA* 2068±15 12.97 0.899 1091
+NetKV-Full 1793±9 13.42 0.925 816
+NetKV-Full reduces mean TTFT by 18.9% over RR and 11.8%
+over CLA*, with SLO attainment lifting 3.7 pp over RR and
+2.1 pp over CLA*; mean transfer time drops from 993 ms
+(RR) to 620 ms. At 200% the gap widens to 21.2% over RR
+and 14.3% over CLA*. The tails follow the means: P99 TTFT
+at 100% drops from 12.3 s (RR) and 11.2 s (CLA*) to 9.3 s,
+and at 250% from 14.5 s and 13.6 s to 11.1 s. The TBT cost
+is small and grows slowly: +0.23 ms over CLA* at 100%
+rising to +0.45 ms at 250%, well below any practical TBT
+SLO threshold (50 ms or more for interactive use).
+Per-workload summary. The qualitative finding holds across
+all three profiles. Peak NetKV-Full TTFT reduction over RR
+is 12.6% on chatbot (200% rate, 601±1 ms vs 685±1 ms),
+21.2% on RAG (200%), and 23.9% on long-context (75%,
+6175±26 ms vs 8112±33 ms); the corresponding peaks vs
+CLA* are 6.8%, 14.3%, 12.1%. NetKV-Full wins at every rate
+in every workload, with the vs-RR gain monotone in context
+length and seed std under 30 ms throughout. Goodput tracks
+SLO: at RAG 200%, NetKV-Full delivers 11.37 rps within
+SLO vs 11.04 (CLA*) and 10.81 (RR).
+D. Experiment 2: Context Length Sweep
+To isolate the effect of context length, we fix the workload
+to RAG at 100% load and parametrically override the per-
+request input length, sweeping it from 1K to 64K tokens while
+keeping the arrival timestamps and request count from the
+underlying Mooncake trace fixed. Four schedulers participate
+in this sweep: RR, CA, CLA*, and NetKV-Full.
+Table III confirms Proposition 1: NetKV’s advantage grows
+with context length while the KV cache fits the per-instance
+memory budget and the workload remains schedulable. At
+input length 16K the advantage peaks at 20.2% mean TTFT
+reduction over RR and 17.6% over CLA*, lifting SLO attain-
+ment from 0.791 (RR) to 0.992 (a 20.1 pp improvement). The
+16K length is precisely the regime where the transfer term
+dominates the TTFT budget: the KV cache is large enough
+(5 GB aggregate) for the inter-tier bandwidth gap to matter,
+and small enough for the request to remain within the SLO.
+Beyond 16K, the workload exceeds the simulated capacity of
+all schedulers at 100% load and SLO attainment collapses
+uniformly; the network choice no longer determines deadline
+TABLE III: RAG context-length sweep. ∆TTFT is the NetKV-
+Full mean-TTFT reduction; ∆SLO is the attainment delta in
+absolute units. Peaks in bold. Seed std on absolute mean TTFT
+stays below 20 ms in the schedulable regime (lengths ≤16K)
+and below 100 ms in the overload regime (32K–64K).
+Length vs RR vs CLA* ∆TBT vs RR vs CLA*
+∆TTFT ∆TTFT (ms) ∆SLO ∆SLO
+1024−9.1%−2.2% +0.22 0.000 0.000
+4096−13.3%−3.2% +0.27 0.000 0.000
+8192−15.2%−10.2% +0.26 0.000 0.000
+16384−20.2%−17.6% +0.17 +0.201 +0.136
+32768−6.7%−4.3% +0.03−0.006−0.006
+65536 +0.0% +0.2% 0.00 0.000 0.000
+misses. The TBT overhead stays under 0.27 ms across the
+sweep and shrinks to zero in the overload regime.
+E. Experiment 3: Topology Sensitivity
+We fix the request rate at 100% capacity and sweep two
+topology axes independently on each of the three workload
+profiles. The first axis is the cross-pod oversubscription ratio,
+ranging from 1:1 (no bandwidth gap between tiers) to 8:1
+(extreme oversubscription typical of cost-optimised fabrics).
+The second axis is the background traffic intensity, ranging
+from 0% to 40% of link capacity. Three schedulers participate
+in the sweep: CLA*, NetKV-Static, and NetKV-Full. The other
+three baselines, which lack network awareness, would not
+add information on these axes. Fig. 1 shows the full per-
+workload sweep. From Fig. 1, RAG mean-TTFT advantage
+of NetKV-Full over CLA* scales along both axes. At 1:1
+oversubscription with no background traffic, the inter-tier
+bandwidth gap is by construction zero and the improvement
+is only 3.7%. At 8:1 with 40% background traffic, the gap
+widens to 15.9% (3644±45 vs 3063±25 ms). NetKV’s value
+strengthens precisely where the network bottleneck is most
+acute. TBT overhead stays within a 0.05 ms band across the
+sweep, showing no sensitivity to topology: the TBT cost is
+constant under network stress while the TTFT benefit scales
+with it, the asymmetric tradeoff we sought to demonstrate.
+Per-workload summary (Fig. 1). The trend holds across
+all three profiles. At maximum stress (8:1, 40% bg) NetKV-
+Full cuts mean TTFT over CLA* by 11.2% on chatbot,
+15.9% on RAG, and 11.2% on long-context (SLO lift
++1.5/+2.3/+6.9 pp, with the long-context jump driven by
+saturation: a small TTFT cut recovers many deadline misses).
+At minimum stress (1:1, 0% bg) the gap is 1.3%/3.7%/4.0%,
+still favourable. Across the full sweep, NetKV-Full beats
+CLA* in all 60 cells.
+F. Experiment 4: Oracle Staleness
+We sweep the oracle refresh interval ∆oracle from 100 ms
+to 60 s on the RAG workload at 100% load, comparing
+CLA*, NetKV-Static, and NetKV-Full. All three metrics are
+essentially invariant across the full range, as Fig. 2 shows
+NetKV-Full maintains 11.0% mean TTFT improvement over
+CLA* (1580 ms versus 1776 ms) at every refresh interval,
+
+===== PDF PAGE 8 =====
+Fig. 1: NetKV-Full mean-TTFT reduction over CLA* (%) across the topology sweep for each workload profile. Rows: cross-
+pod oversubscription ratio. Columns: background-traffic share. NetKV-Full wins in every one of the 60 cells; the reduction
+grows with both axes and reaches its maximum at the high-stress corner (8:1 oversubscription, 40% background).
+Fig. 2: Oracle staleness sweep: TTFT, TBT, and SLO are invariant from 100 ms to 60 s refresh intervals.
+and the SLO attainment delta stays at 1.8 percentage points
+throughout. Two effects compose to produce this invariance.
+First, Proposition 2 bounds the worst-case ordering-flip error
+at 42 percentage points on cτ for our 4:1-oversubscribed
+topology, which is roughly an order of magnitude larger than
+the measured fluctuation of cτ over 60-second windows in
+our workload, so the tier ordering essentially never inverts.
+Second, the static tier component dominates the cost (Ex-
+periment 6: >90% of the gain from the static tier signal),
+so even when the dynamic congestion term is stale the
+static term remains correct. The practical implication is that
+the oracle can refresh once per minute without degrading
+scheduling quality. A standard SNMP counter poll at this
+cadence is sufficient and the telemetry burden on the operator
+is near zero. The flatness should not be read as evidence
+that dynamic congestion is unimportant; Experiment 3 shows
+it contributes meaningfully under the deep-oversubscription,
+heavy-background-traffic stress regime where the static tier
+alone leaves a residual gap.
+G. Experiment 5: Prefix Sharing Interaction
+We sweep the prefix-sharing parameter pshare from 0.0 to
+0.9 on the RAG arrival pattern, comparing CA, CLA*, and
+NetKV-Full. Fig. 3 shows the results. Across the full range
+of pshare from 0.0 to 0.9, NetKV-Full reduces the mean TTFT
+by 15.3% to 15.6% over both CA and CLA* (since CA and
+CLA* produce identical decisions when the load component
+does not break ties), and it lifts the SLO attainment by 2.5
+percentage points consistently. The near-constant advantage
+across the sweep indicates that the network-aware contribution
+is essentially orthogonal to the cache-aware contribution. The
+mechanism that underlies the gain is tier-shifting: NetKV
+routes a large fraction of transfers to Tier 2 (intra-pod, higher
+bandwidth) rather than the Tier 3 (cross-pod) paths to which
+CLA* defaults under uniform candidate distribution. The mean
+transfer time drops from 835 ms (CLA*) to 620 ms (NetKV-
+Full) at the operating point common to this sweep, a 25.8%
+reduction.
+H. Experiment 6: Ablation Study
+To isolate the incremental contribution of each NetKV
+component, we evaluate a four-step ladder of schedulers on
+three workload profiles at 100% load. The ladder begins with
+CLA*, then adds the static tier map (NetKV-Topo-Only), then
+the self-contention counter (NetKV-Static), and finally the
+dynamic congestion signal (NetKV-Full).
+Table IV reveals that the static topology signal is the
+dominant component of NetKV’s benefit: adding the static
+tier map to CLA* delivers 10.2% (RAG) and 11.2% (long-
+context) mean-TTFT reduction, within one percentage point of
+the full NetKV-Full delta. Self-contention contributes a further
+1.9–2.8% on the harder workloads, and dynamic congestion
+adds a small residual. The longer-context workloads benefit
+more because their KV cache, and hence the transfer term,
+dominates TTFT. The P99 reductions are larger than the
+mean reductions (e.g., 17.5% vs 11.9% on RAG), as the tail
+
+===== PDF PAGE 9 =====
+Fig. 3: Prefix-sharing sweep on the RAG workload: NetKV-Full preserves a roughly constant TTFT advantage over CA and
+CLA* across the full range, indicating that the network-aware contribution is orthogonal to the cache-aware contribution.
+Fig. 4: Ablation ladder: mean TTFT for CLA*, NetKV-Topo-Only, NetKV-Static, and NetKV-Full across the chatbot, RAG,
+and long-context workloads.
+TABLE IV: Incremental contribution analysis. TTFT and ∆
+are in ms and %. Seed std per cell: ≤7 ms (chatbot, 20 seeds),
+≤ 15 ms (RAG), ≤ 108 ms (long-context). All incremental
+contributions are statistically significant (p < 10−4, two-
+sample t-test on the chatbot 20-seed run).
+Component Chatbot RAG Long-ctx
+TTFT ∆ TTFT ∆ TTFT ∆
+CLA* 629 — 1812 — 7121 —
++ Static 598−4.9 1627−10.2 6326−11.2
++ Self-cont. 596−0.3 1596−1.9 6150−2.8
++ Dyn. cong. 595−0.2 1592−0.3 6160 +0.2
+∆mean TTFT−5.4−11.9−12.1
+∆P99 TTFT−17.3−17.5−9.4
+∆SLO (pp) +0.5 +2.0 +4.8
+∆TBT (ms) +0.30 +0.23 +0.10
+benefits most from avoiding cross-pod transfers. The TBT
+cost from CLA* to NetKV-Full stays below 0.30 ms because
+NetKV’s routing affects the one-time transfer path while only
+marginally perturbing the ongoing batch.
+The practical implication is that a minimal deployment, in
+which the operator exposes only the static tier map and no
+dynamic telemetry, would already capture most of NetKV’s
+benefit. The dynamic congestion signal is the right thing
+to add when the cluster reaches the network-stress regimes
+characterised in Experiment 3, but it is not a prerequisite for
+a useful first deployment.
+I. Experiment 7: Scalability
+We scale the cluster from 64 GPUs (2 pods) to 1024 GPUs
+(32 pods) using a flow-level estimator that we cross-validate
+against the packet-level simulator at 64 and 128 GPUs. The
+packet-level runs serve as ground truth in the overlap region,
+while the flow-level estimator carries the trend to the larger
+scales that are infeasible at the packet level within our wall-
+clock budget.
+Table V shows three findings. First, in the overlap region
+between the two simulators (64 and 128 GPUs), the packet-
+level model reports a 7.0–7.4% TTFT reduction and the
+flow-level model reports an 11.0–13.6% reduction. The two
+simulators agree qualitatively (NetKV always wins, the gap
+widens with cluster size) but disagree on the absolute mag-
+nitude. Per-condition, the flow-level estimator overestimates
+the mean TTFT itself by 9–13% and the NetKV-vs-CLA* gap
+by 4–6 percentage points across matched configurations; the
+discrepancy traces to per-flow contention dynamics (DCQCN
+convergence transients and ECMP hash collisions) that the
+
+===== PDF PAGE 10 =====
+Fig. 5: Scalability: mean TTFT, mean TBT, SLO attainment, and scheduler decision latency from 64 to 1024 GPUs. The
+flow-level estimator captures the same relative trend as the packet-level runs in the overlap region.
+TABLE V: NetKV-Full versus CLA* at increasing cluster
+scale. Packet rows at 64 and 128 GPUs are ground truth; flow
+rows at and above 64 are the estimator. “NK Xfer” and “CLA
+Xfer” report the mean transfer time (ms) of NetKV-Full and
+CLA* respectively. ∆SLO is in percentage points. Seed std
+on absolute mean TTFT is below 16 ms in every row.
+GPUs Mode ∆TTFT ∆SLO NK Xfer CLA Xfer
+64 packet−7.0% +1.0 451 559
+64 flow−11.0% +1.8 603 799
+128 packet−7.4% +1.0 451 565
+128 flow−13.6% +2.2 603 851
+256 flow−13.6% +2.2 603 851
+512 flow−13.6% +1.7 603 851
+1024 flow−13.6% +1.7 603 851
+packet-level model captures and the flow-level model abstracts
+away. We therefore treat the flow-level numbers at 256, 512,
+and 1024 GPUs as upper bounds on the true advantage and
+read the realistic improvement at very large scale as the packet-
+level 7.4% number plus a topology-driven trend that we cannot
+bound without packet-level runs at those scales. Second, the
+transfer time exhibits a divergent trend across schedulers.
+CLA*’s transfer time rises from 559 ms (64 GPUs, packet) to
+851 ms (128 GPUs and above, flow) as larger clusters route a
+higher fraction of traffic across pod boundaries, while NetKV-
+Full keeps its transfer time essentially flat at 451 ms (packet)
+or 603 ms (flow). The topology awareness avoids the cross-
+pod penalty that grows naturally with scale. The flow-level
+gap is flat at 13.6% from 128 GPUs upward because the
+simulator’s per-tier abstraction saturates: every prefill–decode
+pair that would route cross-pod under CLA* already does once
+the cluster is large enough, so CLA*’s cost stops growing.
+Real fabrics may exhibit per-link contention effects at very
+large scale that neither model captures. Third, the scheduler
+decision latency grows sub-linearly with cluster size, because
+the candidate pool after memory filtering grows slowly, and it
+remains below 1.5 ms even at 1024 GPUs, which is negligible
+relative to the 600 ms transfer time it optimises.
+J. Cross-Experiment Synthesis
+Four patterns emerge. (i) The TTFT gain is driven by
+transfer-time reduction (19–38% across conditions). (ii) The
+TBT cost is bounded: absolute TBT stays in 12.55–13.42 ms
+across all runs, with NetKV-vs-CLA* overhead of 0–0.45 ms,
+an order of magnitude below interactive TBT SLOs. (iii) The
+gains are orthogonal to cache-aware and load-balanced
+scheduling (Experiment 5). (iv) Static topology awareness
+dominates; dynamic congestion adds a small residual under
+stress, so a minimal deployment exposing only the static tier
+map captures most of the benefit.
+VII. DISCUSSION
+A. Deployment Considerations
+NetKV is a scoring plugin rather than a scheduler replace-
+ment. In llm-d, the natural integration target is the inference
+scheduler’s pluggable scorer chain [5]: existing scorers expose
+a Score(ctx, pods)→map[Pod]float64 interface in
+the Endpoint Picker, and NetKV implements one more such
+scorer alongside the prefix-cache, load, and session-affinity
+scorers. In Dynamo, the equivalent integration point is the
+KV-aware router’s scoring function. No changes are required
+to the transport layer (NIXL, NCCL, RDMA), the inference
+engine (vLLM, SGLang), or the network hardware. The self-
+contention counter is decremented via the existing transfer-
+complete event that vLLM’s KVConnector and Dynamo’s
+KV router already fire to release the prefill-side KV buffers.
+The static oracle components derive from existing Kubernetes
+topology labels and hardware specifications; only the per-tier
+congestion signal is new, and it is a lightweight aggregation of
+standard switch telemetry. The Experiment 4 staleness results
+show that a once-per-minute refresh suffices. When tenants
+make network-aware decisions, traffic becomes locality-biased
+and the operator benefits from reduced cross-pod bandwidth
+demand, as the tier-distribution analysis in the next subsection
+makes explicit.
+B. Tier-Shifting Mechanism
+The mechanism underlying NetKV’s TTFT improvement is
+a redistribution of KV transfers toward lower-latency tiers,
+which we call tier shifting (Table VI, RAG at 100% load).
+
+===== PDF PAGE 11 =====
+TABLE VI: Fraction of transfers traversing each tier under
+CLA* and NetKV-Full. RAG workload at 100% load. Tier 0
+and Tier 1 are unreached in this configuration because the
+instance placement does not co-locate prefill with decode at
+server or rack granularity.
+Tier CLA* NetKV-Full
+Tier 0 (same-node) 0.0% 0.0%
+Tier 1 (same-rack) 0.0% 0.0%
+Tier 2 (same-pod) 32.0% 68.9%
+Tier 3 (cross-pod) 68.0% 31.1%
+Mean transfer time 835 ms 620 ms
+CLA* distributes transfers between Tier 2 and Tier 3 in
+roughly 32:68 proportion since it treats the two tiers as
+equivalent on its compute and cache criteria. NetKV-Full
+reverses this to 69:31 by scoring same-pod candidates higher
+than cross-pod ones under matched compute and cache state.
+The cross-pod fabric is the slowest path in our topology
+(4:1 oversubscription), so each cross-pod transfer carries a
+multi-second penalty that NetKV avoids whenever a same-
+pod candidate exists. This shift cuts the mean transfer time
+from 835 to 620 ms, a 25.7% reduction that translates directly
+into the 11.8% TTFT improvement in Experiment 1.
+This tier-shifting mechanism explains why NetKV’s benefit
+scales with the oversubscription ratio in Experiment 3. Higher
+oversubscription widens the per-tier bandwidth gap, which
+makes the penalty for cross-pod placement more severe and the
+reward for avoiding it correspondingly larger. The mechanism
+also explains why the gain is largely orthogonal to prefix
+sharing (Experiment 5): the cache hit reduces seff
+r on either
+tier, but it does not change the relative bandwidth available on
+that tier, so the tier choice continues to dominate the transfer-
+time budget.
+C. Limitations
+Our evaluation has some limitations that we report in
+the following. First, all numbers come from a flow-level
+simulator. A real-cluster validation is the most important
+next step, since the simulator faithfully models ECMP, fair
+sharing, and multi-tier bandwidth contention but does not
+capture NIC-level effects (driver queueing, completion-queue
+contention) or kernel-bypass overheads; we plan a real cluster
+testbed measurement to calibrate the simulator’s Beff against
+measured DCQCN behaviour. Second, the¯
+titer(β) model is
+fitted from published data rather than measured on our target
+configuration, and although we bias the fit conservatively, a
+single profile on the deployment hardware would replace the
+triangulation. Third, the serial transfer-queue-decode model
+overestimates the visible Ttransfer in production systems that
+pipeline transfer with computation; our comparative advantage
+persists since all baselines use the same model, but the
+absolute gap would shrink. Fourth, the oracle collapses per-
+link congestion to per-tier aggregates, which is exact for Tier 0
+and Tier 1 but approximate for Tier 2 and Tier 3 under ECMP.
+The cost model therefore cannot see ECMP hash collisions that
+the simulator does generate, which may understate the P99
+advantage of NetKV in heavy-tailed contention regimes; per-
+link telemetry would close this gap. Fifth, the CLA* baseline
+matches the scoring component of Mooncake’s Conductor and
+llm-d’s composite scorer, but Mooncake additionally performs
+KV-cache replication across tiers that we do not model; a full
+comparison against the deployed Conductor is left for future
+work. Sixth, the per-request greedy does not jointly optimise
+across concurrent requests; a batch-level formulation could
+yield better results at higher computational cost. Seventh,
+we assume an FP16 KV cache. INT8 or block-quantised
+KV [27] roughly halves sr and proportionally reduces the
+network term’s weight, so NetKV remains beneficial but the
+gains shrink. The TP=4 evaluation choice also leaves open
+how the gains transfer to the more common TP=8 production
+configuration, where the candidate pool is sparser; a single
+TP=8 data point is part of our planned validation work.
+D. Future Work
+Four directions follow naturally. The most direct is a real-
+cluster validation on a testbed with GPUs and RDMA-capable
+NICs, comparing per-transfer completion times under con-
+trolled background load against the simulator’s predictions.
+Multi-hop KV routing extends NetKV to architectures that
+stage KV state through intermediate caches in CPU DRAM
+or SSDs [3], [28]: the oracle exposes tier information for
+both hops and the cost model sums the two transfer times,
+with the greedy generalising naturally. Predictive congestion
+replaces the instantaneous snapshot with a lightweight time-
+series prediction (exponential smoothing or ARIMA) over
+historical telemetry, leveraging the large staleness tolerance
+of Proposition 2. Mixture-of-experts inference makes the TBT
+itself network-sensitive (expert-parallel All-to-All every step),
+so NetKV would extend to a joint TTFT/TBT optimisation.
+Finally, multi-tenant operation on shared infrastructure raises
+a price-of-anarchy question that we leave open; a basic de-
+ployment can surface tenant-specific oracle views (the same
+tier map but with congestion telemetry restricted to the tenant’s
+allocated share) so each tenant sees a self-consistent picture,
+with global fairness delegated to the operator’s QoS layer.
+VIII. CONCLUSION
+Disaggregated LLM inference makes the KV-cache transfer
+the dominant TTFT determinant, yet current schedulers ignore
+network state. NetKV closes the gap with a lightweight cost
+oracle between scheduler and operator, with no changes to
+the transport, the inference engine, or hardware. On a 64-
+GPU fat-tree, NetKV cuts mean TTFT by up to 21.2% over
+RR and 17.6% over CLA*, lifts SLO attainment by up to
+20.1 percentage points, and keeps TBT overhead below 0.5 ms
+throughout. The ablation isolates the static tier signal as the
+dominant contributor: a minimal deployment that exposes only
+the tier map captures most of the gain.
+
+===== PDF PAGE 12 =====
+REFERENCES
+[1] Y. Zhong, S. Liu, J. Chen, J. Hu, Y. Zhu, X. Liu, X. Jin, and H. Zhang,
+“Distserve: disaggregating prefill and decoding for goodput-optimized
+large language model serving,” in Proceedings of the 18th USENIX
+Conference on Operating Systems Design and Implementation, ser.
+OSDI’24. USA: USENIX Association, 2024.
+´
+[2] P. Patel, E. Choukse, C. Zhang, A. Shah,
+I. Goiri, S. Maleki, and
+R. Bianchini, “Splitwise: Efficient generative LLM inference using phase
+splitting,” 2024.
+[3] R. Qin, Z. Li, W. He, J. Cui, H. Tang, F. Ren, T. Ma, S. Cai,
+Y. Zhang, M. Zhang, Y. Wu, W. Zheng, and X. Xu, “Mooncake:
+A kvcache-centric disaggregated architecture for llm serving.” New
+York, NY, USA: Association for Computing Machinery, Nov. 2025.
+[Online]. Available: https://doi.org/10.1145/3773772
+[4] NVIDIA, “Dynamo: A datacenter-scale distributed inference frame-
+work,” Open-source project, https://github.com/ai-dynamo/dynamo,
+2025.
+[5] llm-d project, “llm-d: Kubernetes-native distributed inferencing,” CNCF
+Sandbox, https://llm-d.ai, 2025.
+[6] L. Zheng, L. Yin, Z. Xie, C. Sun, J. Huang, C. H. Yu, S. Cao,
+C. Kozyrakis, I. Stoica, J. E. Gonzalez, C. Barrett, and Y. Sheng,
+“Sglang: efficient execution of structured language model programs,” in
+Proceedings of the 38th International Conference on Neural Information
+Processing Systems. Red Hook, NY, USA: Curran Associates Inc.,
+2024.
+[7] W. Kwon, Z. Li, S. Zhuang, Y. Sheng, L. Zheng, C. H. Yu, J. Gonzalez,
+H. Zhang, and I. Stoica, “Efficient memory management for large
+language model serving with pagedattention,” in Proceedings of the
+29th Symposium on Operating Systems Principles, ser. SOSP ’23.
+New York, NY, USA: Association for Computing Machinery, 2023, p.
+611–626. [Online]. Available: https://doi.org/10.1145/3600006.3613165
+[8] A. Grattafiori, A. Dubey, A. Jauhri, A. Pandey, A. Kadian, A. Al-Dahle,
+A. Letman, A. Mathur, A. Schelten, A. Vaughan et al., “The llama 3
+herd of models,” 2024.
+[9] M. Canini, T. A. Benson, R. Bianchini, I. n. Goiri, D. Kosti´
+c,
+P. Pietzuch, and S. Peter, “Cloud abstractions for ai workloads,”
+in Proceedings of the 16th ACM SIGOPS Asia-Pacific Workshop
+on Systems, ser. APSys ’25. New York, NY, USA: Association
+for Computing Machinery, 2025, p. 98–105. [Online]. Available:
+https://doi.org/10.1145/3725783.3764395
+[10] W. Li, G. Jiang, X. Ding, Z. Tao, C. Hao, C. Xu, Y. Zhang, and H. Wang,
+“FlowKV: A disaggregated inference framework with low-latency KV
+cache transfer and load-aware scheduling,” arXiv:2504.03775, 2025.
+[11] A. Agrawal, N. Kedia, A. Panwar, J. Mohan, N. Kwatra, B. S. Gulavani,
+A. Tumanov, and R. Ramjee, “Sarathi-Serve: Taming throughput–latency
+tradeoff in LLM inference with chunked prefill,” in Proceedings of the
+18th USENIX Symposium on Operating Systems Design and Implemen-
+tation (OSDI), 2024.
+[12] Z. Li, L. Zheng, Y. Zhong, V. Liu, Y. Sheng, X. Jin, Y. Huang,
+Z. Chen, H. Zhang, J. E. Gonzalez, and I. Stoica, “AlpaServe: Statistical
+multiplexing with model parallelism for deep learning serving,” in
+Proceedings of the 17th USENIX Symposium on Operating Systems
+Design and Implementation (OSDI), 2023.
+[13] Y. Fu, L. Xue, Y. Huang, A.-O. Brabete, D. Ustiugov, Y. Patel, and
+L. Mai, “ServerlessLLM: Locality-enhanced serverless inference for
+large language models,” in Proceedings of the 18th USENIX Symposium
+on Operating Systems Design and Implementation (OSDI), 2024.
+[14] B. Sun, Z. Huang, H. Zhao, W. Xiao, X. Zhang, Y. Li, and W. Lin,
+“Llumnix: Dynamic scheduling for large language model serving,” in
+Proceedings of the 18th USENIX Symposium on Operating Systems
+Design and Implementation (OSDI), 2024.
+[15] S. Rajasekaran, M. Ghobadi, and A. Akella, “Cassini: network-aware
+job scheduling in machine learning clusters,” in Proceedings of the 21st
+USENIX Symposium on Networked Systems Design and Implementation,
+ser. NSDI’24. USA: USENIX Association, 2024.
+[16] X. Han, S. Zhao, Y. Lv, P. Cao, W. Jiang, Q. Yang, Y. Liu, S. Lin,
+B. Jiang, X. Liu, Y. Cui, C. Zhou, and X. Wang, “vclos: Network
+contention aware scheduling for distributed machine learning tasks in
+multi-tenant gpu clusters,” Comput. Netw., vol. 268, no. C, Aug. 2025.
+[Online]. Available: https://doi.org/10.1016/j.comnet.2025.111285
+[17] W. Wang, M. Khazraee, Z. Zhong, M. Ghobadi, Z. Jia, D. Mudigere,
+Y. Zhang, and A. Kewitsch, “{TopoOpt}: Co-optimizing network topol-
+ogy and parallelization strategy for distributed training jobs,” in 20th
+USENIX Symposium on Networked Systems Design and Implementation
+(NSDI 23), 2023, pp. 739–767.
+[18] “GORGO: Maximizing KV-cache reuse while minimizing network
+latency in cross-region LLM load balancing,” arXiv:2602.11688, Feb.
+2026.
+[19] Y. Mei, Y. Zhuang, X. Miao, J. Yang, Z. Jia, and R. Vinayak,
+“Helix: Serving large language models over heterogeneous gpus and
+network via max-flow,” in Proceedings of the 30th ACM International
+Conference on Architectural Support for Programming Languages and
+Operating Systems, Volume 1, ser. ASPLOS ’25. New York, NY, USA:
+Association for Computing Machinery, 2025, p. 586–602. [Online].
+Available: https://doi.org/10.1145/3669940.3707215
+[20] M. Al-Fares, A. Loukissas, and A. Vahdat, “A scalable, commodity
+data center network architecture,” vol. 38, no. 4. New York, NY,
+USA: Association for Computing Machinery, Aug. 2008, p. 63–74.
+[Online]. Available: https://doi.org/10.1145/1402946.1402967
+[21] Y. Zhu, H. Eran, D. Firestone, C. Guo, M. Lipshteyn, Y. Liron,
+J. Padhye, S. Raindel, M. H. Yahia, and M. Zhang, “Congestion control
+for large-scale rdma deployments,” vol. 45, no. 4. New York, NY,
+USA: Association for Computing Machinery, Aug. 2015, p. 523–536.
+[Online]. Available: https://doi.org/10.1145/2829988.2787484
+[22] J. Ainslie, J. Lee-Thorp, M. De Jong, Y. Zemlyanskiy, F. Lebr´ on, and
+S. Sanghai, “GQA: Training generalized multi-query transformer models
+from multi-head checkpoints,” in Proceedings of the 2023 Conference
+on Empirical Methods in Natural Language Processing, 2023, pp. 4895–
+4901.
+[23] Y. Li, R. Miao, H. H. Liu, Y. Zhuang, F. Feng, L. Tang, Z. Cao,
+M. Zhang, F. Kelly, M. Alizadeh, and M. Yu, “HPCC: High precision
+congestion control,” in Proceedings of the ACM SIGCOMM 2019
+Conference, 2019.
+[24] G.-I. Yu, J. S. Jeong, G.-W. Kim, S. Kim, and B.-G. Chun, “Orca: A
+distributed serving system for {Transformer-Based}generative models,”
+in 16th USENIX symposium on operating systems design and implemen-
+tation (OSDI 22), 2022, pp. 521–538.
+[25] MLCommons, “MLPerf inference: Datacenter v5.0 results,” https://
+mlcommons.org/benchmarks/inference-datacenter/, Apr. 2025, llama-2-
+70B offline, e.g., Juniper Networks 32×H100 submission at 82,749
+tokens/s.
+[26] M. Alizadeh, A. Greenberg, D. A. Maltz, J. Padhye, P. Patel,
+B. Prabhakar, S. Sengupta, and M. Sridharan, “Data center tcp
+(dctcp),” in Proceedings of the ACM SIGCOMM 2010 Conference,
+ser. SIGCOMM ’10. New York, NY, USA: Association for
+Computing Machinery, 2010, p. 63–74. [Online]. Available: https:
+//doi.org/10.1145/1851182.1851192
+[27] Y. Liu, H. Li, Y. Cheng, S. Ray, Y. Huang, Q. Zhang, K. Du, J. Yao,
+S. Lu, G. Ananthanarayanan, M. Maire, H. Hoffmann, A. Holtzman,
+and J. Jiang, “CacheGen: KV cache compression and streaming for fast
+large language model serving,” in Proceedings of the ACM SIGCOMM
+2024 Conference, 2024.
+[28] Y. Liu, J. Yao, H. Li, Y. Cheng et al., “LMCache: An efficient KV cache
+layer for enterprise-scale LLM inference,” arXiv:2510.09665, Oct. 2025.

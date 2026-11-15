@@ -1,0 +1,655 @@
+{
+  "checked_on": "2026-11-15",
+  "record_created_at_utc": "2026-11-15T06:14:33.587985+00:00",
+  "scope": "Supplement for proposal 05 and literature survey Part IV. Eleven newly archived papers; no GPU experiment, implementation, novelty guarantee or claim of exhaustive literature coverage.",
+  "new_papers": 11,
+  "publication_counts": {
+    "total_manifest": 50,
+    "verified_venue_or_program": 34,
+    "findings_included": 1,
+    "preprint_or_unresolved": 16
+  },
+  "prior_evidence": [
+    "evidence/pd-slo-routing-research-2026-11-15.json",
+    "evidence/pd-elasticity-literature-2026-11-06.json"
+  ],
+  "papers": [
+    {
+      "id": "40",
+      "title": "Evolving Infra: Agent-Adaptive LLM Serving at Scale",
+      "publication_status": "arXiv preprint",
+      "version_note": "Pinned author arXiv v2; no independently verified conference publication claimed in this addition.",
+      "primary_page": "https://arxiv.org/abs/2611.12304v2",
+      "downloaded_from": "https://arxiv.org/pdf/2611.12304v2",
+      "pdf_file": "papers/40_EvolvingInfra_arxiv_v2.pdf",
+      "pdf_sha256": "84f4d8948bf0decb9336b0e5a2ea670c693b924aaa42950a3eb7428854f0c269",
+      "text_file": "paper-text/40_EvolvingInfra_arxiv_v2.txt",
+      "text_sha256": "1b7838cd8c228508200d1aba77538242309315ae79538661c6f49791009b9238",
+      "physical_pages": 40,
+      "reading_scope": "Focused primary-text reading of motivation, mechanisms, experimental setup and stated limits; not a line-by-line verification of every proof or numerical claim.",
+      "anchors": [
+        {
+          "label": "delayed_binding",
+          "pattern": "SGLang reserves GPU memory",
+          "line_start": 1986,
+          "line_end": 2001,
+          "physical_pdf_pages": [
+            31,
+            32
+          ],
+          "line_block_sha256": "bf8e26de58e9fca70ad32e2ad042c0a069ec97131a0dbe4c33c40cf8147e55ef",
+          "excerpt": "SGLang reserves GPU memory on a decode node for the KV of each request before its prefill begins. It holds\nthis reservation while the request waits in the queue of a prefill node. At 6P3D, these reservations occupy\n91% of the KV cache of its three decode nodes on average, so removing a decode node would delay prefill.\nEvolving Infra instead selects the decode node of a request only when its prefill begins, so queued requests\noccupy no memory on decode nodes. With a single decode node, the mean E2E latency of OSWorld exceeds\nits mean TTFT by only 2.6 s (24.2 s versus 21.6 s). Evolving Infra therefore assigns the remaining eight\nnodes to prefill. With online phase-split adaptation, Evolving Infra reaches 8.81, 5.40, and 4.30 requests/s\nin these settings (Table C.3), 0.98–1.38×the throughput of the best static split under SGLang.\nD.2 Scaling to Larger Clusters\nThis subsection evaluates Evolving Infra on real clusters of up to 256 GB300 GPUs and on a simulated\ncluster of 3,072 GPUs. Both show that the aggregate PD demand varies less as the cluster grows, whereas\nthe imbalance within the cluster grows.\n31\n\n===== PDF PAGE 32 =====\nSetup on up to 256 GPUs. We serve the Claude Code traces with GLM-5.2 on 36, 64, 128, and 256\n"
+        },
+        {
+          "label": "inflight_ledger",
+          "pattern": "E.3 Routing and phase-split planning",
+          "line_start": 2319,
+          "line_end": 2342,
+          "physical_pdf_pages": [
+            38,
+            39
+          ],
+          "line_block_sha256": "f98e64af1fb7dbb09a7e5b87d5d35f0a3ff25bf639f9921751a34b552995d3e7",
+          "excerpt": "E.3 Routing and phase-split planning\nAlgorithm E.3 runs two loops. The inner loop routes each request to the prefill node with the shortest\npredicted TTFT, Equation (7). For each prefill node n, the router forms the work of the request on n: the\ncached prefix tc,n is the longest prefix that the KV directory finds on n or on another node, of which xn\ntokens must be fetched from another node, and tuc,n counts the remaining input tokens. The router reads\nthe running batch and the queue of n from the latest state that n reports, and adds the requests that it has\nsent to n but that n has not reported yet. It sums the service times of Equation (3) to predict the waitˆ\nWn\nbefore the request starts. The fetch runs while the request waits, so only the part of the fetch time τ(xn)\nthat exceeds the wait adds to the prediction. The prediction ends when the prefill of the request finishes, so\nit leaves out the first decode iteration, which is the same on every prefill node. Our implementation evaluates\nthe sum by replaying the chunked prefill iterations of n in arrival order, which also accounts for requests\nthat share an iteration. The decode node is bound when the prefill starts. The outer loop is the planner of\nSection 5.2.\nParameters of our runs. Each prefill node reports its state at every iteration launch, and the router\nuses a state only if it is at most 5s old. The chunk size is 8,192 tokens. τ(x) = 0.45 s + 1 µs·x for x≥512\n38\n\n===== PDF PAGE 39 =====\ntokens (no fetch below 512 tokens). The router also adds toˆ\nTn a copy price proportional to xn, which charges\nthe duplicate KV that a fetch creates. Tlearn = 1,800 s, Twin = 600 s, and 60-s slices, so m = 10 for a full\nwindow. The planner skips the 120s after each switch.\n39\n"
+        },
+        {
+          "label": "actual_decode_choice",
+          "pattern": "When n∗starts to prefill",
+          "line_start": 2374,
+          "line_end": 2379,
+          "physical_pdf_pages": [
+            40
+          ],
+          "line_block_sha256": "7863d9ecbf81f2155a0a775ec496674c3766737d5b95819eb28bf929138937c4",
+          "excerpt": "When n∗starts to prefill r, bind r to the node in Dwith KV room for r and the fewest requests,\nand place the branch of r on that node\n14: end for\n15: Divide the window into mslices; measure¯\nwi,¯\nqi on each slice i; remeasure¯\n"
+        }
+      ]
+    },
+    {
+      "id": "41",
+      "title": "Taming Request Imbalance: SLO-Aware Scheduling for Disaggregated LLM Inference",
+      "publication_status": "arXiv preprint",
+      "version_note": "Pinned author arXiv v3; no independently verified conference publication claimed in this addition.",
+      "primary_page": "https://arxiv.org/abs/2605.02329v3",
+      "downloaded_from": "https://arxiv.org/pdf/2605.02329v3",
+      "pdf_file": "papers/41_TamingImbalance_arxiv_v3.pdf",
+      "pdf_sha256": "d0679f628797201b1092778d27b257fe60268f33dffa0d3c1442c5cc5fc8b8d9",
+      "text_file": "paper-text/41_TamingImbalance_arxiv_v3.txt",
+      "text_sha256": "4ac0e34b90c9d82f5ca407c6b00105a270d82c8d0bfb00e4474a98d1d180b707",
+      "physical_pages": 10,
+      "reading_scope": "Focused primary-text reading of motivation, mechanisms, experimental setup and stated limits; not a line-by-line verification of every proof or numerical claim.",
+      "anchors": [
+        {
+          "label": "local_mechanisms",
+          "pattern": "3.1. Urgency-based Priority Scheduling",
+          "line_start": 396,
+          "line_end": 450,
+          "physical_pdf_pages": [
+            4,
+            5
+          ],
+          "line_block_sha256": "c6b7052ea68d20fd2d7f06ec046eb3c29391e494f420021c1f9aabaeba655903",
+          "excerpt": "3.1. Urgency-based Priority Scheduling\nLimitations of existing approaches. Existing disaggre-\ngated serving systems typically employ first-come-first-\nserved (FCFS) scheduling on the prefill side (Zheng et al.,\n2024; Kwon et al., 2023). While simple, FCFS is highly\nvulnerable to head-of-line (HOL) blocking: a long request\nthat arrives first can monopolize the prefill stage and delay\nall subsequent short requests. As analyzed in §2.2, when\nlong and short requests arrive in sequence, the TTFT SLO\nbegins to be violated even at low request rate. One natural\nalternative is shortest-job-first (SJF) scheduling, which pri-\nSLOT T F T\nOur approach. To address this challenge, we propose\nurgency-based priority scheduling, whose pseudocode is\npresented in Algorithm 1. Kairos adopts chunked pre-\nfill (Agrawal et al., 2023) to bound the peak memory foot-\nprint when processing extremely long sequences, splitting\nthem into fixed-size chunks. Unlike existing FCFS-based\napproaches, Kairos selects certain chunks at the begin-\nning of each prefill step. Specifically, Kairos computes an\nurgency score (Line 7-8) for each queued request before ev-\nery prefill scheduling decision. The urgency score is defined\nby Equation 1, where the numerator captures the ratio of\nthe slack between prefill finish time to the TTFT SLO under\nFCFS scheduling policy. If this ratio is greater than 0, there\nis slack that can be exploited without violating the SLO;\notherwise, the request has already exceeded its TTFT SLO\nunder FCFS order. Kairos normalizes the urgency score\nby request length (Line 8), such that shorter requests natu-\nrally receive higher priority than longer ones at comparable\nfinish times. The scheduler then greedily selects the chunks\nof the requests with the highest normalized urgency for pre-\nfill (Line 11-20), where the total length of these chunk is\nless than the fixed chunk-size.\nAdditionally, as shown in Algorithm 2, Kairos re-\nestimates the finish time of each request at the beginning of\neach step to avoid the impact of the prefix cache hit ratio,\nwhich has a significant impact on the number of tokens to\nprefill. Kairos maintains a running estimate of the average\n4\n\n===== PDF PAGE 5 =====\nSLO-Aware Scheduling for Disaggregated LLM Inference\nprefill throughput (tokens per second, TPS) on the prefill in-\nstance (Line 6). This allows the system to accurately predict\nthe execution time of a queued request by dividing its token\ncount by the current throughput estimate, and this prediction\nis used in computing the urgency (Line 6 of Algorithm 1).\nThis design directly addresses the HOL blocking problem.\nConsider a scenario where a 128K-token request arrives\nfirst, followed shortly by a few 8K-token request, as shown\nin Figure 2. Under FCFS, the short request must wait for\nthe entire long prefill to complete, likely violating its TTFT\nSLO. In contrast, Kairos computes the urgency scores\nfor both requests. Even though the long request arrived\n"
+        },
+        {
+          "label": "gpu_setup",
+          "pattern": "4.1. Experiment Settings",
+          "line_start": 566,
+          "line_end": 634,
+          "physical_pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "4ba21361b040152f81e0d9fd79d8edffae79480c62d56ca7747f64534f1aebc6",
+          "excerpt": "4.1. Experiment Settings\nModel. We evaluate Kairos on Minimax-M2.5\n(M2.5) (MiniMaxAI, 2026) and Qwen3-VL-8B (Qwen) (?).\nM2.5 is a 229B-parameter text-only model served in FP8\nprecision, optimized for agentic coding and reasoning. This\nmodel represents the frontier of large-scale Mixture-of-\nExperts architectures and achieves state-of-the-art results\nacross a wide range of benchmarks. Qwen is a compact\nyet powerful vision-language model from the Qwen series,\nbuilt upon an 8-billion-parameter dense architecture. It in-\ntegrates a visual encoder with a large language model via\na cross-attention mechanism, enabling strong multimodal\nunderstanding and reasoning capabilities.\nDataset. We use a production online serving trace collected\nfrom a real-world LLM service, containing 1000 requests\nwith a pronounced long-tail distribution in sequence lengths.\nThis dataset allows us to evaluate Kairos under realistic\nproduction workloads.\nTestbed. All experiments are conducted on a single server\nequipped with 8× NVIDIA H200 SXM GPUs, 192 Intel\nXeon Platinum 8558 CPU cores, and 2 TB of host memory.\nThe NVLink bandwidth is 900 GB/s (Nvidia, 2026). We de-\nploy the disaggregated architecture with 4 GPUs dedicated\nto the prefill phase and 4 GPUs dedicated to decode, both\nconfigured with tensor parallelism degree 4 (TP4) for M2.5;\none GPU dedicated to prefill and one GPU dedicated to\ndecode for Qwen. The server uses NVLink and NVSwitch\nfor intra-node GPU communication.\nBaselines. We compare Kairos against DistServe (Zhong\net al., 2024), which applies the FCFS strategy and employs\nthe same 4P+4D or 1P+1D disaggregated setup with pure\nTP for each phase, serving as a direct architectural baseline\nto isolate the benefits of our scheduling policies. DistServe\nuses default FCFS prefill scheduling and continuous batch-\ning for decode.\nAttainment (%)\n100\n50\nKairos\nFCFS\nAttainment (%)\n100\nKairos\nFCFS\n50\n0\n0\n2.0 3.0 4.0 5.0\nRate (req/s)\n2.0 2.4 2.8 3.2 3.6 4.0\nRate (req/s)\n(a) M2.5 end-to-end SLO attain-\n(b) Qwen end-to-end SLO attain-\nment.\nment.\nFigure 3. End-to-end SLO attainment under different QPS.\nMetrics. We evaluate Kairos along four dimensions:\n(1) TTFT SLO attainment captures the fraction of requests\nwhose time-to-first-token meets the prefill-side latency tar-\nget; (2) TPOT SLO attainment measures the fraction of\nrequests where the mean inter-token latency falls within the\nSLO budget; (3) End-to-end SLO attainment measures\nthe fraction of requests that meets both TTFT and TPOT\nSLOs; (4) Decode throughput quantifies the per-request\ndecode speed in tokens per second, reflecting decode-side\nefficiency.\nSLO Configuration. We set the TTFT SLO to 8s and the\nTPOT SLO to 50ms for M2.5, and set the TTFT SLO to 4s\nand the TPOT SLO to 15ms for Qwen. These values are\n"
+        }
+      ]
+    },
+    {
+      "id": "42",
+      "title": "The Price of Anarchy in Disaggregated Inference",
+      "publication_status": "arXiv preprint",
+      "version_note": "Pinned author arXiv v1; no independently verified conference publication claimed in this addition.",
+      "primary_page": "https://arxiv.org/abs/2606.17081v1",
+      "downloaded_from": "https://arxiv.org/pdf/2606.17081v1",
+      "pdf_file": "papers/42_PriceOfAnarchy_arxiv_v1.pdf",
+      "pdf_sha256": "e201bb764b405e4b16c792cc3e467eb43a400618192f87ddd2ce8440d2f4a9d7",
+      "text_file": "paper-text/42_PriceOfAnarchy_arxiv_v1.txt",
+      "text_sha256": "64529e48f53580611e56b1d28e4c2bd9fed0acbfafd9cae9705ccde427a5aad5",
+      "physical_pages": 38,
+      "reading_scope": "Focused primary-text reading of motivation, mechanisms, experimental setup and stated limits; not a line-by-line verification of every proof or numerical claim.",
+      "anchors": [
+        {
+          "label": "router_control",
+          "pattern": "Algorithm 1: Game-Theoretic Adaptive Router",
+          "line_start": 875,
+          "line_end": 899,
+          "physical_pdf_pages": [
+            19
+          ],
+          "line_block_sha256": "3d67acbc0f1102fd32750ecea0492fec36ce9ac4dcc3b885665ceebfc3cca44f",
+          "excerpt": "Algorithm 1: Game-Theoretic Adaptive Router\nInput: Incoming request with token IDs t\nOutput: Worker assignment (wj,dp_rank,overlap)\n1 sat_state ←saturation_detector.current_state();\n2 (τ,ω) ←regime_params[sat_state];\n3 config ←KvRouterConfig(temperature= τ,overlap_weight= ω);\n4 t0 ←now();\n5 (wj,dp_rank,overlap) ←kv_router.best_worker(t,router_config_override= config);\n// Export game-theoretic metrics\n6 poa_gauge.set(poa_tracker.current_poa());\n7 saturation_gauge.set(sat_state.value);\n8 temperature_gauge.set(τ);\n9 routing_cost_hist.observe(now()−t0);\n10 return (wj,dp_rank,overlap);\nPrometheus metrics. The controller exports four custom metrics via Dynamo’s metrics API:\n• game_poa: Current estimated Price of Anarchy (gauge).\n• game_saturation_state: Current regime (0/1/2) (gauge).\n• game_router_temperature: Active temperature value (gauge).\n• game_routing_cost: Per-worker routing cost distribution (histogram).\nThese metrics enable real-time monitoring of game-theoretic properties via Grafana.\nPoA estimation. The controller estimates PoA in a sliding window by comparing the observed\nsocial cost (sum of actual per-request latencies) against a hindsight-optimal assignment computed\noffline:\nPoA(t) = q∈W(t) Lactual\nq\n"
+        },
+        {
+          "label": "index_limit",
+          "pattern": "The cost matrix uses an uncalibrated",
+          "line_start": 910,
+          "line_end": 923,
+          "physical_pdf_pages": [
+            19,
+            20
+          ],
+          "line_block_sha256": "655ad5c99b27d9a210614ab1e89beb68f805d02a3e30b4b2a46109f61ecd399a",
+          "excerpt": "The cost matrix uses an uncalibrated parametric model: cij= a·nj+b+d/(Cj−nj)β−wc·oij, with\na= 0.005, b= 0.020, d= 0.010, β = 2, Cj = 64 (capacity per worker), and cache weight wc = 0.015.\nThese parameters are not fitted to observed latencies; they define a relative efficiency index whose\nabsolute magnitude depends on the parameter choice. Consequently, the PoA values should be\ninterpreted as regime indicators (rising PoA signals saturation) and comparative metrics (adaptive vs.\nstatic PoA), not as absolute efficiency ratios (a PoA of 19 does not mean “19×worse than optimal”\nin system terms). The cost matrix uses frozen latencies from the observed allocation, ignoring how\nredistribution would change loads. OPT(W(t)) is therefore an underestimate of the true optimal\nsocial cost, making PoA an upper bound on the true PoA. This conservatism is acceptable for the\n19\n\n===== PDF PAGE 20 =====\ncontroller’s purpose: regime detection only needs the rate of change, and a rising PoA corroborates\nthe saturation signal from Equation 10 regardless of absolute calibration.\n"
+        },
+        {
+          "label": "throughput_cost",
+          "pattern": "at a 13% throughput cost",
+          "line_start": 29,
+          "line_end": 33,
+          "physical_pdf_pages": [
+            1
+          ],
+          "line_block_sha256": "4241bdf5141b7b9846ab59fe54e25b276a5c771ac0304811e62846a1e0a859a5",
+          "excerpt": "at a 13% throughput cost. On the 70B 1P/2D, PoA drops 2.2×and TTFT P99 drops 7.6×\n(see Section 8.5). On the 340B 1P/2D, the saturated-phase aggregate TTFT P99 drops 4.8×\n(28.3 →5.9 s). Because the switch fires mid-phase, the post-switch steady-state is∼0.97s (a\n∼29×reduction versus static) at a 36% saturated-phase throughput cost.\n1 Introduction\n"
+        }
+      ]
+    },
+    {
+      "id": "43",
+      "title": "NetKV: Network-Aware Decode Instance Selection for Disaggregated LLM Inference",
+      "publication_status": "arXiv preprint",
+      "version_note": "Pinned author arXiv v1; no independently verified conference publication claimed in this addition.",
+      "primary_page": "https://arxiv.org/abs/2606.03910v1",
+      "downloaded_from": "https://arxiv.org/pdf/2606.03910v1",
+      "pdf_file": "papers/43_NetKV_arxiv_v1.pdf",
+      "pdf_sha256": "74688920e144f4140c1cdc308de399345de3240314d7b29ac1519f1e1ef866ab",
+      "text_file": "paper-text/43_NetKV_arxiv_v1.txt",
+      "text_sha256": "dffa5349b758a15b9b5143cde6e43f13ed7df331962085862450ce347ae4ad6a",
+      "physical_pages": 12,
+      "reading_scope": "Focused primary-text reading of motivation, mechanisms, experimental setup and stated limits; not a line-by-line verification of every proof or numerical claim.",
+      "anchors": [
+        {
+          "label": "scope",
+          "pattern": "We evaluate NetKV in simulation.",
+          "line_start": 574,
+          "line_end": 590,
+          "physical_pdf_pages": [
+            5,
+            6
+          ],
+          "line_block_sha256": "7a44c3e2d19852fb1e9fdf9367556a3b918ad97f6c6b220302a5a0859ec98fb1",
+          "excerpt": "We evaluate NetKV in simulation. We do not have access to\na physical GPU cluster for this work; all results below come\nfrom a discrete-event, flow-level simulator described in §VI-B,\nconfigured to model a 64-H100 cluster. Where we say “we\nrun Llama-3-70B” or “each request’s KV transfer is realised\nas four parallel flows,” we mean the simulator executes the\ninference timing model and the network model under those\nparameters. The validation status of the simulator and the\nprovenance of the timing model are discussed below.\nThe simulated cluster is a fat-tree of 2 pods, 2 racks per\npod, 2 servers per rack, and 8 GPUs per server (64 H100-\nclass GPUs total). The per-tier bandwidths are B0=450 GB/s\n\n===== PDF PAGE 6 =====\n(NVLink), B1=100 Gbps (ToR), B2=50 Gbps (2:1 oversub-\nscription), and B3=25 Gbps (4:1 oversubscription); base la-\ntencies are L0=1 µs, L1=3 µs, L2=8 µs, L3=15 µs. The\n"
+        },
+        {
+          "label": "self_contention",
+          "pattern": "C. Self-Contention Tracking",
+          "line_start": 499,
+          "line_end": 519,
+          "physical_pdf_pages": [
+            5
+          ],
+          "line_block_sha256": "9f35be7137463e3d312fc75a1c33bf5116c0a42fa8eb3695d8e42a6959d1ffae",
+          "excerpt": "C. Self-Contention Tracking\nThe counter nτ\ninflight(p) on line 14 prevents the scheduler\nfrom over-committing to nearby decode instances when it\ndispatches multiple requests from the same prefill instance in\nquick succession. It is incremented on dispatch and decre-\nmented by polling the inference engine’s existing transfer-\ncomplete API: in vLLM, this is KVConnectorBase_-\nV1.get_finished(finished_req_ids), which re-\nturns the sets of request IDs whose KV-cache send and receive\noperations have completed and is the same call the engine\nalready uses to release prefill-side buffers; Dynamo exposes\nan equivalent completion event through its KV router. No new\ntransport-layer notification is required. We cap the counter at\na configurable maximum (default 16, roughly the NIC’s satu-\nrated flow count) to prevent runaway under sustained overload.\nThis signal is available at no cost since the scheduler itself\ninitiated the transfers, and it provides a significant fraction of\nNetKV’s benefit even when the operator does not yet expose\ndynamic congestion data.\nD. Oracle Staleness Analysis\n"
+        },
+        {
+          "label": "serial_objective",
+          "pattern": "The objective treats transfer, queuing",
+          "line_start": 402,
+          "line_end": 410,
+          "physical_pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "213ea75611b958a720c6f972ef2083364b319a145cd8d5400b5e01b84660f67e",
+          "excerpt": "The objective treats transfer, queuing, and the first decode\nstep as additive. This corresponds to the execution model\nin which the decode instance waits for the full KV cache\nto land before scheduling its first step. Production systems\nthat pipeline transfer with computation (Splitwise, Dynamo,\nMooncake) reduce the visible Ttransfer contribution but do not\neliminate it under tight memory budgets or long contexts.\nOur serial model is therefore a conservative upper bound,\nand internal comparisons remain valid since all baselines are\n"
+        },
+        {
+          "label": "workload",
+          "pattern": "The workload is driven by the Mooncake production",
+          "line_start": 621,
+          "line_end": 636,
+          "physical_pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "63267aafc15f397205653ad7081d88db3a4fee2dee78d6234f8cace858193d30",
+          "excerpt": "The workload is driven by the Mooncake production\ntraces [3], comprising 23K real requests with arrival times-\ntamps and input/output lengths. Timestamps are compressed\nby a single multiplicative factor to achieve the target arrival\nrate while preserving the burstiness of the original trace. We\ndefine three workload profiles. The chatbot profile filters to\ninputs no larger than 8K tokens with prefix-sharing probability\npshare = 0.3 and a 2 s TTFT SLO. The RAG/enterprise profile\nfilters to inputs in [4K,64K] with pshare = 0.7 and a 5 s\nSLO. The long-context profile filters to inputs above 16K with\npshare = 0.1 and a 10 s SLO. Each run simulates 5 s of warmup\nand 15 s of measurement, and every data point is repeated with\nfive independent seeds for variance.\nWe compare against five baselines: round-robin (RR);\nload-aware (LA) minimising Tqueue + Tdecode; cache-aware\n(CA) maximising prefix hit length with load as tiebreaker;\n"
+        }
+      ]
+    },
+    {
+      "id": "44",
+      "title": "Calibrate, Then Route: A Measured Study of Learned Request Routing for Disaggregated LLM Serving",
+      "publication_status": "arXiv preprint",
+      "version_note": "Pinned author arXiv v1; no independently verified conference publication claimed in this addition.",
+      "primary_page": "https://arxiv.org/abs/2609.16206v1",
+      "downloaded_from": "https://arxiv.org/pdf/2609.16206v1",
+      "pdf_file": "papers/44_CalibrateThenRoute_arxiv_v1.pdf",
+      "pdf_sha256": "dea6352c52c3b75f6b731764cc9e83c155e822b5438fe577d92241bef2c6eb17",
+      "text_file": "paper-text/44_CalibrateThenRoute_arxiv_v1.txt",
+      "text_sha256": "9aac9d62d3de2e2f9b3e2acb3cd467fa506dc2e389337e55d5047860dbb413cb",
+      "physical_pages": 7,
+      "reading_scope": "Focused primary-text reading of motivation, mechanisms, experimental setup and stated limits; not a line-by-line verification of every proof or numerical claim.",
+      "anchors": [
+        {
+          "label": "hardware",
+          "pattern": "Eight NVIDIA A40 GPUs on one node",
+          "line_start": 190,
+          "line_end": 203,
+          "physical_pdf_pages": [
+            3
+          ],
+          "line_block_sha256": "fc95608f3eb3aee1e149c8f8e7149ae0665db97d5fc8b66a3155f57951e6f804",
+          "excerpt": "Eight NVIDIA A40 GPUs on one node, each running an\nunmodified vLLM 0.12 engine serving Qwen2.5-3B (BF16,\nTP=1), with KV caches moved between prefill and decode\nengines by NixlConnector. Each engine’s KV budget is fixed\nat 60,000 tokens. The primary topology is 2 prefill + 4 decode\ninstances; explicit pools of 3 to 8 GPUs serve the frontier\nand width studies. A FastAPI router proxy holds the policies\n(imported verbatim from the simulator code base), maintains\nlive signals per instance (an in-flight ledger yielding seconds-\nof-backlog; cache occupancy polled every 50 ms), executes the\ntwo-step disaggregated inference, and journals every request.\nB. Protocol\nThree properties separate this harness from a benchmark\nscript. Correctness gates before any measurement: an ex-\n"
+        },
+        {
+          "label": "failure_region",
+          "pattern": "At the starved left end",
+          "line_start": 297,
+          "line_end": 305,
+          "physical_pdf_pages": [
+            4,
+            5
+          ],
+          "line_block_sha256": "b4fc36855177df54261ead5cd43ba19bc5ed74bddf1fa85f820be4e5e6ce02fb",
+          "excerpt": "every instance has headroom. At the starved left end (1\nprefill + 2 decode) the learned router collapses to 0.292\nwhile round-robin survives at 0.680; greedy cost minimization\nconcentrates load on whichever instance momentarily prices\ncheapest, and when every instance is overloaded, spreading\n\n===== PDF PAGE 5 =====\nFig. 4: Goodput versus provisioned GPUs across pool shapes.\nThe learned router leads the deployable middle; the starved\n"
+        },
+        {
+          "label": "simulator_limits",
+          "pattern": "It did not improve the ranking at all.",
+          "line_start": 377,
+          "line_end": 388,
+          "physical_pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "cce1d4584a1b2c4c367caddcfffc1ff0fab944a4a8058111719eb853d34c4379",
+          "excerpt": "(24.6 against 24.0). It did not improve the ranking at all.\nMean residual moved 0.067 →0.068, and with batching all\nfour policies fall within 0.01 of each other on bursty where\nthe hardware separated them by 0.03. Our simulator’s earlier\napparent skill was therefore an artefact of serialisation, which\ninflated the value of knowing output length and made the\nlearned router appear correct for the wrong reason. What a\nserial-plus-batching queueing model still lacks is whatever\nmakes placement consequential at a fixed goodput level on\nreal hardware: intra-batch interference between long and short\nsequences, chunked-prefill contention, and KV fragmentation.\nThe routing guide of §V is therefore a hardware result, and\n"
+        }
+      ]
+    },
+    {
+      "id": "45",
+      "title": "MAPS: Memory-Aware Predictive Scheduling Framework for Large Language Model Serving",
+      "publication_status": "ICML 2026",
+      "version_note": "Official PMLR ICML 2026 proceedings PDF; author arXiv v1 is a separately identified fallback, not the downloaded file.",
+      "primary_page": "https://proceedings.mlr.press/v306/zhang26s.html",
+      "downloaded_from": "https://raw.githubusercontent.com/mlresearch/v306/main/assets/zhang26s/zhang26s.pdf",
+      "pdf_file": "papers/45_MAPS_ICML2026.pdf",
+      "pdf_sha256": "5f185e58e2509687652598b3017442596b58e4674f8c91250d672bcbb39f5aee",
+      "text_file": "paper-text/45_MAPS_ICML2026.txt",
+      "text_sha256": "32ce8e30600f49247830c34a76bf3c8fbf2b170ae7eb07c13ac465196c81d9b2",
+      "physical_pages": 18,
+      "reading_scope": "Focused primary-text reading of motivation, mechanisms, experimental setup and stated limits; not a line-by-line verification of every proof or numerical claim.",
+      "anchors": [
+        {
+          "label": "completed_calibration",
+          "pattern": "of the nmost recent completed requests",
+          "line_start": 406,
+          "line_end": 435,
+          "physical_pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "cfb4f41cd117dce371b6900c067c80c9ee452878e5a64ba387a4d952c4b2b6a8",
+          "excerpt": "of the nmost recent completed requests, where Lout\ni denotes\nthe observed generation length andˆ\nLout\ni is the correspond-\ning prediction. For each sample, we define a one-sided\nnonconformity score that captures underestimation error:\nsi = Lout\ni−\nˆ\nLout\ni + = max 0,Lout\ni−\nˆ\nLout\ni , (2)\nwhich is positive only when the predictor underestimates\nthe true output length. Given a target miscoverage rate\nα∈(0,1), we compute the empirical (1−α)-quantile of\nthe one-sided nonconformity scores:\nqα = Quantile ({s1,...,sn},⌈(1−α)(n+ 1)⌉). (3)\nGiven a speculative predictionˆ\nLout, the calibrated upper\nboundˆ\nLup on the output length is defined as:\nˆ\nLup =\nˆ\nLout + qα. (4)\nHowever, prompt-based inference alone is insufficient to\n"
+        },
+        {
+          "label": "exchangeability",
+          "pattern": "Under the exchangeability assumption",
+          "line_start": 459,
+          "line_end": 468,
+          "physical_pdf_pages": [
+            4
+          ],
+          "line_block_sha256": "4dba6c5f7eb755b87acf1197b49f597eaa092deb0edbc6a1df78debc9c57a3b3",
+          "excerpt": "Under the exchangeability assumption (Vovk et al., 2005),\nthe calibrated upper bound satisfies the following guarantee:\nP Lout ≤ˆ\nLup ≥1−α, (5)\nensuring an underestimation rate no greater than α.\n3.3. Hierarchical Global-Local Scheduling\nOur scheduling focuses on the memory-bound decoding\nphase. We model the decoding cluster as a set of decoders\nD= {d1,...,dK}, where each decoder dk has a KV cache\ncapacity Ck. Leveraging PagedAttention, this capacity is\n"
+        },
+        {
+          "label": "reservation",
+          "pattern": "Once a target decoder",
+          "line_start": 543,
+          "line_end": 551,
+          "physical_pdf_pages": [
+            5
+          ],
+          "line_block_sha256": "8032f72e780099d07bc60b931d48e0d659c4d70c3fafca001b9fa4e01884a616",
+          "excerpt": "mize the chance of forward progress. Once a target decoder\nis selected, MAPS atomically reserves Bneed\ni to avoid race\nconditions under concurrent arrivals, ensuring that the mem-\nory feasibility condition is preserved during execution.\nLocal SJF Reordering. Once a request is routed to dk, it\nis enqueued for execution, where local scheduling focuses\non temporal efficiency by minimizing average latency and\nmitigating HOL blocking caused by long-running requests.\n"
+        },
+        {
+          "label": "hardware",
+          "pattern": "Implementation Details. We implement MAPS",
+          "line_start": 593,
+          "line_end": 616,
+          "physical_pdf_pages": [
+            5,
+            6
+          ],
+          "line_block_sha256": "1830d8b27459892c047552609452c35707de396580b0bcd1909d7aec4630bd79",
+          "excerpt": "Implementation Details. We implement MAPS on top of\nthe vLLM inference engine (v0.13.0) and conduct all ex-\nperiments on a cloud deployment with six NVIDIA A6000\nGPUs in a PD-disaggregated setup, consisting of one pre-\nfiller and two decoders. KV cache transfer between the\nprefiller and decoders is enabled via Mooncake. On the de-\nvice side, SP is hosted on NVIDIA Jetson Orin NX devices.\nTo account for the heterogeneous resource budgets of edge\ndevices, we deploy two SP variants of different scales: SP-\n7B, which uses Vicuna-7B as its backbone and reflects the\ngrowing on-device capabilities of modern edge hardware,\nand SP-160M, a lightweight variant built on Vicuna-160M\nthat targets devices with more constrained memory. Un-\nless otherwise specified, subsequent experiments use SP-7B\nas the default predictor, and MAPS refers to the system\ninstantiated with SP-7B.\nUAC performs conformal calibration with α = 0.1 over\n5\n\n===== PDF PAGE 6 =====\nMAPS: Memory-Aware Predictive Scheduling Framework for Large Language Model Serving\na sliding window of the most recent 500 requests. MAPS\nemploys a lightweight runtime state collector implemented\nwith Redis (v7.1.0) to aggregate decoder runtime states\n"
+        },
+        {
+          "label": "controlled_heterogeneity",
+          "pattern": "intentionally configure different effective GPU memory",
+          "line_start": 623,
+          "line_end": 634,
+          "physical_pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "863b858bf50f80c7b611895d632eec1e25672e19bacc878811ee25fb14ebb269",
+          "excerpt": "intentionally configure different effective GPU memory uti-\nlization caps across instances, creating controlled memory\nheterogeneity in the serving environment. Specifically, for\nLLaMA3.1-8B, the prefiller and one decoder use a utiliza-\ntion cap of 0.8, while the other decoder is limited to 0.5;\nfor Qwen2.5-3B, the corresponding caps are 0.6 and 0.2.\nUnless otherwise specified, all remaining system parameters\nfollow the default vLLM configurations.\nBaselines. For prediction, we compare against two represen-\ntative approaches: PO-IT (Zheng et al., 2023), which adopts\nan LLM-assisted perception-only strategy via instruction\ntuning, and S3 (Jin et al., 2023), which formulates length pre-\n"
+        }
+      ]
+    },
+    {
+      "id": "46",
+      "title": "QUARTZ: Quantile-Aware Routing and Queueing for TTFT SLOs in LLM Serving",
+      "publication_status": "Findings of ACL 2026",
+      "version_note": "Official ACL Anthology proceedings PDF; Findings, not ACL main conference.",
+      "primary_page": "https://aclanthology.org/2026.findings-acl.1888/",
+      "downloaded_from": "https://aclanthology.org/2026.findings-acl.1888.pdf",
+      "pdf_file": "papers/46_QUARTZ_FindingsACL2026.pdf",
+      "pdf_sha256": "d5004c522e85be7f4cf2cdd6de5a8504c958916fb9017fb842e28bd84e18ece1",
+      "text_file": "paper-text/46_QUARTZ_FindingsACL2026.txt",
+      "text_sha256": "7e33ee824b9c595c9f122a10a4d8c098468903b0f33653ecbe64685ee5c42b4e",
+      "physical_pages": 11,
+      "reading_scope": "Focused primary-text reading of motivation, mechanisms, experimental setup and stated limits; not a line-by-line verification of every proof or numerical claim.",
+      "anchors": [
+        {
+          "label": "quantile_method",
+          "pattern": "3.3 Quantile-aware routing",
+          "line_start": 411,
+          "line_end": 468,
+          "physical_pdf_pages": [
+            4,
+            5
+          ],
+          "line_block_sha256": "7a41c2f562cf13572393bd6c85369725892b502b3677d7b40f6e1c385c9a3423",
+          "excerpt": "3.3 Quantile-aware routing\nQUARTZ maintains a work-based backlog proxy\nB(w) and derives an estimated expected waiting\ntime W(w), avoiding queue-length-only load sig-\nnals (Harchol-Balter and Scully, 2022). Crucially,\nto avoid the statistical fallacy of summing quan-\ntiles, W(w) aggregates the expected (mean) work\nof queued requests rather than their tail percentiles.\nTable 2: Router-visible features used by QUARTZ.\nFor request rand candidate worker w, it computes\nthe routing score:\nmetadata, worker telemetry, and a prefix-locality\nproxy exposed by the engine (Zheng et al., 2024;\nSα(r,w) = W(w) + Qprefill\nα (r,w) + ψ(r,w), (4)\nYu et al., 2022; Kwon et al., 2023); see Table 2.\nBecause the locality proxy is captured at arrival,\nit may experience cache state drift by the time of\nactual dispatch due to intervening evictions or inser-\ntions in the admission queue. QUARTZ explicitly\ntolerates this temporal uncertainty as an engineer-\ning trade-off: it relies on the macro-stability of\ncoarse locality classes (e.g., none / partial / high)\nwhere Sα acts as a conservative tail-completion\nproxy formed by adding the risk-aware prefill quan-\ntile of the current request to the expected baseline\ndelay, and ψ(r,w) conservatively penalizes unde-\nsirable states (e.g., high KV pressure). For each\nrequest, QUARTZ evaluates a small candidate set\nC(r) (default K=2) and selects\nover short queueing windows, and absorbs micro-\ndeviations through online residual calibration.\nw(r) = arg min\nw∈C(r)\nSα(r,w), (5)\n3.2 Quantile prediction\nfollowing the power-of-two choices principle (Azar\net al., 1999).\nQUARTZ predicts conditional service-time quan-\ntiles aligned with tail objectives. Given router-\nvisible features, a compact tree predictor estimates\nthe α-quantile prefill time Qprefill\nα (r,w) (with α∈\n3.4 Quantile-aware admission queue\nTo mitigate router-side head-of-line blocking,\nQUARTZ orders admission using a conservative\n37889\nWorker nseq(w) active sequences on worker w\nWorker Bpref(w) prefill backlog proxy (tokens or\nms)\nWorker ukv(w) KV-cache pressure / utilization\nproxy\n\n===== PDF PAGE 5 =====\nAlgorithm 1 QUARTZ: quantile-aware routing and\nadmission\n1: On arrival of request r:\n2: Construct candidate set C(r) of size K\n"
+        },
+        {
+          "label": "calibration_fallback",
+          "pattern": "3.5 Robustness via calibration and fallback",
+          "line_start": 495,
+          "line_end": 512,
+          "physical_pdf_pages": [
+            5
+          ],
+          "line_block_sha256": "452036f0f0c43ece3c31d94b2055c9cb6f5dd9640dc6f8c2a86b60a9c4dd7660",
+          "excerpt": "3.5 Robustness via calibration and fallback\nQUARTZ monitors residuals between realized pre-\nfill times and predicted quantiles to detect under-\ncoverage. When under-coverage exceeds a thresh-\nold, QUARTZ reduces reliance on prediction by\nshifting traffic to a safe baseline (e.g., FIFO admis-\nsion with least-loaded routing), preserving stability\nunder workload shifts (Dean and Barroso, 2013).\nAlgorithm sketch. Algorithm 1 summarizes\nQUARTZ routing and admission.\n4 Implementation\nWe implement QUARTZ as a router-level upgrade\nin SGLang with minimal disruption to the execu-\ntion engine. QUARTZ changes only the router\nadmission queue and dispatch logic, and uses\nlightweight signals already available at workers, in-\ncluding load summaries and a prefix-locality proxy\nexposed by RadixAttention (Zheng et al., 2024).\n"
+        },
+        {
+          "label": "testbed",
+          "pattern": "All experiments are conducted on a single node",
+          "line_start": 589,
+          "line_end": 605,
+          "physical_pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "8295169fa02caf48275cb229f6139f2bba24e0f5fd187cace434074544c2fba3",
+          "excerpt": "All experiments are conducted on a single node\nwith 4×RTX 6000 GPUs, using one SGLang\nworker per GPU. Unless otherwise specified, we\nenable continuous batching, prefix reuse, and chun-\nked prefill in the backend serving engine, and only\nmodify the router queue and dispatch logic for\nQUARTZ. We evaluate three models from the same\nfamily, namely 7B, 14B, and 32B, in order to test\nwhether the router-level gains of QUARTZ remain\nstable as model size increases.\nQUARTZ uses a lightweight quantile predictor\ntrained offline from router-visible traces. The pre-\ndictor takes request metadata, prefix-locality sig-\nnals, and coarse worker telemetry as input, and pre-\ndicts conservative high-quantile prefill costs. Dur-\ning online serving, we keep the predictor fixed and\nonly allow lightweight bucketed calibration and\n"
+        },
+        {
+          "label": "scope_limit",
+          "pattern": "Our study focuses on TTFT",
+          "line_start": 1044,
+          "line_end": 1051,
+          "physical_pdf_pages": [
+            9
+          ],
+          "line_block_sha256": "c66955da9dc6a7d2a86b7388bcdae94ff22cb2abe5b4493eea9bd4ee4f8da077",
+          "excerpt": "frequent recalibration. Our study focuses on TTFT\ntail SLOs and does not optimize other objectives\nsuch as token-level decode latency or end-to-end\nuser-perceived latency beyond the first token. The\nevaluation is limited to the model and serving stack\nwe tested; different engines, parallelism strategies,\nand heterogeneous clusters may change both the\ndominant bottlenecks and the best routing features.\n"
+        }
+      ]
+    },
+    {
+      "id": "47",
+      "title": "Towards Load-Aware Prefill Deflection for Disaggregated LLM Serving",
+      "publication_status": "arXiv preprint",
+      "version_note": "Pinned author arXiv v1; no independently verified conference publication claimed in this addition.",
+      "primary_page": "https://arxiv.org/abs/2607.02043v1",
+      "downloaded_from": "https://arxiv.org/pdf/2607.02043v1",
+      "pdf_file": "papers/47_PrefillDeflection_arxiv_v1.pdf",
+      "pdf_sha256": "403485ad86bb0b050bbd613497a17c91c74bc91d89e4551d082a92dfe1c0e3a0",
+      "text_file": "paper-text/47_PrefillDeflection_arxiv_v1.txt",
+      "text_sha256": "a3e6d1275bbf10e30f84d4571dc06f8376afd56e82a0cd6b246da1f88afa1978",
+      "physical_pages": 12,
+      "reading_scope": "Focused primary-text reading of motivation, mechanisms, experimental setup and stated limits; not a line-by-line verification of every proof or numerical claim.",
+      "anchors": [
+        {
+          "label": "stale_state",
+          "pattern": "Stale state information at dispatch time",
+          "line_start": 899,
+          "line_end": 930,
+          "physical_pdf_pages": [
+            10,
+            11
+          ],
+          "line_block_sha256": "38d0a7229e90e01ba24167b80211b2b675e620294fc19d71b26387d55e438c87",
+          "excerpt": "Stale state information at dispatch time: Decode nodes\nreport their state (𝐵𝑛,𝐾𝑛)periodically (every Δℎ = 100𝑚𝑠in\nour implementation). The dispatcher uses this state to decide\nif a deflection is feasible, and limits each decode node to a\nsingle deflected request to prevent a single decode node from\n10\n\n===== PDF PAGE 11 =====\nbeing overloaded with deflected requests. For this to become\na bottleneck, the RPS must exceed |decode nodes|\n≥20 which is\nΔℎ\nmuch higher than the RPS our SLO supports. Moreover, this\nRPS limit can be improved by scaling the number of decode\nnodes or more frequent decode state reporting. Future work\ncan include updating decode node state within dispatch until\nnew state arrives to remove the single deflection request\nlimit. A decode node whose batch grows after a deflection is\naccepted reports its updated (𝐵𝑛,𝐾𝑛)at the next heartbeat\n(Δℎ = 100 ms in our implementation). Already-dispatched\nrequests are not migrated back. Future work could consider\nmodeling arrival rate and characteristics of requests coming\nfrom the prefill nodes to decode nodes.\nEffect on KV cache and multi-turn: Kairos’s deflection\npath eliminates the KV transfer cost because the KV cache is\nbuilt directly on the decode node. However, if a request has\na prefix already cached on a prefill node, deflecting it to a\ndecode node loses that cached prefix. Kairos currently does\nnot account for prefix cache residency in its TTFT estimate.\nCentralized dispatcher as a potential bottleneck: At\nvery high request rates, the dispatcher’s per-request sweep\ncould become a CPU bottleneck. For such deployments, the\n"
+        },
+        {
+          "label": "cache_limit",
+          "pattern": "Effect on KV cache and multi-turn",
+          "line_start": 922,
+          "line_end": 929,
+          "physical_pdf_pages": [
+            11
+          ],
+          "line_block_sha256": "8b0aa965c9ec1e6525fbd17afe8aa9faf97dc5b0158bef7b543a22b25470e10a",
+          "excerpt": "Effect on KV cache and multi-turn: Kairos’s deflection\npath eliminates the KV transfer cost because the KV cache is\nbuilt directly on the decode node. However, if a request has\na prefix already cached on a prefill node, deflecting it to a\ndecode node loses that cached prefix. Kairos currently does\nnot account for prefix cache residency in its TTFT estimate.\nCentralized dispatcher as a potential bottleneck: At\nvery high request rates, the dispatcher’s per-request sweep\n"
+        }
+      ]
+    },
+    {
+      "id": "48",
+      "title": "Approximation Algorithms for Dual-Memory Request Scheduling in Disaggregated LLM Inference",
+      "publication_status": "arXiv preprint",
+      "version_note": "Pinned author arXiv v1; no independently verified conference publication claimed in this addition.",
+      "primary_page": "https://arxiv.org/abs/2610.15579v1",
+      "downloaded_from": "https://arxiv.org/pdf/2610.15579v1",
+      "pdf_file": "papers/48_DMRS_arxiv_v1.pdf",
+      "pdf_sha256": "67229cd6b894f507204abeb396fe6c8470a0c6f6ddeb02e2db357d0bc5a537ca",
+      "text_file": "paper-text/48_DMRS_arxiv_v1.txt",
+      "text_sha256": "cb1036437972c54f1b4ad3f58ba66ae85acb2aef09ad92083e39f80407921899",
+      "physical_pages": 30,
+      "reading_scope": "Focused primary-text reading of motivation, mechanisms, experimental setup and stated limits; not a line-by-line verification of every proof or numerical claim.",
+      "anchors": [
+        {
+          "label": "model",
+          "pattern": "2.1 SYSTEM MODEL",
+          "line_start": 92,
+          "line_end": 121,
+          "physical_pdf_pages": [
+            2,
+            3
+          ],
+          "line_block_sha256": "184042c2deadffaec78c0f42c78f852145f9f53b374993c392aa087d97a07f54",
+          "excerpt": "2.1 SYSTEM MODEL\nIn our model, the prefill and decode phases execute on separate resource pools with respective\nmemory capacities MP,MD ∈Z>0.\nExecution Setup. Time is divided into slots [t,t+ 1), where t∈{0,1,2,...}. KV cache memory\nis measured in token units, with one unit representing the memory required to store the key and\nvalue states of one token. During prefill, each active request processes its prompt for a fixed number\nof slots. During decoding, each active request completes one decode iteration and generates one\noutput token per slot. Multiple requests may execute concurrently in each phase, subject to the\ncorresponding memory capacity. Execution is non-preemptive within each phase: once admitted to\na phase, a request remains active until it completes that phase.\nInference Requests. Let I= {1,...,n}denote the set of requests. Each request i∈Iis charac-\nterized by (mi,pi,di) ∈Z3\n>0, where mi is its effective prefill processing time, measured in advance\nunder the given deployment configuration and expressed in slots; pi is the number of input tokens\nin its prompt and, equivalently, its prefill memory demand in token units; and di is the number of\noutput tokens to be generated and, equivalently, the number of decode iterations. After generating\nuoutput tokens, request ihas decode memory demand ri(u) = pi + u. Its peak decode memory\ndemand is hi = ri(di) = pi + di.\nThroughout the paper, we assume that pi ≤MP and hi ≤MD for every i ∈I. These conditions\nare necessary and sufficient for feasibility, since the requests can always be processed sequentially.\nLet α := maxi∈Ipi/MP and β := maxi∈Ihi/MD denote the maximum normalized prefill and\npeak decode memory demands, respectively. The feasibility conditions imply α,β ≤1.\n2\n\n===== PDF PAGE 3 =====\nPreprint\nSystem Overview. As shown in Figure 1, we consider a batch of requests released at time t = 0,\nwith their characteristics (mi,pi,di) known to the scheduler in advance. During execution, each\nunfinished request belongs to one of four state sets.\nPrefill Resource Pool:\n"
+        },
+        {
+          "label": "offline_proxy",
+          "pattern": "Admission Control. An external proxy",
+          "line_start": 1701,
+          "line_end": 1712,
+          "physical_pdf_pages": [
+            27
+          ],
+          "line_block_sha256": "9b0e5d54e7b85701cccc08bdc0c38af1e19ea86d2904d91e2ead0b17f78d7ac9",
+          "excerpt": "Admission Control. An external proxy enforces the offline schedule before forwarding requests\nto the two vLLM instances. It waits until the full batch is registered, then applies the algorithm’s\ngroup barriers and admission order. To enforce the prefill capacity, the proxy counts both requests\nexecuting prefill and requests retaining their prompt cache while awaiting decode. Before forward-\ning request i to decode, it checks j∈Dhj + hi ≤MD, where Dcontains requests admitted to\ndecode but not yet completed. When request icompletes, the proxy releases hi from this accounting\nbudget. This is a software admission rule, not a physical reservation of hi KV cache units inside\nvLLM, which manages actual KV allocation separately.\nKV Transfer. The prefill and decode instances transfer KV state using vLLM’s\nP2pNcclConnector. The recorded GPU topology shows an NV12 connection between the\ntwo H100 GPUs. Although the theoretical model assumes instantaneous KV transfer, the\ncompletion times measured in the GPU experiments include KV transfer overhead.\n"
+        },
+        {
+          "label": "real_transfer",
+          "pattern": "KV Transfer. The prefill and decode instances",
+          "line_start": 1709,
+          "line_end": 1715,
+          "physical_pdf_pages": [
+            27
+          ],
+          "line_block_sha256": "b25924b716cd5a0a4f358784b1a234e523166206df22f93cc809f49f3fa16912",
+          "excerpt": "KV Transfer. The prefill and decode instances transfer KV state using vLLM’s\nP2pNcclConnector. The recorded GPU topology shows an NV12 connection between the\ntwo H100 GPUs. Although the theoretical model assumes instantaneous KV transfer, the\ncompletion times measured in the GPU experiments include KV transfer overhead.\nMemory Capacity. We use n = 250 requests and vary κ ∈{1.5,2,2.5,3,3.5,4}, where MP =\n⌈κmaxipi⌉and MD = ⌈κmaxihi⌉.\nFigure 9 shows that both algorithms reduce TCT relative to P/D across all tested capacities on\n"
+        },
+        {
+          "label": "tail_tradeoff",
+          "pattern": "At κ= 2, Figure 10",
+          "line_start": 1735,
+          "line_end": 1739,
+          "physical_pdf_pages": [
+            27
+          ],
+          "line_block_sha256": "2f16b8e9003784977c14295ef7d4ec47b1ad4568164a834750a148e5aa6e1801",
+          "excerpt": "At κ= 2, Figure 10 shows that both algorithms have lower P50 but higher P99 request completion\ntimes than P/D across all four model and workload combinations. Their P95 times are lower than\nP/D on code workloads but higher on conversation workloads.\nPrefill and Decode Demands. We use n = 250 requests and target three demand settings:\n(α,β) = (0.9,0.5), (0.75,0.75), and (0.5,0.9), representing prefill-heavy, balanced, and decode-\n"
+        }
+      ]
+    },
+    {
+      "id": "49",
+      "title": "Not All Prefills Are Equal: PPD Disaggregation for Multi-turn LLM Serving",
+      "publication_status": "arXiv preprint",
+      "version_note": "Pinned author arXiv v1; no independently verified conference publication claimed in this addition.",
+      "primary_page": "https://arxiv.org/abs/2603.13358v1",
+      "downloaded_from": "https://arxiv.org/pdf/2603.13358v1",
+      "pdf_file": "papers/49_PPD_arxiv_v1.pdf",
+      "pdf_sha256": "e13e7c959ac4eda0bf5080a059834fef98bb2c26a4ae352b9b7a8ac978e44f70",
+      "text_file": "paper-text/49_PPD_arxiv_v1.txt",
+      "text_sha256": "d5ba1ff3f161ebdf8aa00843eee74f24703c737be4a365d9a8b5e2e3445735d0",
+      "physical_pages": 14,
+      "reading_scope": "Focused primary-text reading of motivation, mechanisms, experimental setup and stated limits; not a line-by-line verification of every proof or numerical claim.",
+      "anchors": [
+        {
+          "label": "scope",
+          "pattern": "PPD: Dynamic AP Routing System",
+          "line_start": 576,
+          "line_end": 599,
+          "physical_pdf_pages": [
+            6,
+            7
+          ],
+          "line_block_sha256": "b5d6254212e82f34e7716fd7b9a61efca3941ebc26743fae3615c6c01aecfedb",
+          "excerpt": "5. PPD: Dynamic AP Routing System\nThe trade-off analysis in Section 4.4 reveals that no single\nstatic xvalue dominates across all objectives. We therefore\ndesign PPD, a dynamic routing system that optimizes x\nper-request based on workload characteristics and operator-\nspecified weights, following the principle that workload-\naware scheduling decisions can significantly improve serv-\ning performance (Fu et al., 2024; Jain et al., 2025).\nThe algorithm operates in two phases. Phase 1 (offline) con-\nstructs a decision table by benchmarking each discretized\nworkload under both x=0 and x=1, computing a weighted\nscore that balances TTFT improvement against TPOT degra-\ndation. Phase 2 (online) maps incoming Turn 2+ requests\nto the nearest benchmark entry and returns the precomputed\n6\n\n===== PDF PAGE 7 =====\nNot All Prefills Are Equal: PPD Disaggregation for Multi-turn LLM Serving\noptimal xvalue. Turn 1 requests always use x=0 (P→D\nwith KV transfer) since no cached context exists. The deci-\nsion lookup adds negligible overhead (<1ms per request).\nOur prototype builds on vLLM’s disaggregated serving in-\nfrastructure, reusing its KV transfer protocol and prefix\ncache. Implementation details, including session manage-\n"
+        },
+        {
+          "label": "method_boundary",
+          "pattern": "Relationship with Concurrent Work.",
+          "line_start": 703,
+          "line_end": 717,
+          "physical_pdf_pages": [
+            8
+          ],
+          "line_block_sha256": "4c29feffdf6504c0867d97186ddcb2908e6a41e9e39480ee5a9131b58964155f",
+          "excerpt": "Relationship with Concurrent Work. Concurrently,\nAMPD (He et al., 2026) also identifies multi-turn PD in-\nefficiencies and proposes routing incremental prefills to\ndecode nodes. While AMPD focuses on online queue-delay\nestimation and offline hardware planning, PPD takes an\nanalysis-driven approach. We rigorously quantify the micro-\narchitectural interference gap between full and append pre-\nfills (Section 4.1) to demonstrate why this routing is viable.\nFurthermore, we formalize multi-turn serving as a mathe-\nmatical optimization over the routing ratio x. Instead of\ndynamic queue estimation, PPD employs an efficient offline\ntable-based algorithm, requiring minimal runtime overhead\n(< 1ms) while providing operators a predictable, config-\nurable trade-off between TTFT and TPOT.\nRelationship with Distributed KV Cache. A comple-\n"
+        }
+      ]
+    },
+    {
+      "id": "50",
+      "title": "Strata: Hierarchical Context Caching for Long Context Language Model Serving",
+      "publication_status": "OSDI 2026",
+      "version_note": "Official USENIX proceedings PDF.",
+      "primary_page": "https://www.usenix.org/conference/osdi26/presentation/xie-zhiqiang",
+      "downloaded_from": "https://www.usenix.org/system/files/osdi26-xie-zhiqiang.pdf",
+      "pdf_file": "papers/50_Strata_OSDI2026.pdf",
+      "pdf_sha256": "c8e0f2148aada4f18d7dbb2f54dca35a1e8a782375d3dc4786a5dc66e13f1b77",
+      "text_file": "paper-text/50_Strata_OSDI2026.txt",
+      "text_sha256": "ef7d923e7025e18318a36d578fb6bddf71c87cad4c68597288c2a740ded99d2f",
+      "physical_pages": 17,
+      "reading_scope": "Focused primary-text reading of motivation, mechanisms, experimental setup and stated limits; not a line-by-line verification of every proof or numerical claim.",
+      "anchors": [
+        {
+          "label": "io_interference",
+          "pattern": "However, a challenge associated with GPU-assisted I/O",
+          "line_start": 536,
+          "line_end": 565,
+          "physical_pdf_pages": [
+            6
+          ],
+          "line_block_sha256": "ee89f85092267648339a191b56f52b4d674aeb107e364c48f3ecbdc4e2a931be",
+          "excerpt": "However, a challenge associated with GPU-assisted I/O, as\nhighlighted in prior work [20], is runtime interference when\nco-running with other kernels. Without dedicated hardware\nhandling the fine-grained I/O tasks, GPU threads consume\nvaluable resources, such as register files and execution cy-\ncles, and can lead to cache pollution. Prior work [31] also\ndemonstrated that GPU hardware schedulers often struggle\nto effectively manage this resource contention, potentially\ndegrading the performance of both the I/O operations and\nconcurrent computational kernels.\nWe observe that efficient data transfer does not need to mo-\nnopolize the entire GPU. Strata employs a strategy of launch-\ning a small number of large CUDA blocks to incentivize the\nGPU’s hardware scheduler to confine these I/O kernels to a\nsmall subset of Streaming Multiprocessors (SMs), as few as\n1. This targeted allocation, when combined with low-level in-\nstructions to bypass the cache and thereby mitigate pollution,\nminimizes interference with concurrent workloads. Moreover,\nwith the ROCm backend [2], these kernel implementations\nare also compatible with AMD GPUs. To balance resources\nfor overall efficiency, we conducted microbenchmarks co-\nrunning I/O kernels with prefill and decoding kernels on an\nNVIDIA H200 GPU. As shown in Figure 5, using only two\nCUDA blocks of 1024 threads each, Strata achieves 48 GB/s\ntransfer throughput while incurring less than 5% performance\ndegradation on prefill and 10% on decoding. Based on these\nresults, we select two blocks as the default quota for loading\ndata from CPU to GPU (a critical path operation), and one\nblock for backing up data from GPU to CPU (a non-critical\npath), where the bandwidth is already sufficient and overhead\n"
+        },
+        {
+          "label": "cache_scheduler",
+          "pattern": "4.3 Cache-Aware Scheduling",
+          "line_start": 657,
+          "line_end": 672,
+          "physical_pdf_pages": [
+            7
+          ],
+          "line_block_sha256": "2899f990315658c4ad6835c8b1186b576d182c264b3153e4231e4fdf0102a868",
+          "excerpt": "4.3 Cache-Aware Scheduling\nAs motivated in §3.2, the goal of the scheduler is to maximize\ncaching benefit by avoiding delay hit and loading stalls. The\nScheduler does so through three stages. First, it identifies re-\nquests that are potentially susceptible to delay hits and defers\nthe execution to right after the delay hit is resolved. Second,\nit formulates a balanced batch that aims to pair loading\n(from host memory) with sufficient computation to hide the\nloading latency. Finally, in the event that batches are still\nloading-bound, the Scheduler hides I/O stalls by inserting\nuseful compute inside bubbles. Note while the core sched-\nuler of SGLang is implemented in Python, we augmented it\nwith C++ implementation to minimize the overhead of these\nscheduling policies.\n4.3.1 Deferral on Delay Hit\nAs discussed in §3.2, delay hits can cause redundant compu-\n"
+        },
+        {
+          "label": "evaluation",
+          "pattern": "Testbed. We evaluate Strata and baselines",
+          "line_start": 828,
+          "line_end": 845,
+          "physical_pdf_pages": [
+            9
+          ],
+          "line_block_sha256": "f60d6fb2cea0db50339ced28e2dbd13313ee3032ef0cbc2ed3b34ff35ab19db3",
+          "excerpt": "Testbed. We evaluate Strata and baselines on three platforms.\nThe H200 platform is a node equipped with 8 NVIDIA H200\nGPUs interconnected with NVLink, an Intel Sapphire Rapids\nCPU, and 1.6TB of DRAM. Each GPU is connected to the\nCPU via a PCIe 5.0 x16 link, offering up to 64 GB/s of peak\nbandwidth (unidirectional). The H20-storage is a node with 8\nNVIDIA H20 GPUs and an Intel P5510 NVMe drive, provid-\ning up to 7 GB/s disk read bandwidth. The GH200 platform is\na GH200 Grace Hopper superchip [35] node, which contains\none NVIDIA H100 GPU integrated with one NVIDIA Grace\n64-core ARM CPU. The GH200 system is equipped with\n464 GB of LPDDR5X DRAM, providing up to 384 GB/s of\nmemory bandwidth (unidirectional) to the CPU.\nBaselines. We compare Strata with following state-of-the-\nart baselines. vLLM [26] is a popular open-source serving\nengine. Additionally, vLLM-LMCache enables hierarchical\ncaching on vLLM using the official community extension of\nLMCache [30]. For our benchmarks, we used vLLM v0.8.5\n"
+        }
+      ]
+    }
+  ],
+  "excluded_candidates": [
+    {
+      "candidate_title": "ShadowServe: Interference-Aware Inference Serving for Long-Context Large Language Models",
+      "attempted_url": "https://arxiv.org/pdf/2604.11791v1",
+      "actual_downloaded_title": "A Mechanistic Analysis of Looped Reasoning Language Models",
+      "pdf_sha256": "d9739a3d53b7e94f8796970ddf743284d56ed37b0767a4084c89e6be846de4aa",
+      "decision": "Rejected identity mismatch. This identifier does not verify the candidate title. Neither candidate nor unrelated PDF is added to the research manifest or bibliography."
+    },
+    {
+      "candidate_title": "Decode-to-Prefill Backpressure",
+      "attempted_identifier": "2611.06267",
+      "decision": "Candidate title/identifier could not be independently verified; not added as a paper. Corrected the premature conversational attribution. Verified SGLang roadmap issues supply separate engineering evidence."
+    }
+  ],
+  "candidate_questions": [
+    {
+      "id": "A",
+      "name": "Online cross-stage backpressure and retained KV control",
+      "direct_prior_art": [
+        "40",
+        "45",
+        "48"
+      ],
+      "status": "Unselected hypothesis; must demonstrate avoidable retained-KV blocking under real online execution."
+    },
+    {
+      "id": "B",
+      "name": "Receiver-side KV transfer scheduling protecting incumbent decode",
+      "direct_prior_art": [
+        "43",
+        "47",
+        "50"
+      ],
+      "status": "Unselected hypothesis; must measure path-specific interference and beat static transfer limits."
+    },
+    {
+      "id": "C",
+      "name": "Risk calibration under delayed and selective outcomes",
+      "direct_prior_art": [
+        "44",
+        "45",
+        "46"
+      ],
+      "status": "Unselected hypothesis; must separate marginal coverage from online conditional and cluster SLO risk; no claim of novelty for calibration itself."
+    }
+  ],
+  "validation_scope": "New PDFs parsed, primary title/mechanism text checked, new material hashes recorded. Full scripts/validate_research.py deliberately not run per user instruction.",
+  "engineering_sources": [
+    {
+      "url": "https://github.com/sgl-project/sglang/issues/25760",
+      "title": "[Roadmap] PD Roadmap",
+      "type": "official engineering issue",
+      "checked_on": "2026-11-15",
+      "finding": "Roadmap discusses decode-side early reservation, prefill waiting for KV transfer, KV release/backpressure, and D-to-P triggering. Planning status is distinct from merged commit capability.",
+      "retrieval": "Primary GitHub page read through web tool. GitHub REST snapshot returned HTTP 403; no REST snapshot claimed."
+    },
+    {
+      "url": "https://github.com/sgl-project/sglang/issues/43699",
+      "title": "[PD] PD Optimization Roadmap",
+      "type": "official engineering issue",
+      "checked_on": "2026-11-15",
+      "finding": "Roadmap discusses incomplete max_new_tokens=1 requests retaining P KV, handshake and transfer granularity. No deployment implementation/performance inferred from issue status.",
+      "retrieval": "Primary GitHub page read through web tool. GitHub REST snapshot returned HTTP 403; no REST snapshot claimed."
+    }
+  ]
+}

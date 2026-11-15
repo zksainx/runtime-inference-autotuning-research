@@ -1,0 +1,488 @@
+Source: 44_CalibrateThenRoute_arxiv_v1.pdf
+Pages: 7
+
+===== PDF PAGE 1 =====
+arXiv:2609.16206v1 [cs.AI] 14 Sep 2026
+Calibrate, Then Route: A Measured Study of
+Learned Request Routing
+for Disaggregated LLM Serving
+Srikanta Datta Tumkur, Jay Iyer, Mehar Simhadri,
+Sai Pavan Kumar, Sai Kapil Kumar, Ramesh Nampelly
+Vizuara
+Abstract: Disaggregated LLM serving separates the compute-
+bound prefill phase from the memory-bound decode phase onto
+distinct GPU pools, and systems such as DistServe, Splitwise,
+and Mooncake have made the mechanism fast. The mechanism
+does not decide placement, however. Every request still needs a
+prefill instance and a decode instance, and production systems
+make that choice with policies that are blind to the request
+itself. We study the routing policy directly. Our router scores
+each candidate instance by the marginal completion time a
+request would experience there, computed from four admission-
+time features: exact prompt length, predicted output length, post-
+admission KV-cache pressure, and SLO class. We first develop
+the policy in a discrete-event simulator, then validate it end to
+end on a real disaggregated cluster: eight NVIDIA A40 GPUs
+running one vLLM engine each, KV caches moved between pools
+by NIXL, and every workload driven at a measured saturation
+point. Across three arrival traces of mixed bursty traffic the
+calibrated learned router attains the highest mean goodput (0.864
+versus 0.835 to 0.847 for round-robin, least-loaded, and a length
+heuristic) with the smallest variance across traces. It leads round-
+robin and the length heuristic on all three traces; against least-
+loaded it leads on two of three and on the third trails it by
+0.003, within run-to-run noise. Two further results qualify this
+finding. First, the router’s cost constants have to be fitted to the
+target hardware. The identical policy running with simulator-
+derived constants loses 4.5 goodput points and roughly 40%
+of its tail-latency advantage, because a mispriced cost model
+collapses the scorer into queue counting. Second, the router’s
+advantage depends on where it operates. It grows with decode-
+pool width and traffic heterogeneity, vanishes on three-instance
+pools where a queue count is nearly a sufficient statistic, and
+inverts under extreme scarcity, where greedy cost minimization
+concentrates requests on whichever instance prices cheapest and
+blind spreading performs better. The learned router reaches with
+six GPUs the goodput that round-robin achieves with seven.
+Index Terms: disaggregated serving, prefill, decode, request
+routing, learned scheduler, output length prediction, SLO, good-
+put, KV cache, LLM inference.
+I. INTRODUCTION
+An LLM inference request combines two different jobs. The
+first job reads the entire prompt in one compute-saturating
+pass; the second emits output tokens one at a time while its
+KV cache grows in GPU memory. Co-locating the two on one
+GPU causes them to interfere [4], [5], so a family of serving
+systems now runs them on separate pools with an explicit
+KV-cache handoff in between: DistServe [1], Splitwise [2],
+and Mooncake [3].
+Splitting the phases creates a decision that the split itself
+does not resolve. Each arriving request must be matched to
+one prefill instance and one decode instance, and the quality
+of that match is invisible to policies that only count. A one-line
+chat turn and a thousand-token reasoning trace are both “one
+request” to round-robin and to join-shortest-queue, yet they
+occupy a decode slot for durations that differ by two orders of
+magnitude. If a long request is sent to an instance that merely
+looks idle, its SLO and the SLOs of everything queued behind
+it are missed.
+The information needed to do better is available at ad-
+mission and mostly free: the prompt length is exact, the
+output length can be estimated [9], [10], cache occupancy
+per instance is one metrics poll away, and the SLO class
+arrives with the request. Our question is whether a router
+that prices placements with these four signals beats counting-
+based placement on real hardware, by how much, where the
+advantage holds, and which signal contributes most.
+We answer these questions with measurements on hardware.
+Our contributions are as follows:
+1) A marginal-cost learned router that scores every
+candidate instance by the completion time this request
+would experience there, combining seconds-of-backlog,
+the request’s own priced work, post-admission cache
+pressure, and SLO tightness (§III).
+2) An end-to-end validation harness for routing policies
+on real disaggregated clusters: a router proxy that
+drives unmodified vLLM engines over NIXL KV trans-
+fer, with per-request journaling, correctness gates (token-
+count contracts, cross-GPU greedy equivalence), per-
+run cache isolation, and per-workload saturation search
+(§IV).
+3) A measured answer with boundaries (§V): the highest
+mean goodput and the lowest variance on mixed traffic;
+a +4.5-point contribution from hardware calibration
+alone; predicted output length identified as the load-
+bearing feature; robustness to 150% predictor error; and
+two failure regions, narrow pools and extreme scarcity.
+II. BACKGROUND AND RELATED WORK
+Disaggregation mechanisms. DistServe [1] optimizes
+goodput per GPU under TTFT/TPOT targets by separating
+phases; Splitwise [2] splits across hardware pools with a
+
+===== PDF PAGE 2 =====
+Fig. 1: Study overview. Disaggregation removes prefill/decode interference but leaves a per-request placement decision that is
+usually made blindly. A learned router prices each candidate instance from admission-time request features and is validated
+here on a real vLLM/NIXL cluster.
+cluster-level scheduler that joins shortest queues; Mooncake
+[3] organizes the cluster around a disaggregated KV cache
+and schedules with cache locality, load, and SLO state. The
+mechanisms are mature; the per-request placement policies
+remain simple, which is the gap this paper measures.
+Algorithm 1 Learned routing (per request admission)
+Input: request r, prefill pool, decode pool
+ˆ
+or ←predict output length(pr )
+ipre ←arg minp costpre(p; pr ,sr )
+idec ←arg mind costdec(d; ˆ or ,pr ,sr )
+prefill on ipre; transfer KV; decode on idec; record outcomes
+Scheduling inside and across instances. Continuous batch-
+ing [7] and chunked prefill [5] decide execution order within
+an engine; Llumnix [6] migrates requests between instances
+after admission; AlpaServe [8] multiplexes models over shared
+GPUs. Our decision sits earlier, at the admission-time assign-
+ment across a prefill/decode fabric, which all of the above hold
+fixed.
+Output-length prediction. Length estimators range from
+prompt-based regression [9] to learning-to-rank [10]; TetriInfer
+[11] and LAPS [12] schedule with predicted lengths. We treat
+the predictor as a swappable component and measure how
+much of its accuracy the router needs, which turns out to be
+very little.
+Robustness under bursts. Steady-state goodput hides
+fragility; adaptive rescheduling exists because bursts cascade
+[13]. We evaluate at measured saturation points and report tails
+alongside means throughout. A recent survey covers the wider
+landscape [14].
+III. THE ROUTER
+A. Marginal-cost scoring
+For a request r with prompt length pr , predicted output
+lengthˆ
+or , and SLO class sr , the router scores every decode
+candidate d by an estimate of the completion time r would
+experience there:
+cost(d) = wb·backlog(d)·σ(sr )
+ˆ
++ ws·
+or τdec 1 + ρ·press+(d)·σ(sr )
++ wq·queue(d),
+where backlog(d) is seconds of work already committed to
+d, τdec is the hardware’s per-token decode time, press+(d) is
+cache pressure after admitting r, and σ(sr ) amplifies load
+terms for tight-SLO requests. Prefill candidates are scored
+analogously with pr τpre. The request goes to the argmin of
+each pool. Algorithm 1 summarizes.
+
+===== PDF PAGE 3 =====
+Fig. 2: Architecture. Requests are summarized at admission by prompt length, predicted output length, per-instance cache
+pressure, and SLO class; the router selects a prefill and a decode instance; the KV cache produced by prefill is transferred to
+the chosen decode instance; SLO attainment and live load signals feed back to the router. Baselines replace only the selection
+rule.
+B. Calibration is part of the method
+The scorer mixes two kinds of quantities: backlog(d) is
+observed in real seconds, while the request’s own work is
+priced using τdec and τpre. If those constants do not match
+the deployment hardware, the two terms are expressed in
+different units, the size-aware terms are effectively silenced,
+and the scorer degenerates into queue counting. We therefore
+define the router as calibrated by construction. A five-minute
+benchmark of the target cluster (prefill latency curve, decode
+rate under concurrency) sets τpre, τdec, and the SLO targets
+before any routing. Section V-B measures what skipping this
+step costs; on our testbed the simulator-derived τdec was 7.4×
+smaller than the measured value.
+C. Output-length predictor
+The predictor suppliesˆ
+or and is deliberately simple. Be-
+cause its quality bounds nothing else in the system, we
+evaluate the router under injected predictor noise up to 150%
+relative error (§V-H).
+D. Development in simulation, evaluation on hardware
+The policy and features were developed in a determinis-
+tic discrete-event simulator with explicit pools, KV transfer,
+and SLO accounting. The simulator was used to generate
+hypotheses; none of the paper’s numbers come from it. All
+results in §V are measured on hardware, and the divergences
+we observed between simulated and measured behavior, in
+service model, in constants, and in which features matter, are
+themselves reported (§VI).
+IV. MEASUREMENT METHODOLOGY
+A. Testbed
+Eight NVIDIA A40 GPUs on one node, each running an
+unmodified vLLM 0.12 engine serving Qwen2.5-3B (BF16,
+TP=1), with KV caches moved between prefill and decode
+engines by NixlConnector. Each engine’s KV budget is fixed
+at 60,000 tokens. The primary topology is 2 prefill + 4 decode
+instances; explicit pools of 3 to 8 GPUs serve the frontier
+and width studies. A FastAPI router proxy holds the policies
+(imported verbatim from the simulator code base), maintains
+live signals per instance (an in-flight ledger yielding seconds-
+of-backlog; cache occupancy polled every 50 ms), executes the
+two-step disaggregated inference, and journals every request.
+B. Protocol
+Three properties separate this harness from a benchmark
+script. Correctness gates before any measurement: an ex-
+act token-count contract per request; bitwise greedy-output
+equivalence across decode GPUs; and warmup of every
+prefill×decode pair (the first transfer across a cold NIXL
+pair legitimately misbehaves). Isolation between runs: every
+engine’s prefix cache is reset before every run, after we
+
+===== PDF PAGE 4 =====
+TABLE I: Workloads and what each stresses.
+Workload Length profile Stresses
+Chat short in, short out admission rate
+Document up to 4k in, short out prefill compute, KV transfer
+Reasoning short in, long out decode occupancy
+Mixed bursty heterogeneous, bursty the routing decision itself
+TABLE II: Mixed bursty traffic, three traces, 2 prefill + 4
+decode. The learned router is best on the mean and has the
+smallest spread across traces. It beats round-robin and the
+heuristic on every trace; least-loaded edges it by 0.003 on
+one of the three.
+Policy Goodput
+P99 TTFT
+(s)
+P99 TPOT
+(s)
+Round-robin 0.836 0.337 0.018
+Least-loaded (JSQ) 0.835 0.346 0.018
+Heuristic length threshold 0.847 0.318 0.018
+Learned router (ours) 0.864 0.321 0.018
+observed identical configurations measuring 20+ points apart
+from session ordering. Saturation search per workload: each
+workload family is driven at the arrival rate where round-
+robin lands mid-collapse, found by probing, because routing
+policies only separate under contention. SLO targets (TTFT
+175 ms / TPOT 39.7 ms tight; 3×loose) derive from the same
+calibration as the router constants. Every run is journaled per
+request and resumable. The headline experiments use three
+arrival traces.
+C. Workloads and baselines
+Four workload families stress different resources (Table I).
+The baselines are round-robin, least-loaded (JSQ), and a
+predicted-length threshold heuristic.
+V. RESULTS
+All figures and tables in this section are measured on the
+testbed of §IV. Table II rows average three arrival traces.
+A. Goodput under mixed bursty load
+Across the three traces the learned router posts
+0.860/0.877/0.855, the highest mean and the smallest
+trace-to-trace spread, and on the single trace where a baseline
+edges it the margin is 0.003. Least-loaded illustrates the
+cost of size-blindness, averaging respectably while dropping
+to 0.795 on its worst trace. Variance matters operationally,
+because SLAs are written against worst-case behavior, and
+the size-aware policy is the only one here with no weak trace.
+B. What calibration is worth
+Running the identical learned policy with simulator-derived
+cost constants, on the same three traces, yields 0.819 mean
+goodput with 0.42 to 0.52 s P99 TTFT, versus 0.864 and 0.25
+to 0.30 s calibrated. The calibration step alone is worth 4.5
+goodput points and roughly 40% of the tail advantage
+(§III-B). Per-request journals show the mechanism: with mis-
+priced constants the router balances request counts almost
+Fig. 3: Goodput by policy and workload, each workload at its
+own measured saturation point. Boxed cell: best per workload.
+perfectly while letting token load skew worse than JSQ, i.e.,
+it degenerates into the baseline it is supposed to beat. Any
+learned scheduler whose cost model is tuned in simulation
+inherits this failure mode silently.
+C. Effect of workload heterogeneity
+Figure 3 summarizes which policy suits which workload.
+The learned router wins where requests differ: mixed bursty
+traffic (0.864) and long-output reasoning (0.955). It is beaten
+on homogeneous chat (heuristic 0.855 vs. 0.760), where a
+queue count is close to a sufficient statistic and the additional
+signals add only noise. Round-robin’s failure mode is con-
+centrated and severe. On long-prompt documents it collapses
+to 0.585 with 1.1 s tails while every load-aware policy holds
+≥0.695.
+D. Effect of pool width
+We repeated the headline experiment at decode widths 3,
+4, and 6, three traces each. At width 3 the learned router
+ties JSQ (0.816 vs. 0.822), at width 4 it leads outright (0.864
+vs. 0.835), and at width 6, where this operating point leaves
+headroom, policies reconverge (0.858 vs. 0.860 for round-
+robin). The pattern matches the classical load-balancing result
+that the value of informed placement grows with the number
+of alternatives, and three instances offer too few for pricing to
+beat counting.
+E. Goodput versus provisioned GPUs
+Figure 4 sweeps pool shapes from 3 to 8 GPUs. The
+learned router leads the deployable middle of the frontier,
+best at 5 GPUs (0.823) and 6 GPUs (0.870), and reaches
+at 6 GPUs the goodput round-robin needs 7 for: the same
+service with∼14% fewer GPUs. At the overprovisioned
+right end policies interleave within noise, as expected when
+every instance has headroom. At the starved left end (1
+prefill + 2 decode) the learned router collapses to 0.292
+while round-robin survives at 0.680; greedy cost minimization
+concentrates load on whichever instance momentarily prices
+cheapest, and when every instance is overloaded, spreading
+
+===== PDF PAGE 5 =====
+Fig. 4: Goodput versus provisioned GPUs across pool shapes.
+The learned router leads the deployable middle; the starved
+left end is its measured failure region.
+blindly is the better strategy. We reproduced this inversion four
+times, including with calibrated constants, so it is intrinsic. A
+sampled variant (score two random candidates) is the standard
+mitigation, which we leave to future work.
+F. Load and tails
+Under a rising request rate (Fig. 5), round-robin degrades
+from 0.880 to 0.733 with P99 TTFT stretching from 0.22 s to
+0.56 s; policies separate progressively with pressure. At the op-
+erating point (Fig. 6) the learned router’s P99 TTFT (0.321 s)
+beats round-robin (0.337 s) and JSQ (0.346 s). Through a
+sustained burst train (Fig. 7) it holds goodput above round-
+robin throughout and keeps rolling P95 TTFT roughly 20%
+lower (0.28 s vs. 0.30 to 0.37 s). One measurement note: on
+a continuously batching cluster the aggregate in-flight count
+under overload is set by arrivals minus capacity regardless
+of policy, so queue depth carries no routing signal; the
+tail is where policies differ, and the burst figure reports it
+accordingly.
+G. Which feature does the work
+We removed features one at a time at two operating points
+(Fig. 8). Predicted output length is the load-bearing feature,
+costing 3.2 points when removed under steady load and 4.7
+under saturation, the largest loss in both regimes. Cache
+pressure contributes nothing measurable here because the 60k-
+token KV budget never saturates; this does not show that
+the feature is unhelpful, only that its regime was not reached
+here. The SLO term helps at moderate load (−1.7) and mildly
+backfires under deep saturation (+3.7), a regime dependence
+that reached−12 points with uncalibrated constants and stays
+within a few points with calibrated ones.
+H. How good the predictor needs to be
+Injecting relative error into the output-length predictor from
+0 to 150% moves goodput from 0.838 to 0.880, i.e., within
+Fig. 5: Goodput versus request rate per policy.
+Fig. 6: P99 TTFT and TPOT per policy at the operating point.
+trace noise, and the router still beats the heuristic at the worst
+injected error (Fig. 9). This is convenient for deployment,
+since a magnitude estimate suffices in place of an accurate
+model, consistent with the ablation’s finding that having a
+length signal matters far more than its precision.
+VI. DISCUSSION AND LIMITATIONS
+Simulation predicts structure, not magnitudes. Our sim-
+ulator’s cost constants were 7 to 13× off the measured
+hardware, and its serial-service model overstates head-of-line
+blocking that continuous batching softens. To quantify the gap,
+we re-fitted the simulator to the measured A40 physics (decode
+0.0018 →0.013237 s/token, prefill base 0.005 →0.0667 s,
+KV bytes/token 2048 →36864) and re-anchored each work-
+load’s arrival rate on the measured round-robin goodput, so
+that its verdict on the other three policies is a prediction
+rather than a fit. Across the resulting 4 ×4 grid the simulator
+reproduces goodput to a mean absolute residual of 0.068, but
+it does not reproduce the measured winner on any workload.
+We also implemented continuous batching in both stages, since
+its absence was the obvious suspect. The measured decode
+curve is flat (a batch of eight costs each request 2.9% more
+
+===== PDF PAGE 6 =====
+Fig. 9: Router goodput as predictor error is injected; degrada-
+tion is flat to 150% error.
+Fig. 7: Rolling goodput (top) and rolling P95 TTFT (bottom)
+through the burst train, learned versus round-robin.
+Fig. 8: Goodput lost when each feature is removed (signed; a
+below-zero bar means removal helped at that operating point).
+per token), whereas a serial model makes the eighth request
+wait 8×. Batching corrected the physics decisively: p99 TTFT
+went from 1 to 63× overstated to 0.5 to 1.4× on three
+of four workloads, and matching the measured round-robin
+goodput went from requiring an arrival rate 1700× below
+the hardware’s to requiring nearly the hardware’s own rate
+(24.6 against 24.0). It did not improve the ranking at all.
+Mean residual moved 0.067 →0.068, and with batching all
+four policies fall within 0.01 of each other on bursty where
+the hardware separated them by 0.03. Our simulator’s earlier
+apparent skill was therefore an artefact of serialisation, which
+inflated the value of knowing output length and made the
+learned router appear correct for the wrong reason. What a
+serial-plus-batching queueing model still lacks is whatever
+makes placement consequential at a fixed goodput level on
+real hardware: intra-batch interference between long and short
+sequences, chunked-prefill contention, and KV fragmentation.
+The routing guide of §V is therefore a hardware result, and
+we do not claim it is recoverable from simulation.
+Why calibration is invisible in simulation. The +4.5-point
+calibration effect of §V-B does not reproduce in our simulator
+at all, and the reason is structural rather than numerical.
+The simulator sets each instance’s backlog signal from the
+cluster’s own clock, so the router receives its true remaining
+work; the deployed proxy must estimate that backlog from
+the router’s own assumed constants, which is where a 7.4×
+error does its damage. Restoring the proxy’s estimator inside
+the simulator brings the mechanism back qualitatively (a
+miscalibrated router’s p99 TTFT degrades 0.899 →3.461 s),
+but it recovers almost none of the goodput effect (+0.1 versus
++4.5 points), which we attribute to the batch-level interference
+a serial-service model cannot express. The broader caution is
+that a simulator can hand a policy information no deployment
+will have, and that this advantage stays invisible until the
+policy meets hardware.
+Boundaries observed. The router’s advantage requires al-
+ternatives to price (width ≥4 here), heterogeneous traffic, and
+a cluster that is contended but not saturated beyond capacity.
+Under extreme scarcity, greedy argmin placement concentrates
+load on the momentarily cheapest instance, and production
+deployments should compose the scorer with power-of-two
+sampling or an admission guard. Cache pressure was inert
+at our KV budget; larger contexts or smaller budgets would
+exercise it.
+Scope. One silicon per experiment set, single-node NIXL
+transfer (cross-node RDMA costs would add a transfer term
+the scorer already accommodates), a 3B model, and a scoring
+function with hand-set weights whose constants, not weights,
+were fitted; the production systems converging on this design
+(KV-aware cost routers in NVIDIA Dynamo, Mooncake’s
+Conductor, llm-d’s scorer plugins) suggest the pattern gen-
+eralizes, with cache-locality terms as the natural next feature.
+VII. CONCLUSION
+On a real disaggregated vLLM/NIXL cluster, a marginal-
+cost router over four admission-time features delivers the
+
+===== PDF PAGE 7 =====
+highest mean goodput on mixed traffic with the lowest variance
+across traces, matches the service of blind routing with about
+14% fewer GPUs, and needs only a crude output-length
+estimate to do it. Knowing the hardware is an essential part of
+the method. Calibrating the cost model to measured per-token
+times is worth 4.5 goodput points by itself, and its absence
+silently reduces a learned router to the queue counting it was
+built to replace. The advantage is bounded by pool width, by
+traffic heterogeneity, and by a load-concentration failure under
+scarcity; we report those boundaries as measured results, since
+they and the gains together are what a deployer needs to know.
+ACKNOWLEDGMENTS
+The authors thank Vizuara AI Labs for mentorship and
+computational resources.
+REFERENCES
+[1] Y. Zhong et al., “DistServe: disaggregating prefill and decoding for
+goodput-optimized large language model serving,” Proc. OSDI, 2024.
+arXiv:2401.09670.
+[2] P. Patel et al., “Splitwise: efficient generative LLM inference using phase
+splitting,” Proc. ISCA, 2024. arXiv:2311.18677.
+[3] R. Qin et al., “Mooncake: a KVCache-centric disaggregated architecture
+for LLM serving,” arXiv:2407.00079, 2024.
+[4] W. Kwon et al., “Efficient memory management for large lan-
+guage model serving with PagedAttention,” Proc. SOSP, 2023.
+arXiv:2309.06180.
+[5] A. Agrawal et al., “Taming throughput-latency tradeoff in LLM infer-
+ence with Sarathi-Serve,” Proc. OSDI, 2024. arXiv:2403.02310.
+[6] B. Sun et al., “Llumnix: dynamic scheduling for large language model
+serving,” Proc. OSDI, 2024. arXiv:2406.03243.
+[7] G. Yu et al., “Orca: a distributed serving system for transformer-based
+generative models,” Proc. OSDI, 2022.
+[8] Z. Li et al., “AlpaServe: statistical multiplexing with model parallelism
+for deep learning serving,” Proc. OSDI, 2023. arXiv:2302.11665.
+[9] Z. Zheng et al., “Response length perception and sequence scheduling:
+an LLM-empowered LLM inference pipeline,” Proc. NeurIPS, 2023.
+arXiv:2305.13144.
+[10] Y. Fu et al., “Efficient LLM scheduling by learning to rank,” Proc.
+NeurIPS, 2024. arXiv:2408.15792.
+[11] C. Hu et al., “Inference without interference: disaggregate LLM infer-
+ence for mixed downstream workloads,” arXiv:2401.11181, 2024.
+[12] K. Cheng et al., “LAPS: a length-aware-prefill LLM serving system,”
+arXiv:2601.11589, 2026.
+[13] Y. Wang et al., “ARES: adaptive rescheduling in prefill-decode disag-
+gregated LLM inference,” arXiv:2510.13668, 2025.
+[14] B. Li et al., “LLM inference serving: survey of recent advances and
+opportunities,” arXiv:2407.12391, 2024.
+[15] T. Dao et al., “FlashAttention: fast and memory-efficient exact attention
+with IO-awareness,” Proc. NeurIPS, 2022. arXiv:2205.14135.
+[16] Z. Zhang et al., “H2O: heavy-hitter oracle for efficient genera-
+tive inference of large language models,” Proc. NeurIPS, 2023.
+arXiv:2306.14048.
+[17] A. Agrawal et al., “Vidur: a large-scale simulation framework for LLM
+inference,” Proc. MLSys, 2024. arXiv:2405.05465.
+[18] A. Dubey et al., “The Llama 3 herd of models,” arXiv:2407.21783, 2024.
+[19] A. Yang et al., “Qwen2.5 technical report,” arXiv:2412.15115, 2024.
+[20] J. Stojkovic et al., “DynamoLLM: designing LLM inference clusters for
+performance and energy efficiency,” arXiv:2408.00741, 2024.
+[21] C. Lin et al., “Infinite-LLM: efficient LLM service for long context with
+distributed attention,” arXiv:2401.02669, 2024.
+[22] V. J. Reddi et al., “MLPerf inference benchmark,” Proc. ISCA, 2020.
+arXiv:1911.02549.

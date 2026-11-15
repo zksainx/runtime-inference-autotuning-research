@@ -1,0 +1,1770 @@
+Source: 42_PriceOfAnarchy_arxiv_v1.pdf
+Pages: 38
+
+===== PDF PAGE 1 =====
+arXiv:2606.17081v1 [cs.AR] 11 Jun 2026
+The Price of Anarchy in Disaggregated Inference
+Athos Georgiou
+NCA
+June 2026
+Abstract
+Disaggregated inference architectures physically separate prefill and decode phases onto
+distinct GPU pools, creating competing “agents” that share a fixed hardware budget. We
+provide, to our knowledge, the first formal game-theoretic analysis of this architecture, using
+NVIDIA Dynamo as a concrete case study. We model disaggregated serving as three coupled
+games—a two-player resource game between prefill and decode pools, a selfish caching game
+over the hierarchical KV cache, and a congestion game with positive externalities for request
+routing—and empirically validate the latter two (the P/D resource game is treated analytically;
+Section 9.2). We characterize how GPU saturation induces regime transitions that shift the
+game’s payoff structure: below saturation, selfish behavior has bounded Price of Anarchy; at
+saturation, superlinear latency and cache externalities drive our empirical estimator PoA (defined
+in Section 6.4) upward. Based on this analysis, we design an adaptive controller that detects
+saturation transitions in real time and adjusts routing parameters accordingly, shifting from
+cache-affinity exploitation to load-balanced congestion avoidance. We instantiate our framework
+on a 3-node NVIDIA B200 cluster running Dynamo with two models—Nemotron-4-340B (TP=8,
+full-node workers with cross-InfiniBand KV transfers) and Llama-3.1-70B (TP=4)—and find the
+same three-regime PoA structure with the same first post-knee grid point (C = 128) on both
+models. Adaptive routing shifts each model to a better operating point. Our strongest result
+is on the 70B 1P/5D topology, where PoA drops 3.1×(66.4 →21.5) in the saturated phase
+at a 13% throughput cost. On the 70B 1P/2D, PoA drops 2.2×and TTFT P99 drops 7.6×
+(see Section 8.5). On the 340B 1P/2D, the saturated-phase aggregate TTFT P99 drops 4.8×
+(28.3 →5.9 s). Because the switch fires mid-phase, the post-switch steady-state is∼0.97s (a
+∼29×reduction versus static) at a 36% saturated-phase throughput cost.
+1 Introduction
+Large language model inference at datacenter scale is fundamentally a resource allocation problem.
+Every request that arrives at a serving cluster must be assigned to a GPU, scheduled within a
+batch, and granted memory for its key-value (KV) cache, all within latency budgets measured in
+milliseconds. When demand exceeds capacity, these allocation decisions determine whether the
+system degrades gracefully or collapses into queuing cascades.
+The architecture winning at scale for high-throughput LLM serving is disaggregated inference:
+physically separating the compute-bound prefill phase (processing the full input prompt) from
+the memory-bandwidth-bound decode phase (generating output tokens autoregressively) onto
+distinct GPU pools [27, 40]. NVIDIA’s Dynamo framework [26] is the most complete production
+implementation of this pattern, featuring a central Planner that dynamically reallocates GPUs
+between prefill and decode pools, a KV-aware Smart Router that directs requests based on cache
+1
+
+===== PDF PAGE 2 =====
+locality and worker load, and a hierarchical KV Block Manager (KVBM) that manages cache
+placement across GPU HBM, CPU DRAM, local SSD, and networked storage tiers.
+This architecture creates a natural multi-agent system. Prefill and decode pools compete for a
+shared GPU budget, each optimizing a different objective (time-to-first-token versus inter-token
+latency). Requests compete for placement on GPUs, where routing one request to a cache-warm
+worker benefits that request but may congest the worker for subsequent arrivals. KV cache blocks
+compete for placement across memory tiers, where evicting one block to make room for another
+imposes a recomputation cost on the evicted request’s future tokens.
+Congestion games [30], the Price of Anarchy [32], and selfish caching [6] give us exact names
+for what we observe in these systems: congestion from co-routing, cache eviction externalities, and
+the efficiency gap between selfish and coordinated assignment. Although Dynamo’s Smart Router
+is centralized, not decentralized, the Price of Anarchy remains the appropriate analytical tool.
+We adopt a mechanism design interpretation: the router is a mechanism whose sequential greedy
+assignment—routing each request to the worker minimizing its individual cost given current loads—is
+equivalent to best-response dynamics in the corresponding congestion game, and PoA measures the
+efficiency of this mechanism relative to the global optimum [31]. This framing is exact; it does not
+require assuming rationality of requests, only that the router’s decision process mirrors best-response
+play. Yet no prior work has formally modeled disaggregated inference through a game-theoretic lens.
+The systems community has applied game-theoretic ideas to cluster-level GPU scheduling (Dominant
+Resource Fairness (DRF) [15] for multi-resource allocation, Themis [22] for auction-based fairness,
+Shockwave [39] for Fisher market equilibria), but these operate at the job-scheduling timescale of
+seconds to minutes, not at the per-request routing timescale of microseconds to milliseconds that
+inference systems demand.
+Meanwhile, Pareto frontier analysis has become the de facto standard for characterizing inference
+system performance. NVIDIA’s own AIConfigurator [37] explicitly computes Pareto-optimal configu-
+rations across throughput and latency, and tools like Vidur [1] and FlexGen [33] use Pareto filtering
+to navigate the tradeoff surface spanning TTFT, ITL, tokens/s/GPU, and cost. What these tools
+compute, but do not name, are the outcomes of equilibrium play under different parameter regimes.
+Each setting of Dynamo’s routing parameters induces a different equilibrium with a different
+position on the Pareto frontier; connecting Pareto analysis to game-theoretic equilibria reveals which
+frontier points are stable under selfish behavior and how the frontier shifts at saturation.
+No prior work has bridged these frameworks, for good reason. Finding a Nash equilibrium
+is PPAD-complete (for three or more players [9] and for two-player games [4]), and computing
+ϵ-approximate equilibria remains PPAD-complete for constant ϵ. LLM serving decisions must
+complete in under one millisecond: SGLang [38] keeps scheduling overhead below 2% of inference
+time, and vLLM’s scheduler runs every forward pass [20]. General Nash equilibrium computation is
+orders of magnitude too slow.
+The resolution lies in a principle well-established in algorithmic game theory [25]: game theory’s
+value for inference systems is analytical, not algorithmic. Every successful game-theory-inspired
+system in production avoids general equilibrium computation entirely: DRF uses progressive
+filling (O(nm) time), Shockwave uses convex optimization for Fisher markets (polynomial time),
+Themis uses simple multi-round auctions. The pattern is consistent: game theory provides the
+analytical vocabulary and fairness guarantees, but the runtime algorithm must be a
+tractable approximation or a fundamentally different computation that achieves similar
+properties.
+What this paper does, concretely. We name three games hiding inside Dynamo (P/D resource
+allocation, KV cache placement, request routing) and characterize equilibrium existence, structure,
+and efficiency for each, including how they couple (Section 4). We then show that GPU saturation
+2
+
+===== PDF PAGE 3 =====
+PLAYERS MECHANISM RESOURCES
+GAME 1· ΓPD resource allocation
+Prefill P Decode D
+Planner
+time-series forecast·±1 GPU GPU budget G
+GAME 2· ΓKV KV cache placement
+tiered memory G1–G4
+GPU workers {1,...,n} KV Block Manager
+frequency eviction·Stackelberg leader
+G1 G2 G3 G4
+GAME 3· ΓR request routing
+decode workers W
+requests Q= {q1,...,qm} Smart Router
+sequential greedy ≡best-response
+w1 w2 w3 w4 wm
+Figure 1: The three games recast as a mechanism-design table. Each row names the players,
+the Dynamo mechanism that arbitrates between them, and the resources being contested. Reading
+down the middle column recovers the standard Dynamo architecture—Planner, KVBM, Smart
+Router—but each component now carries its game-theoretic role as an explicit caption. Saturation
+is what binds the three rows: when one row’s cost function approaches its pole, the externalities
+propagate across rows.
+induces a regime transition in the game’s payoff structure: below saturation the empirical routing
+inefficiency index is stable, and above the knee it grows rapidly as the prefill pool overloads
+(Section 5). Our empirical validation covers Games 2 (KV cache placement) and 3 (request routing)
+across three prefill/decode topologies; Game 1 (P/D resource allocation) is characterized analytically
+but not empirically varied, since our topologies use fixed P/D splits (Section 9.2). We measure these
+values directly on a 3-node B200 cluster running Dynamo with two models (Nemotron-4-340B
+at TP=8 and Llama-3.1-70B at TP=4)—to our knowledge the first empirical routing-inefficiency
+measurements under a game-theoretic lens for a disaggregated inference system (Sections 7–8). We
+use PoA to distinguish this estimator from a classical Price of Anarchy bound (Section 6.4). Finally,
+we ship an adaptive controller that detects the regime transition online and switches Dynamo’s
+routing parameters per-request via the existing router_config_override hook. The controller is a
+∼270-line Python wrapper around Dynamo’s KvPushRouter; it requires no changes to Dynamo’s
+Rust core. The largest PoA improvement lands on the 70B 1P/5D topology; additional gains on
+70B 1P/2D and 340B 1P/2D are reported in Section 8.5. The same regime structure—three regimes,
+first post-knee grid point at C = 128, finite-difference magnitude ≈0.46–0.55 across the knee on
+the [64,128] interval—appears on both models and all three topologies despite a 4.9×size gap.
+2 Background
+2.1 Disaggregated Inference
+Autoregressive LLM inference has two computationally distinct phases. Prefill processes the entire
+input prompt in a single forward pass, producing the KV cache entries for all input tokens; this
+phase is compute-bound, limited by the GPU’s peak FLOPS. Decode generates output tokens one
+3
+
+===== PDF PAGE 4 =====
+at a time, each reading the full KV cache but computing attention over only the new token; this
+phase is memory-bandwidth-bound, limited by HBM read throughput.
+Traditional co-located serving runs both phases on the same GPU, creating an inherent resource
+conflict: prefill’s compute-intensity and decode’s memory-bandwidth-intensity have different scaling
+characteristics, different optimal batch sizes, and different sensitivity to GPU count. Disaggregated
+serving [27, 40] resolves this by physically separating the two phases onto distinct GPU pools,
+connected by a high-bandwidth KV cache transfer layer. A request arriving at the system is first
+routed to a prefill worker, which processes the prompt and produces the KV cache. The KV cache
+is then transferred (via NVLink, InfiniBand, or RDMA) to a decode worker, which generates the
+output token by token.
+This separation enables independent scaling: the prefill pool can be sized to meet time-to-first-
+token (TTFT) targets while the decode pool is sized for inter-token latency (ITL) and throughput.
+NVIDIA reports a 30×throughput improvement for DeepSeek-R1 671B on a disaggregated GB200
+NVL72 rack compared to traditional co-located serving [26].
+2.2 NVIDIA Dynamo Architecture
+Dynamo is NVIDIA’s production framework for disaggregated LLM inference. Its architecture
+comprises four key components relevant to our game-theoretic analysis:
+The Planner. A central autoscaler that dynamically adjusts the ratio of prefill to decode workers.
+The Planner scrapes Prometheus metrics (TTFT histograms, ITL distributions, queue depths)
+every 30 seconds, runs a time-series predictor (configurable as ARIMA, Prophet, or Kalman filter),
+and issues scaling decisions. It is constrained to ±1 worker change per adjustment interval, with
+a 3-interval grace period for newly assigned decode workers. The Planner profiles the TTFT-vs-
+prefill-count and ITL-vs-decode-count tradeoff curves during a pre-deployment sweep, effectively
+computing the response functions of a two-player game.
+The Smart Router. A KV-aware request router that assigns incoming requests to workers. The
+router maintains a global radix tree (KvIndexer) tracking which KV cache blocks reside on which
+GPUs. For each incoming request, it computes a per-worker cost:
+cj= ω·bprefill
+j + bactive
+j (1)
+where bprefill
+j is the number of token blocks that would need to be prefilled on worker j (inversely
+related to cache overlap), bactive
+j is the number of active decode blocks on worker j (a proxy for
+current load), and ωis the kv_overlap_score_weight parameter that controls the tradeoff between
+cache affinity and load balancing. The router selects the worker with the lowest cost when the
+router_temperature τ = 0 (deterministic), or samples from a softmax distribution over costs when
+τ >0 (stochastic):
+P(select worker j) = exp(−cj/τ)
+kexp(−ck/τ) (2)
+The KV Block Manager (KVBM). A hierarchical cache manager that places KV cache
+blocks across four tiers: GPU HBM (G1, fastest, 192GB per B200), CPU DRAM (G2), local SSD
+(G3), and networked storage (G4). Eviction follows a frequency-based policy: each block’s access
+frequency is initialized at 1, doubled on cache hit, and decremented by 1 per time-decay step. Blocks
+with frequency ≥2 are eligible for promotion from lower tiers. Cross-node KV transfer is handled
+4
+
+===== PDF PAGE 5 =====
+Planner
+autoscaler·∼30s forecast
+scale P/D Prometheus
+Client Smart Router
+KV-aware·softmax
+route Prefill Workers
+compute-bound
+KV via NIXL
+Decode Workers
+bandwidth-bound
+Tokens
+lookup write read
+KV Block Manager
+G1 HBM →G2 DRAM →G3 SSD →G4 networked·frequency eviction
+create/evict events
+Event Plane(NATS JetStream / ZeroMQ·etcd registry)
+Figure 2: Dynamo architecture for disaggregated inference. Components are colored by the game
+they implement, matching Figure 1: the Planner (burnt sienna) implements Game 1 (P/D resource
+allocation), adjusting the worker ratio every∼30s from Prometheus telemetry; the Smart Router
+(navy) implements Game 3 (request routing), assigning requests to prefill workers via KV-cache-aware
+costs (Eq. 1); the KV Block Manager (moss, dashed) implements Game 2 (cache placement), staging
+blocks across GPU HBM, CPU DRAM, local SSD, and networked storage under a frequency-eviction
+policy. Prefill writes KV blocks and transfers them to decode via NIXL (RDMA over NVLink or
+InfiniBand). The Event Plane propagates cache create/evict events and etcd-registered worker
+heartbeats. Black arrows denote the request data plane; dashed burnt-sienna arrows denote Planner
+control flow.
+by NIXL (NVIDIA Inference Xfer Library), which supports RDMA via UCX over NVLink and
+InfiniBand.
+The Event Plane. A messaging layer (NATS JetStream or ZeroMQ) that propagates KV cache
+block creation/eviction events, router-to-router synchronization messages, and worker metric updates.
+Workers register in etcd with lease-backed heartbeats; lease expiry triggers automatic deregistration
+and failure detection.
+Figure 2 illustrates these components and their interactions.
+2.3 Game Theory Preliminaries
+We use standard game-theoretic concepts: normal-form games, Nash equilibrium, congestion
+games [30], Price of Anarchy [32], Pareto optimality, and Wardrop equilibrium [35]. Formal
+definitions are in Appendix A; we highlight only the key concepts below.
+A congestion game is one where each player’s cost depends only on the count of co-users on
+shared resources, not their identities, guaranteeing pure Nash equilibria via an exact potential
+function [24]. The Price of Anarchy (PoA) is the ratio of social cost at the worst Nash equilibrium
+to the social optimum; PoA = 1 means selfish behavior is optimal, while larger values indicate
+inefficiency.
+5
+
+===== PDF PAGE 6 =====
+3 Related Work
+Game theory and Pareto analysis have each been applied to GPU resource allocation, but never to
+inference routing—and never to each other.
+3.1 Game-Theoretic Resource Allocation in Computing Systems
+Game-theoretic resource allocation is well-established at the cluster scheduling level—DRF runs in
+Mesos, Shockwave uses Fisher markets—but has never been applied at the inference routing level.
+Dominant Resource Fairness (DRF) [15] is the most widely deployed game-theory-inspired
+allocator, running in Apache Mesos and YARN. DRF satisfies four game-theoretic properties (sharing
+incentive, strategy-proofness, envy-freeness, and Pareto efficiency) for multi-resource allocation. For
+LLM inference, DRF’s multi-resource framework directly applies when prefill and decode pools
+compete for GPU compute, GPU memory, and network bandwidth. DRF runs in O(nm) time
+via progressive filling, deliberately avoiding equilibrium computation. However, Fikioris et al. [13]
+proved that extending DRF to dynamic demands loses incentive compatibility, a property that holds
+only in static settings. This result has direct implications for disaggregated serving, where demand
+patterns shift as workload composition changes.
+Themis [22] introduced auction-based GPU scheduling with formal fairness guarantees. Its
+multi-round partial allocation auction is strategy-proof and Pareto efficient: workloads bid on GPU
+resources through a central arbiter, achieving a 2.25×fairness improvement over existing schedulers
+on Microsoft production traces. Themis demonstrated that DRF fails for ML workloads due to gang
+scheduling requirements and placement sensitivity, motivating richer auction mechanisms.
+Shockwave [39] modeled GPU scheduling as a Volatile Fisher Market, where jobs are buyers
+with budgets and GPUs are goods with prices. Fisher market equilibrium with linear utilities is
+solvable via convex optimization (Nash social welfare maximization) in polynomial time; the authors
+deliberately chose a market structure that avoids PPAD-hard equilibrium computation. Shockwave
+improved makespan by 1.3×and fairness by 2×.
+Xu et al. [36] combine a double Dutch auction with test-time reinforcement learning for mobile
+edge LLM inference. This is the closest existing work combining game-theoretic mechanism design
+with LLM serving, though it targets edge deployments rather than datacenter-scale disaggregated
+serving, and does not model the prefill-decode separation or KV cache placement as separate
+game-theoretic problems.
+Nash bargaining has been applied to cloud resource allocation by Perin et al. [28], who
+showed that cooperative Nash bargaining halved the average number of tasks compared to selfish
+best-response allocation. Facchinei and Kanzow [11] provide the authoritative survey on GNEPs,
+establishing that shared-constraint GNEPs generically admit a continuum of equilibria and that
+the variational equilibrium is the standard selection. This framework directly underpins our GNEP
+formulation of the prefill-decode resource game.
+The most directly relevant theoretical work is Gaitonde and Tardos [14], who provide the first
+rigorous PoA analysis for strategic queuing systems, proving that no-regret learners require 2×
+capacity compared to centralized scheduling. Their model of selfish routing to parallel servers with
+queuing delay is the closest theoretical precedent for our routing game, though they do not consider
+cache externalities or disaggregated architectures.
+None of these systems operate at inference-request timescales. They make allocation decisions
+over seconds to minutes, not at the sub-millisecond cycles that LLM schedulers demand.
+6
+
+===== PDF PAGE 7 =====
+3.2 Disaggregated LLM Serving Systems
+DistServe [40] was the first system to formally advocate disaggregating prefill and decode for
+goodput optimization. DistServe assigns prefill and decode to different GPUs, enabling independent
+parallelism strategies (larger tensor parallelism for prefill, more replicas for decode). Splitwise [27]
+independently proposed phase splitting with a focus on heterogeneous hardware: prefill on compute-
+optimized GPUs and decode on memory-bandwidth-optimized GPUs. TaiChi [34] demonstrated
+that neither pure aggregation nor pure disaggregation is Pareto-optimal under balanced SLO
+requirements, proposing an adaptive hybrid that switches between modes. This result directly
+motivates game-theoretic analysis: the optimal operating point depends on workload characteristics
+and system state, suggesting a game where the “strategy” is the degree of disaggregation.
+Dynamo [26] is the most complete production implementation, integrating a Planner for dynamic
+P/D rebalancing, a KV-aware Smart Router, hierarchical KV cache management (KVBM), and a
+high-performance transfer layer (NIXL) for cross-node KV movement. Its architecture creates the
+richest game-theoretic structure among existing systems: the Planner plays a resource allocation
+game, the router plays a congestion game, and the KVBM plays a caching game.
+3.3 Pareto Analysis in LLM Serving
+Pareto frontier analysis dominates LLM serving evaluation but has not been connected to game-
+theoretic equilibrium concepts.
+NVIDIA’s AIConfigurator [37] contains a dedicated Pareto Analyzer that enumerates all valid
+serving configurations (spanning tensor parallelism, expert parallelism, batch sizes, and aggregated
+versus disaggregated modes) to identify Pareto-optimal points across throughput and latency. For
+Qwen-235B on 64 H200 GPUs, AIConfigurator generates Pareto curves comparing aggregated versus
+disaggregated serving in approximately 30 seconds. It achieves up to 50% improvement for MoE
+models and is now integrated into Dynamo’s Planner.
+Vidur [1] uses high-fidelity simulation to explore configuration spaces, finding that small SLO
+changes (20ms in time-between-tokens) can shift the cost-optimal Pareto point by 1.85×. KV
+Pareto [17] applies Pareto analysis specifically to KV cache optimization, computing memory-
+accuracy frontiers across quantization levels and chunked prefill configurations, achieving 68–78%
+memory savings with only 1–3% accuracy loss. FlexGen [33] used linear programming to find
+Pareto-optimal offloading strategies across GPU, CPU, and disk, achieving a 100×higher throughput
+frontier for OPT-175B.
+All deployed multi-objective techniques are simple (enumeration, simulation, Pareto filtering)
+because configuration spaces have been bounded enough for exhaustive search. As disaggregation,
+MoE routing, and heterogeneous hardware grow configuration spaces exponentially, exhaustive
+enumeration will stop being feasible.
+3.4 Caching Games
+Selfish caching games are well-understood theoretically, but no one has applied them to KV cache
+management in LLM inference.
+The foundational work on selfish caching games [6] models server nodes that choose whether
+to cache data locally (at cost α) or access remote copies (at distance-dependent cost d(i,j)). Pure
+Nash equilibria always exist, and the Price of Anarchy varies with network topology: PoA = 1
+on complete graphs (selfish caching is optimal) but PoA= O(√n) on line topologies. This result
+has direct implications for GPU clusters: NVLink interconnects within a node are topologically
+7
+
+===== PDF PAGE 8 =====
+Table 1: Positioning relative to existing work. Our contribution is the first to formalize disaggre-
+gated inference as coupled games and connect game-theoretic equilibrium analysis to the specific
+mechanisms of a production inference system.
+System / Work Game Pareto Disagg. KV Cache Per-request
+DRF [15] ✓
+Themis [22] ✓ ✓
+Shockwave [39] ✓
+Edge LLM [36] ✓ ✓
+AIConfigurator [37] ✓ ✓
+Vidur [1] ✓ ✓
+KV Pareto [17] ✓ ✓
+DistServe [40] ✓
+Splitwise [27] ✓
+TaiChi [34] ✓ ✓
+Selfish caching [6] ✓ ✓
+This work ✓ ✓ ✓ ✓ ✓
+close to complete graphs, suggesting near-optimal selfish KV cache placement within a node, while
+cross-node placement over InfiniBand (a sparser topology) may exhibit higher inefficiency.
+The capacitated selfish replication extension applies directly to HBM-constrained GPUs:
+when caches have limited capacity, polynomial-time algorithms can find Nash equilibria under
+hierarchical network topologies. Ma et al. [21] proved a Braess-like cache paradox: adding cache
+nodes can worsen the PoA on directed graphs. We discuss the implications for GPU KV cache pools
+in Section 4.2.
+For congestion games with positive externalities, de Keijzer and Schäfer [10] proved that finding
+social optima is NP-hard but admits a 2-approximation. Milchtaich [23] showed that player-specific
+payoff functions preclude potential functions in general, a result we apply to KV cache overlap in
+Section 4.3.
+3.5 Summary
+Table 1 summarizes the positioning.
+4 Formalization: Disaggregated Serving as Coupled Games
+We model disaggregated inference as three coupled games that operate at different timescales and
+granularities. The prefill-decode resource game operates at the Planner’s adjustment timescale (tens
+of seconds), the request routing game operates per-request (sub-millisecond), and the KV cache
+placement game operates continuously as blocks are created, evicted, and promoted. We analyze
+each game independently before characterizing their coupling in Section 4.4.
+Forward references. This section references the superlinear latency form (Equation 9) and the
+regime-transition proposition (Proposition 4), both of which are defined in Section 5. Readers who
+prefer to read the saturation analysis first can skip to Section 5 and return here; the formalization
+is self-contained modulo those two forward pointers.
+8
+
+===== PDF PAGE 9 =====
+4.1 Game 1: Prefill-Decode Resource Allocation
+The Planner’s core decision is how to partition a fixed GPU budget between prefill and decode
+pools. We model this as a two-player non-cooperative game.
+Definition 1 (Prefill-Decode Resource Game). The prefill-decode resource game ΓPD, parameterized
+by arrival rate λ, is a two-player game with a shared constraint [29]:
+• Players: N= {P,D}(prefill pool, decode pool).
+• Strategies: Player P claims GP ∈[0,G] GPUs; player D claims GD ∈[0,G] GPUs.
+• Shared constraint: GP + GD ≤G, where G is the total GPU budget.
+• Utility functions:
+(5)
+uP(GP,GD) =−VTTFT(GP,λ) (3)
+uD(GP,GD) =−VITL(GD,λ,GP) (4)
+where VTTFT(GP,λ) is the TTFT SLO violation rate given GP prefill GPUs and arrival rate
+λ, and VITL(GD,λ,GP) is the ITL SLO violation rate.
+The shared constraint couples the players’ feasible sets, making ΓPD a Generalized Nash Equilibrium
+Problem (GNEP).
+The decode pool’s utility depends on GP through the KV transfer rate: a starved prefill pool
+idles decode workers regardless of decode GPU count. This coupling is asymmetric: prefill utility
+depends only on its own allocation and arrival rate, while decode utility depends on both.
+Proposition 1 (Equilibrium of the P/D game). Under the assumptions that VTTFT is strictly
+convex decreasing in GP and VITL is strictly convex decreasing in GD (diminishing returns from
+additional GPUs), the prefill-decode resource game has a unique variational equilibrium [11, 29] at
+the allocation (G∗
+P,G∗
+D) satisfying G∗
+P + G∗
+D = G and:
+∂VTTFT
+∂GP G∗
+P
+=
+∂VITL
+∂GD G∗
+D
+That is, the marginal SLO improvement from adding one GPU to either pool is equal at equilibrium.
+Proof sketch. KKT conditions on the shared budget constraint with a common multiplier µ give
+−∂VTTFT/∂GP = µ=−∂VITL/∂GD; eliminating µ yields (5). Uniqueness follows from strict
+convexity via the intermediate value theorem on the one-dimensional constraint manifold GP+GD =
+G: each marginal is strictly monotone in GP with opposite signs, giving a unique crossing. We
+adopt the variational equilibrium [29], the standard selection for shared-constraint GNEPs [11].
+Remark 1 (Equilibrium vs. social optimum). The variational equilibrium equalizes marginal
+violation rates but does not account for the positive externality that prefill provides to decode:
+more prefill GPUs produce KV cache entries faster, reducing VITL. The social optimum minimizes
+VTTFT(GP)+VITL(GD,GP) and satisfies ∂VTTFT
++ ∂VITL
+∂VITL
+=
+∂GP
+∂GP
+∂GD , allocating more GPUs to prefill by
+an amount proportional to |∂VITL/∂GP|. This gap is small below saturation (when prefill throughput
+exceeds decode demand) but widens at saturation, contributing to the cascading dynamics analyzed
+in Section 5.
+Connection to Dynamo’s Planner. The Planner’s iterative adjustment (±1 worker per 30s
+interval) is a best-response dynamic with inertia that converges to the variational equilibrium under
+stationary load. Our experiments use fixed P/D splits, so we do not validate this convergence
+directly; the fixed allocations produce stable PoA regimes consistent with the equilibrium analysis.
+9
+
+===== PDF PAGE 10 =====
+4.2 Game 2: KV Cache Placement
+The KVBM manages KV cache blocks across a four-tier hierarchy. We model cache placement as a
+selfish caching game [6] extended to hierarchical topologies.
+Definition 2 (KV Cache Placement Game). The KV cache placement game ΓKV is defined as:
+• Players: N= {1,...,n}(GPU workers, each managing a local cache).
+• Resources: A set of KV cache blocks B= {b1,...,bm}associated with active sequences.
+• Strategy: For each block b∈B, worker i chooses a local tier ti(b) ∈{G1,G2,G3}, accesses a
+remote copy from another worker (case 4 in Equation 6), or does not cache the block.
+• Cost: Worker i’s cost for accessing block b is:
+ci(b) =
+                
+αG1 if b is in i’s HBM (fastest)
+αG2 if b is in i’s CPU DRAM
+αG3 if b is on i’s local SSD
+d(i,j) + αtj (b) if b is cached by worker j ̸= i at tier tj(b)
+γ if b is not cached by any worker (recomputation cost)
+(6)
+where αG1 <αG2 <αG3 <γ are tier access latencies and d(i,j) is the network transfer cost
+between workers i and j.
+• Capacity constraints: Each tier on each worker has a fixed capacity: KG1
+i blocks in HBM,
+KG2
+i in DRAM, KG3
+i on SSD. G4 (networked) is effectively unbounded but has the highest
+access cost.
+Proposition 2 (Equilibrium structure of the KV cache game). The KV cache placement game has
+the following properties:
+1. Pure Nash equilibria exist (by the results of Chun et al. [6] for selfish caching games).
+2. On complete-graph topologies (all workers equidistant, as approximated by NVLink within a
+node), PoA = 1: selfish caching is socially optimal.
+3. Under capacity constraints on HBM, the game becomes a capacitated selfish replication game,
+which admits polynomial-time Nash equilibrium computation for hierarchical topologies.
+Remark 2 (Conjectured PoA on hierarchical topologies). On hierarchical topologies (NVLink within
+node, InfiniBand across nodes), we conjecture that the PoA scales sublinearly with worker count.
+The closest classical analog is Chun et al. [6]’s O(√n) bound for line-topology selfish replication
+under uniform local cost; our tier-heterogeneous cost model (Equation 6) relaxes the uniform-cost
+assumption, and a tight bound for this setting is not established. In the homogeneous-request regime
+(common model prefixes), we expect the PoA to approach 1.
+Stackelberg structure. The KVBM’s four-tier hierarchy naturally induces a Stackelberg game:
+the HBM tier (fastest, most constrained) acts as a “leader” by setting eviction policies, and lower
+tiers respond optimally. The KVBM’s frequency-based eviction (frequency initialized at 1, doubled
+on hit, decremented on decay) approximates a threshold strategy: blocks are promoted when their
+frequency exceeds a threshold determined by the tier’s current occupancy. This greedy local decision
+mirrors the equilibrium structure of selfish caching games [6], where each node caches content that
+minimizes its local access cost.
+10
+
+===== PDF PAGE 11 =====
+The cache paradox. Ma et al. [21] proved a Braess-like result for selfish caching on directed
+graphs: adding cache nodes can worsen the Price of Anarchy. This carries a concrete warning for
+GPU inference: naively adding GPU memory to a KV cache pool could theoretically degrade system-
+wide performance under selfish routing, because the additional capacity changes the equilibrium
+placement in ways that increase total access cost. However, when cache request patterns are
+homogeneous, as they often are for popular model prefixes, the paradox is bounded.
+4.3 Game 3: Request Routing as a Congestion Game
+The Smart Router’s per-request worker selection maps directly to a congestion game, but with an
+important structural enrichment: KV cache overlap creates positive externalities that break the
+standard congestion game framework.
+Definition 3 (Request Routing Game). The request routing game ΓR is defined as:
+• Players: A set of concurrent requests Q= {q1,...,qm}.
+• Resources: A set of GPU workers W= {w1,...,wn}.
+• Strategy: Each request qi selects a worker wj ∈W.
+• Cost: The cost to request qi of being assigned to worker wj under profile σ is:
+Ci(σ) = fj(nj(σ))
+− ω·oij
+congestion cost
+cache externality benefit
+(7)
+where fj(nj) is the latency function of worker j as a function of the number of requests nj
+assigned to it, oij ∈[0,1] is the KV cache overlap score between request qi and worker wj’s
+cached blocks, and ω≥0 is the overlap weight (in latency units). Note the sign convention: in
+Equation 7, higher ω increases the benefit of cache overlap (reducing cost), whereas Dynamo’s
+router cost function uses ω to weight the number of blocks requiring prefill (increasing cost
+for cache misses). These are mathematically equivalent for the arg min worker selection (both
+favor cache-warm workers), but the sign is inverted relative to the implementation.
+Centralized routing as best-response dynamics. Although Dynamo’s Smart Router is
+centralized, its sequential greedy assignment, selecting the lowest-cost worker for each arriving
+request, is equivalent to best-response dynamics in the congestion game [31]. The resulting allocation
+is a Nash equilibrium of the sequential game (or an approximate NE when τ >0), and the PoA
+measures how far it falls from the globally optimal batch assignment.
+Classical reference bounds. For the idealized case of atomic unsplittable routing with affine
+latency functions and ω = 0, the PoA is bounded by 5/2 [5]. In the nonatomic (Wardrop) limit,
+the tighter bound PoA ≤4/3 applies [32]; large atomic games converge to this limit [8]. These
+bounds serve as reference values for our system but do not directly apply: our latency functions
+include singular terms near saturation (Equation 9, defined in Section 5; the key property is a pole
+at capacity that makes latency grow faster than any polynomial), KV cache externalities make costs
+player-specific (violating the anonymous-cost assumption), and the system has only 2–5 decode
+workers (making worst-case bounds loose for small n).
+Positive externalities break the potential game structure. The KV overlap term ω·oij
+makes costs depend on request identity (prefix overlap), not just co-user count, violating the
+anonymous-cost assumption [23]. Finding social optima is NP-hard, though 2-approximations
+11
+
+===== PDF PAGE 12 =====
+exist [10]. When ω= 0, the game is a pure congestion game with classical guarantees; when ω>0,
+the equilibrium shifts between cache-affinity (low TTFT, high congestion) and load-balanced (low
+ITL, more cache misses).
+Proposition 3 (Routing game equilibria under cache externalities). The request routing game ΓR
+with cache externalities has the following properties:
+1. When ω= 0, ΓR is an exact potential game. Pure Nash equilibria exist, and classical bounds
+apply: PoA ≤5/2 for affine fj (atomic) [5], tightening to ≤4/3 in the nonatomic limit [8, 32].
+For non-affine costs (e.g., the singular functions in Equation 9), these bounds do not hold.
+2. When ω>0 and overlap scores are heterogeneous across requests, ΓR is not a potential game in
+general [23]. However, pure Nash equilibria plausibly exist when the set of distinct prefix groups
+is small relative to the number of workers (each prefix group forms an internal congestion
+game); a formal proof of existence under general prefix-group structures remains open.
+3. Each value of (ω,τ) induces a different equilibrium, tracing a curve on the Pareto frontier in
+(TTFT,ITL,throughput) space.
+Remark 3 (Empirical PoA and its relationship to classical bounds). Our estimated index PoA ≈7.5
+at C = 64 (70B, 2 workers), and ≈19 on the 340B, lies 3–7×above the classical affine bounds: 5/2
+for unweighted atomic congestion games [5] and (3 + √5)/2 ≈2.618 for weighted atomic congestion
+games [3]. Since our workload uses identical requests (same input length, deterministic generation),
+the unweighted bound 5/2 is the directly applicable reference; the weighted bound (3 + √5)/2 would
+apply if requests imposed materially different loads (e.g., variable sequence lengths). The index is
+invariant to ω at this concurrency level (Experiment 4a confirms PoA = 7.47 ±0.08 across all (τ,ω)
+combinations including ω= 0), so the comparison to classical bounds holds regardless of whether
+the measurement uses ω= 0 or ω= 1. The gap reflects the uncalibrated Hungarian denominator
+and non-affine latency at our operating points, so classical values serve as reference points rather
+than constraints (Section 6.4). The critical result is that the index is stable below saturation and
+grows rapidly at saturation (Proposition 4): this regime transition drives the controller design in
+Section 6.
+The role of router temperature. The temperature parameter τ in Equation 2 controls the
+exploration-exploitation tradeoff:
+• τ = 0: Deterministic, greedy selection (arg min of cost; the softmax in Equation 2 is defined
+in the limit τ →0). Converges quickly to a local equilibrium but is susceptible to herding (all
+requests pile onto the same cache-warm worker).
+• τ →∞: Uniform random selection. No congestion hotspots, but no cache exploitation.
+• Intermediate τ: Softmax sampling balances cache affinity and load distribution.
+A recent result on game-theoretic load balancing [12] proved that static congestion games converge
+to Nash equilibrium in at most n iterations of best-response dynamics, where n is the number of
+players. This is fast enough for practical routing when the player count (concurrent requests) is
+moderate, suggesting that Dynamo’s greedy routing may achieve near-equilibrium allocation within
+a few scheduling cycles.
+4.4 Coupling Between Games
+The three games are not independent. Their coupling creates feedback loops that can amplify or
+dampen inefficiencies.
+The three games are coupled through shared state (Figure 3):
+12
+
+===== PDF PAGE 13 =====
+Game 1: ΓPD
+Prefill–Decode
+Resource Game
+Planner·∼30s
+GPU allocation
+changes worker set
+Game 3: ΓR
+Request Routing
+Congestion Game
+Router·<1ms
+Cache pressure
+triggers scaling
+Routing determines
+cache creation
+Game 2: ΓKV
+KV Cache
+Placement Game
+KVBM·continuous
+Cache state changes
+overlap scores
+Figure 3: The three coupled games in disaggregated inference, colored to match Figure 1. Solid
+arrows denote direct coupling through shared state and are colored by the game that originates the
+coupling; the dashed arrow is the feedback loop where cache state affects routing decisions. The
+games operate at different timescales: the Planner adjusts every∼30 seconds, the router makes
+per-request decisions in under 1ms, and the KVBM operates continuously.
+• Planner →Router: GPU allocation changes the routing game’s worker set and congestion
+landscape.
+• Router →Cache: Request placement determines which KV blocks are created on which
+workers; cache-affinity routing concentrates blocks, increasing eviction pressure.
+• Cache →Router: Cache evictions change overlap scores, redirecting future requests.
+• Cascading saturation: When the prefill pool saturates, decode workers idle, the Planner
+shifts GPUs to prefill, changing the routing game’s worker set, a feedback loop analyzed in
+the next section.
+5 Saturation Dynamics and Regime Transitions
+The properties in Section 4 assume “well-behaved” (linear or mildly convex) latency functions. GPU
+inference exhibits sharp nonlinearities at saturation that alter the game’s structure, creating regime
+transitions with consequences for the Price of Anarchy. For any fixed polynomial degree d, the PoA
+is finite [2]; the growth is continuous and monotone, not a discontinuity in the strict physical sense.
+We use “regime transition” to describe the rapid, practically significant degradation that occurs as
+the effective degree of the latency function increases near saturation.
+5.1 Nonlinear Payoff Shifts at Saturation
+Below saturation, adding requests to a GPU has near-zero marginal latency cost: the GPU has idle
+compute and memory bandwidth, and batching amortizes fixed overhead. The latency function in
+this regime is approximately linear:
+fj(nj) ≈aj·nj + bj, nj ≪nsat
+j (8)
+where nsat
+j is worker j’s saturation point and aj,bj are constants determined by model size and
+hardware. In this regime, the routing congestion game is well-behaved and the PoA is bounded
+(Remark 3). The key property is that the PoA is stable below saturation; it does not grow with load.
+Above saturation, the latency function becomes superlinear. Three mechanisms drive this:
+13
+
+===== PDF PAGE 14 =====
+HBM capacity walls. discontinuous latency jump.
+When a worker’s KV cache fills HBM, eviction to lower tiers causes a
+Batch size degradation. Beyond the optimal batch size, increasing concurrency causes through-
+put to plateau while latency grows, the classic throughput-latency knee. The latency function in
+this regime is well-approximated by a convex function:
+fj(nj) ≈aj·nj + bj +
+dj
+(nsat
+j−nj)β, nj →nsat
+j (9)
+where β >0 controls the severity of the saturation penalty and dj is a hardware-dependent constant.
+The singular term dj/(nsat
+j−nj)β resembles queuing delay functions from traffic engineering; unlike
+the standard BPR (Bureau of Public Roads) polynomial, it has a pole at capacity, which drives the
+PoA divergence analyzed below.
+Queuing cascades. When all workers are saturated, requests queue at the frontend. Queuing
+latency grows as 1/(µ−λ) as arrival rate approaches capacity.
+Proposition 4 (PoA growth at saturation). For the request routing game ΓR with latency functions
+of the form in Equation 9:
+1. When nj <nsat
+j for all workers j (below saturation), the empirical PoA is stable: it does not
+grow with load (Remark 3).
+2. When nj →nsat
+j for any worker j (at saturation), the PoA grows rapidly. Two mechanisms
+contribute: (a) routing inefficiency, where the singular latency function amplifies even small
+load imbalances, and (b) resource allocation failure, where the P/D split (Game 1) becomes
+the binding constraint, and no per-request routing decision can compensate for insufficient
+capacity. In disaggregated serving, the latter dominates when the prefill pool saturates first
+(Section 5.2).
+3. The transition from stable to rapidly growing PoA is detectable via the second derivative of
+aggregate latency with respect to load: d2¯
+L
+dλ2 >θ signals the onset of saturation, where θ is a
+system-dependent threshold.
+Proof sketch. (i) When nj < nsat
+j for all j, the singular term dj/(nsat
+j−nj)β is bounded and the
+latency function is dominated by its linear component ajnj + bj. The PoA is stable across load
+levels (Remark 3).
+(ii) The latency function in Equation 9 has a singularity at nj= nsat
+j , making it superpolynomial
+near capacity. Direct queueing-theoretic PoA results apply to this regime: Gilboa-Freedman et al.
+[16] proved that the price of anarchy in the Markovian single-server queue diverges as ρ→1, and
+Haviv and Roughgarden [19] extended this to exponential multi-server stations, showing PoA ≤m
+below capacity with unbounded growth at the pole. For polynomial latency functions of degree
+d, a separate bound Θ(dd) holds [2]; this does not directly cover our singular cost but captures
+the qualitative behavior of increasing-degree polynomial approximations. The latency function
+has a pole at capacity, and for any finite PoA bound B, there exists a load level close enough to
+saturation where the actual PoA exceeds B. The singularity drives arbitrarily large cost ratios
+between near-balanced NE allocations and the social optimum that leaves headroom below the
+pole, matching the queueing-theoretic ρ→1 divergence. The practical conclusion is that as load
+approaches capacity, the PoA grows faster than any fixed polynomial bound, which our experiments
+confirm (Section 8.1). Note that on identical machines with increasing cost functions, all Nash
+equilibria are approximately balanced (loads differ by at most 1). The divergence arises not from
+14
+
+===== PDF PAGE 15 =====
+load imbalance across workers, but from the sensitivity of the singular latency function: even
+a near-balanced NE incurs cost disproportionately higher than the social optimum that leaves
+headroom below the singularity.
+(iii) The saturation signal follows from differentiating the latency function: f′′
+j (nj) = β(β+
+1)dj/(nsat
+j−nj)β+2, which diverges as nj →nsat
+j . The aggregate second derivative d2¯
+L/dλ2 inherits
+this divergence, and a finite threshold θ on this quantity defines the transition point.
+Below saturation, PoA reflects a structural constant (≈7 on 2 workers for the 70B, ≈19 for
+the 340B; these are index values under our uncalibrated cost model, not absolute efficiency ratios).
+Above saturation, it grows rapidly as (a) superlinear latency amplifies routing suboptimalities and
+(b) P/D resource allocation becomes the dominant inefficiency source, as the single prefill worker
+queues requests regardless of decode balance.
+For polynomial latency functions, Colini-Baldeschi et al. [7] proved that PoA converges to 1 in
+both light and heavy traffic, with worst-case PoA at intermediate demand. This does not contradict
+our analysis: the singularity at nsat
+j in Equation 9 is superpolynomial, and our regime transition
+occurs where this singular term dominates.
+5.2 Asymmetric Prefill-Decode Saturation
+Prefill and decode saturate on different resources at different rates. Prefill saturates on compute
+(FLOPS ceiling on the GPU’s SM cores); decode saturates on memory bandwidth (HBM read
+throughput for KV cache attention). On NVIDIA B200 GPUs, these ceilings are:
+• Prefill:∼20 PFLOPS FP4 (SM100 architecture)
+• Decode:∼8 TB/s HBM3e bandwidth
+This asymmetry means the pools saturate at different request rates and with different symptoms.
+More critically, saturation of one pool cascades to the other:
+1. A saturated prefill pool queues incoming requests, reducing the rate at which new sequences
+are handed to the decode pool.
+2. Decode workers become idle, waiting for KV cache transfers that never arrive.
+3. The Planner detects underutilized decode workers and shifts GPUs to prefill.
+4. This temporarily relieves prefill saturation but reduces decode capacity.
+5. When the prefill backlog clears, the burst of new sequences overwhelms the now-smaller decode
+pool.
+This oscillation pattern is characteristic of coupled dynamical systems with delayed feedback.
+In game-theoretic terms, the variational equilibrium of the P/D game (Proposition 1) becomes
+unstable at saturation: the Planner’s ±1 constraint and 30-second adjustment interval create a lag
+that prevents tracking rapid load changes.
+5.3 KV Cache Phase Transitions
+The KV cache placement game (Section 4.2) undergoes a qualitative shift at saturation.
+Below saturation. HBM has sufficient capacity for all active KV blocks. The caching game is
+trivial: every block is stored in G1 (HBM), access costs are minimal, and the Price of Anarchy is 1
+regardless of placement strategy.
+At saturation. HBM fills, and the KVBM begins evicting blocks to G2 (DRAM) or G3 (SSD).
+Each eviction decision creates a negative externality: evicting one request’s KV blocks forces
+15
+
+===== PDF PAGE 16 =====
+recomputation when that request’s decode phase next needs those blocks, consuming prefill compute
+that could have served new requests. The caching game transitions from a benign regime where all
+strategies are near-optimal to a contested regime where eviction decisions have significant social
+cost.
+The game becomes a congestion game with coupled resources: memory eviction on one
+resource type (HBM) creates load on another (prefill compute). This coupling is not captured by
+standard selfish caching models, which assume that each resource type operates independently.
+Proposition 5 (KV cache PoA regime transition). Let ρ= j |Bj|/ j KG1
+j be the ratio of total
+active KV blocks to total HBM capacity across all workers.
+1. When ρ<1 (below capacity): PoAKV = 1.
+2. When ρ≥1 (at capacity): PoAKV scales sublinearly with worker count—classically O(√n) on
+line topologies under uniform local cost [6], though our tier-heterogeneous model (Equation 6)
+relaxes that assumption—while approaching 1 on well-connected topologies (NVLink within a
+node).
+3. The transition at the first eviction (ρ crossing 1) is sharp: the PoA jumps from 1 to a value
+determined by the eviction policy and network topology.
+5.4 The Pareto Frontier Shifts at Saturation
+The Pareto frontier relating throughput, latency, and parameter configuration (Section 1) is not
+static; it deforms under saturation.
+Below saturation, the frontier is relatively flat: small throughput gains cost small latency
+increases, and the system operates in a region where most parameter configurations achieve similar
+performance. The AIConfigurator’s enumeration approach works well here because the frontier is
+smooth and configurations are easy to distinguish.
+At saturation the frontier steepens (small throughput gains cost large latency increases) and
+becomes parameter-sensitive: configurations near-optimal below saturation may be far from the
+frontier above it. A single Pareto-optimal configuration computed at deployment time (as AIConfig-
+urator does) can therefore become suboptimal as load rises. The empirical heatmaps in Section 8.4
+(Figure 6) show this directly: a uniformly flat landscape at C = 64 becomes rugged at C = 128.
+Remark 4. The ideal system would dynamically select among regime-specific Pareto frontiers,
+precisely the goal of the adaptive controller in Section 6.
+6 Adaptive Controller Design
+Since the Price of Anarchy is bounded below saturation but degrades rapidly above it (Sections 4–5),
+a static deployment-time configuration is insufficient: the system needs a controller that detects
+regime changes and adapts routing parameters.
+The controller operates entirely in Python, requires no modifications to Dynamo’s Rust core,
+and leverages router_config_override to adjust parameters per-request.
+6.1 Design Principles
+The controller is guided by three principles derived from the game-theoretic analysis:
+1. Regime detection, not equilibrium computation. Computing Nash equilibria at runtime
+is intractable (Section 1). Instead, the controller detects which regime the system is operating
+16
+
+===== PDF PAGE 17 =====
+in (below saturation, at saturation, or above saturation) and applies parameter settings known
+to be near-optimal for that regime. This reduces the problem from PPAD-hard equilibrium
+computation to a classification task over aggregate metrics.
+2. Track a robust saturation signal. The theoretically motivated signal is the second derivative
+of latency with respect to load (Proposition 4), which is hardware-agnostic. We attempted to track
+d2¯
+L/dλ2 directly via finite differences but found that 5s polling produces estimates dominated
+by sampling noise. The deployed signal is an EWMA of TTFT P99 (Section 6.2), which smooths
+transient spikes while tracking sustained increases. This trades the hardware-agnostic theoretical
+invariant for a model-specific threshold (θ1 scaled to the model’s baseline TTFT) but fires reliably
+across both models in our experiments.
+3. Exploit regime-specific PoA bounds. Below saturation, the PoA is bounded (Remark 3),
+meaning the efficiency loss from selfish routing is tolerable, and more than offset by the TTFT
+reduction from KV cache hits. At saturation, rapidly growing PoA means cache-affinity routing
+can create severe hotspots. The controller shifts from exploitation (cache affinity) to coordination
+(load balancing) as the PoA bound degrades.
+6.2 Saturation Detection
+The controller monitors a sliding window of TTFT P99 and ITL P99 values, sampled from Dynamo’s
+Prometheus metrics every 5 seconds. Following principle 2 above, the deployed signal is an EWMA
+of TTFT P99:
+¯
+L(t) = α·L(t) + (1−α)·¯
+L(t−∆) (10)
+where L(t) is the TTFT P99 at time t, ∆ is the 5-second polling interval, and α = 0.3 controls
+responsiveness. A sustained rise in¯
+L(t) above θ1 indicates the system has crossed the saturation
+knee where Proposition 4 predicts PoA degradation.
+The saturation state is classified into three regimes:
+regime(t) =
+      
+Below if¯
+L(t) <θ1
+Transition if θ1 ≤¯
+L(t) <θ2
+(11)
+Saturated if¯
+L(t) ≥θ2
+where θ1 and θ2 are model-dependent thresholds determined empirically (Section 7). For the 70B
+model, θ1 = 300 ms and θ2 = 2 s; for the 340B, whose baseline TTFT is∼150–200ms (vs.∼55ms
+for the 70B), we use θ1 = 1.0 s and θ2 = 10.0 s. In practice, θ1 should be set as a multiple (∼3–5×)
+of the model’s baseline TTFT P99 rather than as an absolute value. A hysteresis margin prevents
+oscillation at regime boundaries: the transition from Below to Transition requires¯
+L(t) >θ1 for
+k consecutive samples, while the reverse requires¯
+L(t) <θ1−ϵ for k samples.
+6.3 Parameter Adaptation Strategy
+Based on the saturation regime, the controller adjusts two parameters via router_config_override
+(Table 2):
+The rationale for each regime maps directly to the game-theoretic analysis:
+Below saturation (τ = 0,ω = 1). Latency functions are approximately linear, so the routing
+game’s PoA is bounded (Remark 3). The bounded worst-case inefficiency from selfish routing is
+more than offset by the TTFT reduction from KV cache hits. Deterministic, cache-affinity routing
+(τ = 0, ω= 1) maximizes prefix reuse.
+17
+
+===== PDF PAGE 18 =====
+Table 2: Parameter settings per saturation regime. The Below and Transition rows were
+exercised in Experiment 3; the Saturated row (§) is conjectural—its parameters were interpolated
+from the τ ∈{0.0,0.3,0.7,1.0}Pareto sweep and never fired in any reported experiment, because the
+C=32 →128 →32 load spike did not persist long enough to cross θ2. See Section 6.3, “Saturated.”
+Regime Temperature τ Overlap weight ω Rationale
+Below 0.0 1.0 Exploit cache locality (PoA bounded)
+Transition 0.7 1.0 Calibrated optimum from 70B 1P/5D
+sweep (Exp. 4b)
+Saturated§ 0.8 0.1 Conjectural (not fired in any reported
+experiment)—prioritize load balancing
+(PoA grows rapidly)
+Transition (τ = 0.7,ω = 1.0). The system is approaching saturation. We use the 70B 1P/5D
+sweep as the primary driver for parameter selection because the larger routing game (m= 5) offers
+greater parameter differentiation (2.0×spread); on 1P/5D, (τ = 0.7,ω = 1.0) was among the
+lower-PoA cells. We then apply the same (τ,ω) to the 70B 1P/2D and 340B 1P/2D deployments.
+This cross-topology transfer is a deliberate simplification: the 70B 1P/2D sweep (Table 6c) has its
+own minimum at (τ = 0.3,ω = 0.7) = 14.6 (chosen-cell value 20.5), and the 340B 1P/2D sweep
+(Table 6b) has its own minimum at (τ = 0.3,ω= 1.0) = 26.6 (chosen-cell value 34.4). We adopt a
+single (τ,ω) setting across topologies to test whether a single regime-gated configuration, informed
+by the largest routing game, generalizes; the measured improvements on 1P/2D should therefore
+be read as lower bounds on what a per-topology native sweep would achieve. On the 340B with
+m= 2 workers, all configurations perform similarly (1.6×spread), so the penalty for cross-topology
+transfer is small in that regime. The high temperature introduces stochastic load balancing while
+retaining full cache affinity.
+Saturated (τ = 0.8,ω= 0.1). Latency functions are superlinear and PoA grows rapidly (Proposi-
+tion 4), so we interpolate τ = 0.8 with low overlap weight to approximate power-of-two-choices load
+balancing and suppress cache-warm hotspots. This row never fired in Experiment 3 (the load spike
+did not persist long enough to cross θ2 under EWMA hysteresis) and should be read alongside any
+experiment that holds C ≥256 for a longer duration.
+6.4 Implementation
+The controller wraps Dynamo’s Python router handler (KvPushRouter) with a game-theoretic
+adapter (Algorithm 1):
+The key implementation detail is that Dynamo’s Python router handler accepts a router_
+config_override argument in its best_worker() method. This allows the controller to adjust
+temperature and overlap weight on every individual request without restarting any component.
+In our experiments, we implement a zero-downtime variant: two frontends run simultaneously
+with different parameter configurations (default on port 8000, optimal on port 8001), and the
+workload generator switches target port upon detecting the regime transition. This eliminates the
+throughput penalty of a frontend restart while achieving the same parameter switch. The saturation
+detector polls Prometheus every 5s and classifies the regime via the EWMA signal, adding negligible
+overhead.
+18
+
+===== PDF PAGE 19 =====
+Algorithm 1: Game-Theoretic Adaptive Router
+Input: Incoming request with token IDs t
+Output: Worker assignment (wj,dp_rank,overlap)
+1 sat_state ←saturation_detector.current_state();
+2 (τ,ω) ←regime_params[sat_state];
+3 config ←KvRouterConfig(temperature= τ,overlap_weight= ω);
+4 t0 ←now();
+5 (wj,dp_rank,overlap) ←kv_router.best_worker(t,router_config_override= config);
+// Export game-theoretic metrics
+6 poa_gauge.set(poa_tracker.current_poa());
+7 saturation_gauge.set(sat_state.value);
+8 temperature_gauge.set(τ);
+9 routing_cost_hist.observe(now()−t0);
+10 return (wj,dp_rank,overlap);
+Prometheus metrics. The controller exports four custom metrics via Dynamo’s metrics API:
+• game_poa: Current estimated Price of Anarchy (gauge).
+• game_saturation_state: Current regime (0/1/2) (gauge).
+• game_router_temperature: Active temperature value (gauge).
+• game_routing_cost: Per-worker routing cost distribution (histogram).
+These metrics enable real-time monitoring of game-theoretic properties via Grafana.
+PoA estimation. The controller estimates PoA in a sliding window by comparing the observed
+social cost (sum of actual per-request latencies) against a hindsight-optimal assignment computed
+offline:
+PoA(t) = q∈W(t) Lactual
+q
+OPT(W(t)) (12)
+where W(t) is the set of requests completed in the window ending at time t, Lactual
+q is request q’s
+observed latency, and OPT(W(t)) is the minimum total latency achievable by reassigning those
+requests to workers, computed via the Hungarian algorithm on a cost matrix of estimated per-worker
+latencies. Structurally, this is a competitive ratio against an offline hindsight-optimal assignment;
+we adopt PoA vocabulary because the paper’s load-bearing claims concern equilibrium-level regime
+structure rather than online worst-case bounds. Since routing is many-to-one (multiple requests per
+worker), the cost matrix replicates each worker column up to its capacity, yielding a square matrix for
+one-to-one optimal assignment; the resulting OPT is a lower bound on the true many-to-one optimal.
+The cost matrix uses an uncalibrated parametric model: cij= a·nj+b+d/(Cj−nj)β−wc·oij, with
+a= 0.005, b= 0.020, d= 0.010, β = 2, Cj = 64 (capacity per worker), and cache weight wc = 0.015.
+These parameters are not fitted to observed latencies; they define a relative efficiency index whose
+absolute magnitude depends on the parameter choice. Consequently, the PoA values should be
+interpreted as regime indicators (rising PoA signals saturation) and comparative metrics (adaptive vs.
+static PoA), not as absolute efficiency ratios (a PoA of 19 does not mean “19×worse than optimal”
+in system terms). The cost matrix uses frozen latencies from the observed allocation, ignoring how
+redistribution would change loads. OPT(W(t)) is therefore an underestimate of the true optimal
+social cost, making PoA an upper bound on the true PoA. This conservatism is acceptable for the
+19
+
+===== PDF PAGE 20 =====
+controller’s purpose: regime detection only needs the rate of change, and a rising PoA corroborates
+the saturation signal from Equation 10 regardless of absolute calibration.
+7 Experimental Setup
+We validate our framework on a 3-node GPU cluster running Dynamo with disaggregated pre-
+fill/decode serving (Table 3).
+7.1 Hardware
+Table 3: Cluster configuration.
+Component Specification
+Nodes 3×HGX B200
+GPUs per node 8×B200 SXM (192GB HBM3e each)
+GPUs used per node 4 (TP=4, 70B) or 8 (TP=8, 340B)
+Total GPUs active 12 (70B 1P/2D), 24 (340B 1P/2D), 24 (70B 1P/5D)
+Intra-node interconnect NVLink5 via NVSwitch (900GB/s per-GPU bidirectional)
+Inter-node interconnect 2×ConnectX-7 InfiniBand per node (400Gb/s each; native
+RDMA via UCX/verbs,∼390Gb/s measured between node
+pairs at 97.5% line rate)
+CPU System memory AMD EPYC, 248 cores per node
+2826GB DDR5 per node
+Node 3 carries pkey 0x8060 at index 1 (RDMA tools require –pkey_index 1, child inter-
+face ibp14s0.8060); nodes run Ubuntu 24.04 LTS. The cluster was provisioned as Vultr SKU
+vcg-b200-248c-2826g-1536vram.
+7.2 Software Stack
+• Inference framework: Dynamo v0.9.0 (nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.9.
+0-cuda13)
+• Runtime: vLLM backend with PagedAttention [20]
+• KVtransfer: NIXLoverUCX/verbsonInfiniBandforthedatapath; IPoIB(10.0.0.{1,2,3}/24
+on ibp14s0) used only for the NIXL metadata side channel (VLLM_NIXL_SIDE_CHANNEL_HOST),
+not for KV bulk transfer
+• Coordination: etcd (service discovery), NATS JetStream (event plane)
+• Monitoring: Prometheus + NATS event correlation
+• Controller: Python 3.12, nats-py, scipy
+FP8 is applied at load time via vLLM’s –quantization fp8 flag, which resolves to FP8-E4M3
+weights and activations with dynamic per-tensor activation scaling (no calibration set used).
+7.3 Models and Topologies
+Our primary model is Nemotron-4-340B-Instruct at FP8 runtime quantization (∼40.9GiB per
+TP rank). We load the community BF16 repack mgoin/Nemotron-4-340B-Instruct-vllm (derived
+from NVIDIA’s Nemotron-4-340B-Instruct for vLLM compatibility) and apply FP8 at load time
+20
+
+===== PDF PAGE 21 =====
+via vLLM’s –quantization fp8 flag; NVIDIA has not published an official FP8 Nemotron-4-340B
+checkpoint. With TP=8, each worker spans all 8 GPUs on a full node, forcing every KV transfer
+to cross InfiniBand, representative of production-scale disaggregated deployments where workers
+occupy entire nodes. We use a 1P/2D topology: one prefill worker on node 1, two decode workers
+on nodes 2 and 3 (m= 2 resources).
+To validate that the game-theoretic properties are not model-specific, we also run all experiments
+onLlama-3.1-70B-Instruct-FP8[18](NVIDIA’sofficialFP8checkpointnvidia/Llama-3.1-70B-Instruct-FP8)
+a 70-billion parameter dense model (∼70GB at FP8). With TP=4, each worker spans 4 GPUs on a
+single node, enabling two additional topologies:
+• 1P/2D (4 GPUs per node): same minimal routing game as the 340B (m= 2).
+• 1P/5D (all 8 GPUs per node): one prefill worker on node 1 (GPUs 0–3), five decode workers
+across all three nodes (node 1 GPUs 4–7, nodes 2–3 with two workers each, m= 5). This
+tests whether the routing game’s properties change with a larger action space.
+The frontend (router) runs on node 1 alongside prefill for both models.
+The P/D split is fixed within each topology; varying the split (Game 1) would require restarting
+backend workers across nodes.
+7.4 Workload Design
+All experiments use a short chat workload: 5 prompt templates with 128 input tokens, 256 max
+output tokens, temperature 0.0 (deterministic generation). Requests are generated at controlled
+concurrency levels using an async Python client that maintains a fixed number of in-flight requests via
+a semaphore. Each concurrency level includes a 30-second ramp phase (linear increase) followed by a
+hold phase at the target level. Experiment 1 includes ramp data in aggregate metrics; Experiment 2
+excludes ramp data to isolate steady-state behavior. The workload client does not set an explicit
+random seed; generation is deterministic (temperature 0), so run-to-run variation arises from async
+scheduling and request timing rather than from sampling noise. Experiment 3’s below-saturation
+phases characterize this variation empirically (σ<0.5% on PoA, <5 ms on TTFT P99).
+Cool-down and outlier handling (registered a priori). Multi-phase load-spike experiments
+(Experiment 3) include a 60s cool-down between iterations to drain the queue established during
+the saturated phase. Per-iteration TTFT P99 values that exceed 5×the within-strategy median
+for the same phase are flagged as cool-down artefacts, reported separately in Table 8’s footnote,
+and excluded from the strategy’s reported mean only when the operational cause (incomplete drain
+from the prior saturated phase) is identifiable from the request timestamps. Both with-flag and
+without-flag aggregates are reported in any affected case so the reader can verify the rule’s effect.
+This rule was registered before re-running the post-bug-fix experiments; it triggered on one iteration
+of the 70B 1P/5D static below-saturation phase (Section 8.5, Table 8 footnote).
+7.5 Artifact Availability
+The controller wrapper (∼270 lines of Python around Dynamo’s KvPushRouter), the measurement
+harness, the NATS event-correlation scripts, and the raw per-request JSON logs underlying all
+reported tables and figures are intended for open-source release alongside publication; this statement
+will be updated with the repository URL in a revised version.
+21
+
+===== PDF PAGE 22 =====
+7.6 PoA Measurement
+Measuring the Price of Anarchy requires per-request worker attribution, which Dynamo’s HTTP
+API does not expose. We solve this via NATS event correlation: Dynamo’s event plane publishes
+active_sequences_events on NATS, containing per-request worker_id assignments. Each HTTP
+SSE response includes an id: cmpl-<uuid> field that matches the NATS event’s request_id. By
+correlating these, we achieve 100% per-request decode worker attribution across all experiments.
+The PoA estimate uses the Hungarian algorithm on a frozen-latency cost matrix (Equation 12);
+see Section 6.4 for the upper-bound interpretation and the measurement note in Section 8.
+7.7 Experiments
+We conduct four experiments:
+Experiment 1: Equilibrium characterization. Sweep 14 concurrency levels (1, 2, 4, 8, 16, 32,
+48, 64, 96, 128, 192, 256, 384, 512) with 120-second holds per level. At each level we measure: TTFT
+and ITL distributions, PoA via NATS correlation, Nash equilibrium estimate for P/D allocation,
+and saturation regime classification.
+Experiment 2: Saturation regime detection. Sweep 9 concurrency levels (1, 4, 8, 16, 32,
+64, 128, 256, 512) with the calibrated SaturationDetector active. Measures PoA, the detector’s
+regime classification, the finite derivative d(TTFT P99)/d(concurrency) at each level, and KV cache
+tier distribution. Tests whether the detector correctly identifies the saturation knee observed in
+Experiment 1.
+Experiment 3: Adaptive versus static routing. Three-phase load spike (C = 32 →128 →32,
+durations 120/180/120s) comparing static routing (default parameters throughout) against an
+adaptive controller that detects the transition regime and switches to the Experiment 4b optimal
+configuration. We run 3 iterations of each strategy to obtain confidence intervals. The adaptive
+strategy uses a dual-frontend design: two frontends run simultaneously on ports 8000 (default: τ = 0,
+ω = 1) and 8001 (optimal: τ = 0.7, ω = 1.0), with the workload generator switching target port
+upon detection, eliminating the throughput penalty of a frontend restart. The SaturationDetector
+polls Prometheus at 5s intervals. Run on 1P/5D for 70B and 1P/2D for 340B.
+Experiment 4: Pareto sweep. Parameter sweep over a 4 ×4 grid: τ ∈{0.0,0.3,0.7,1.0}
+and ω ∈{0.0,0.3,0.7,1.0}. For each configuration, the frontend is restarted with new CLI flags,
+health-checked, ramped, and held for 180 seconds. We run the sweep at two concurrency levels:
+• Experiment 4a: C = 64 (below saturation), testing parameter sensitivity under normal load.
+• Experiment 4b: C = 128 (at saturation), testing whether parameter sensitivity emerges at
+saturation.
+8 Results
+We present experiments in logical rather than numerical order: Experiments 1 and 2 establish the
+regime structure, Experiments 4a and 4b characterize parameter sensitivity across regimes, and
+Experiment 3 validates the adaptive controller whose parameter choices are informed by 4a/4b.
+22
+
+===== PDF PAGE 23 =====
+Table 4: Equilibrium characterization: Nemotron-4-340B (FP8, TP=8, 1P/2D). TTFT and ITL are
+P99 values. †Low-load PoA rows (C ≤4) are estimator artifacts (few in-flight requests inflate the
+index); they are excluded from plateau claims. ‡Regime labels use the 70B-calibrated threshold
+θ1=300 ms. Under the 340B-corrected threshold θ1=1.0 s (Section 8.2), rows C=32–96 would
+reclassify as Below.
+C TTFT P99 ITL P99 PoA rps Regime
+1 74ms 19.8ms 84.4† 0.2 Below
+2 134ms 19.0ms 53.6† 0.4 Below
+4 145ms 19.2ms 31.6† 0.7 Below
+8 170ms 21.9ms 19.0 1.3 Below
+16 181ms 21.4ms 19.4 2.5 Below
+32 278ms 21.9ms 19.5 4.9 Transition‡
+48 366ms 22.2ms 19.3 7.4 Transition‡
+64 739ms 22.7ms 18.7 10.2 Transition‡
+96 544ms 22.5ms 18.7 15.3 Transition‡
+128 16.2s 22.6ms 27.9 16.5 Saturated
+192 45.7s 22.4ms 70.2 17.1 Saturated
+256 83.2s 22.3ms 176.9 17.6 Saturated
+384 109s 23.3ms 283.6 18.0 Saturated
+512 113s 22.2ms 248.2 18.0 Saturated
+Measurement note. Experiments 1, 2, 4a, and 4b are single-run measurements; the
+reported values reflect a single trial at each configuration and carry unknown measurement uncer-
+tainty. The cross-configuration spread (e.g., ±0.10 across 16 Pareto configurations in Experiment 4a)
+measures parameter sensitivity, not measurement uncertainty; individual PoA values (e.g., the 18.7
+plateau) could shift on rerun. Only Experiment 3 includes repeated trials (n = 3) with means
+and sample standard deviations. With n= 3 and df = 2, the 95% confidence interval multiplier
+is t0.025,2 = 4.30, yielding wide intervals for high-variance baselines (e.g., the 70B 1P/5D static
+TTFT 95% CI spans−5.7 to 22.1 s). The Experiment 3 below-saturation phases provide a natural
+estimate of run-to-run variation: PoA standard deviations of 0.02–0.11 (≤0.75%) and TTFT P99
+variation under 20ms (one documented 2.84s outlier aside), suggesting stable measurement under
+non-saturated conditions. Cross-experiment drift at saturation is non-trivial. The same
+nominal 340B 1P/2D configuration at C = 128, τ = 0, ω= 1 reports three different values across
+experiments: PoA = 27.9 in Experiment 1 (Table 4), 36.0 in Experiment 4b (Table 6b, top-right
+cell), and 33.15±1.14 in Experiment 3’s static-saturated phase (Table 7). The spread is∼29% across
+three single-run or n=3 measurements at nominally identical settings. This spread is comparable
+to the 1.6×cross-configuration spread used to argue 340B parameter sensitivity at saturation
+(Section 8.4), so saturation-regime parameter-sensitivity claims on the 340B should be read with
+this drift in mind. All reported means are averages of per-iteration P99 values, not the P99 of
+pooled data. PoA is a regime-indicator relative efficiency index (see Section 6.4 for its definition
+and scope); it can fall below 1 when the Hungarian denominator imperfectly approximates the
+attainable optimum under current KV-cache state (documented for m=5 at C=64; see Section 9.2).
+8.1 Experiment 1: Equilibrium Characterization
+Table 4 presents the Nemotron-4-340B results across 14 concurrency levels, with NATS-based decode
+worker correlation achieving 100% match rate at all levels.
+23
+
+===== PDF PAGE 24 =====
+P99 Latency (ms)
+105 104
+103
+102
+101
+TTFT (340B)
+ITL (340B)
+TTFT (70B)
+ITL (70B)
+Saturation
+knee
+1 2 4 8 16 32 64 128 256 512
+Concurrency
+Figure 4: Asymmetric P/D saturation: TTFT P99 versus ITL P99 for the 340B (solid) and 70B
+(dashed) models. Below saturation, both metrics stay at tens of milliseconds. At saturation, TTFT
+explodes to∼100s while ITL remains flat, nearly four orders of magnitude apart. The 340B has a
+higher ITL baseline (∼22ms vs.∼13ms) reflecting its larger decode memory footprint, and a lower
+throughput ceiling (∼18 vs.∼47rps). Both models exhibit the same asymmetry, consistent with
+prefill as the dominant bottleneck on this workload across both model scales. The “saturation knee”
+marker indicates the first post-knee grid point (C = 128); the true knee lies in (96,128] and is not
+resolvable at our grid spacing.
+Asymmetric P/D saturation. The dominant finding is extreme P/D asymmetry (Figure 4),
+confirming Section 5.2: TTFT P99 grows from 74ms to 113s (1,500×) while ITL P99 stays at
+21.7 ±1.3 ms across all 14 concurrency levels, consistent with prefill being the dominant bottleneck
+and decode behaving as memory-bandwidth-bound on this workload. The 70B model corroborates
+this with ITL P99 flat at∼10–14 ms and identical TTFT explosion at saturation.
+Throughput ceiling. Throughput saturates at∼18rps for the 340B (16.5rps at C = 128 vs.
+18.0rps at C = 512) and∼47rps for the 70B, the prefill-limited ceiling. The 2.6×lower ceiling for
+the 4.9×larger model reflects the partial offset of FP8 quantization against the increased compute
+cost.
+Three PoA regimes. The PoA measurements reveal three distinct regimes (Figure 5):
+1. Low load (C = 1–4): PoA ≈31–84 (340B) or 6–36 (70B). These elevated values are artifacts:
+with few in-flight requests, the Hungarian algorithm finds a trivially optimal assignment that
+diverges from the actual routing by the full single-request cost, inflating the index because
+the denominator is artificially small. We de-emphasize these rows in aggregate claims (see
+dagger-marked entries in Table 4 footnote).
+2. Below saturation (C = 8–96): PoA ≈18–19 (340B), 6–7.7 (70B 1P/2D), or∼14.7 (70B
+1P/5D), a stable plateau. The index reflects the structural cost of greedy routing and does not
+grow with load. This stability is consistent with Proposition 4(i). The 2.5×higher plateau for
+the 340B (18.7 vs. 7.47) reflects the larger cost of routing suboptimality with a bigger model,
+since each misrouted request wastes more compute.
+3. At saturation (C ≥128): PoA grows rapidly. The 340B peaks at C = 384 (PoA = 284).
+On the 70B, the 1P/2D topology peaks at C = 384 (PoA = 199) while the 1P/5D topology
+24
+
+===== PDF PAGE 25 =====
+Table 5: Cross-model properties not visible in Figures 4 and 5.
+[64,128] interval; grid spacing cannot resolve the true knee location within (96,128].
+*Finite difference taken over the
+Property 340B (TP=8) 70B (TP=4) Ratio
+First post-knee grid point C = 128 C = 128 Same
+Throughput ceiling 18rps 47rps 0.39×
+∆TTFT/∆C across knee*
+∼0.55∼0.46∼Same
+peaks earlier at C = 256 (PoA = 309). The index decreases at C = 512 as extreme queuing
+paradoxically equalizes load.
+The transition from stable to rapidly growing PoA occurs at C = 128 for both models: on
+the 340B, TTFT P99 jumps from 544ms to 16.2s (∼30×); on the 70B, from 354ms to 10.0s.
+(The non-monotonic 340B TTFT P99 at C = 96, 544ms, below the C = 64 value of 739ms, is a
+single-run measurement artifact; the PoA is stable at this level.) As discussed in Section 5, the
+deep-saturation PoA should be decomposed: routing inefficiency (bounded, on the decode side) and
+resource allocation failure (dominant, the prefill bottleneck). A PoA of 284 at C = 384 does not
+mean routing is 284×suboptimal; it means the system is in overload and no routing strategy can
+compensate for insufficient prefill capacity.
+Cross-model and topology consistency. The three-regime structure is consistent across both
+models and topologies (Figure 5). On the 70B 1P/5D topology (m= 5), the PoA curve has the same
+qualitative shape as 1P/2D—stable plateau, same post-knee grid point, and explosive growth—at a
+higher level throughout: the plateau sits at∼14.7 (≈2.4×the 1P/2D 6.2–7.7), reflecting the larger
+5-worker routing game, and the throughput ceiling rises to∼51rps. At saturation the gap widens:
+PoA is 3.3×higher at C = 128 (57.3 vs. 17.6) and 1.9×higher at C = 256 (309 vs. 167, both on
+the saturation-sweep grid), consistent with the larger routing game amplifying saturation-regime
+inefficiency. The 340B at 1P/2D (TP=8, cross-InfiniBand KV transfers) reproduces the identical
+regime structure at a 2.5×higher plateau, confirming that the game-theoretic regime structure is
+consistent across the tested model scales.
+Table 5 summarizes the key cross-model comparison.
+8.2 Experiment 2: Saturation Regime Detection
+On the 340B model, the finite difference ∆ = ∆(TTFT P99)/∆C taken across the knee jumps
+from 0.012 on the [32,64] interval to 0.554 on the [64,128] interval, a∼45×increase. On the 70B
+(1P/2D), the same transition produces a 148×jump (from 0.003 to 0.458). Because the concurrency
+grid is {1,4,8,16,32,64,128,256,512}, this quantity is a difference quotient that straddles the knee
+rather than a localized derivative at the knee; a true knee anywhere in (64,128] would produce
+similar values. Within that caveat, the magnitude (∼0.45–0.56) is consistent across both models
+and topologies, and the saturation signal is unambiguous in all cases. A denser sweep in (96,128]
+would be needed to localize the knee precisely; we report the coincidence as “same first post-knee
+grid point” rather than “same knee.”
+The SaturationDetector’s θ1 = 300 ms threshold, calibrated on the 70B, triggers prematurely
+on the 340B: at C = 32, the EWMA of the streamed frontend TTFT P99 signal reached∼0.37 s
+during the hold (the table reports the client-side aggregate P99, 278ms), crossing θ1 and producing
+a Transition classification that is too early. This occurs because the 340B’s baseline TTFT
+(∼150–200ms) is higher than the 70B’s (∼55ms). For the 340B, we recommend θ1 = 1.0 s and
+25
+
+===== PDF PAGE 26 =====
+Estimated Price of Anarchy
+102
+340B 1P/2D
+70B 1P/2D
+70B 1P/5D
+Saturation
+knee
+101
+100
+1 2 4 8 16 32 64 128 256 512
+Concurrency
+Figure 5: Estimated Price of Anarchy versus concurrency (log-log scale) for the 340B 1P/2D (solid),
+70B 1P/2D (dashed), and 70B 1P/5D (dotted) configurations. Both models exhibit the same three-
+regime structure: a stable plateau below saturation, a sharp jump at the first post-knee grid point
+(C = 128), and rapid growth to∼200–309 deep in saturation (C = 256–384). The 340B plateau
+(18.7) is∼2.5×higher than the 70B 1P/2D (7.47), reflecting the larger cost of routing suboptimality
+with a bigger model; the 70B 1P/5D plateau (∼14.7) sits ≈2.4×above 1P/2D, reflecting the
+larger 5-worker routing game. The 1P/5D series is measured on the coarser saturation-sweep grid
+{1,4,8,...,512}. The true knee location is not resolvable within (96,128] at our grid spacing.
+θ2 = 10.0 s; these thresholds should be set as a fraction of the model’s baseline TTFT rather than
+as absolute values.
+The below-saturation PoA is∼19 on the 340B (vs.∼6–7 on the 70B), consistent with the
+cross-model plateau gap observed in Section 8.1: each misrouted request on the larger model wastes
+more compute. On the 70B, the detector correctly classified all below-saturation levels as Below
+and detected the transition at C = 128, with the EWMA reaching Saturated within 15s (3
+samples at the 5s polling interval).
+8.3 Experiment 4a: Pareto Sweep Below Saturation
+Table 6a presents the full 4 ×4 parameter sweep at C = 64 for the 340B model (shown alongside
+the C = 128 sweeps in Table 6).
+PoA invariance. The central finding is that PoA is statistically indistinguishable across router
+parameters below saturation: PoA = 18.7 ±0.10 across all 16 (τ,ω) configurations on the 340B
+(cross-configuration spread; single trial per cell). Neither τ nor ω produces a measurable effect on
+routing efficiency. The 70B corroborates this: PoA = 7.47 ±0.08 across 16 configurations on 1P/2D,
+and 14.93 ±0.06 on 1P/5D, the higher plateau reflecting the larger 5-worker routing game. The
+pattern holds across model scale, TP configuration, and number of decode workers.
+Implications. At below-saturation load, router-parameter tuning yields no measurable PoA
+gain—tuning effort is best spent at the saturation knee or above. The structural inefficiency relative
+to the hindsight-optimal assignment (∼19×for the 340B,∼7×for the 70B 1P/2D,∼15×for the
+70B 1P/5D) is a cost of greedy routing that no parameter configuration can reduce. Reducing the
+26
+
+===== PDF PAGE 27 =====
+Table 6: 4 ×4 Pareto sweeps of PoA across (τ,ω). (a) 340B at C = 64 (below saturation,
+∼12rps): all 16 cells lie within ±0.2 of 18.7—no measurable parameter effect. (b) 340B at C = 128
+(saturation,∼18.9rps): 1.6×spread, noisy but unstructured. (c) Llama-3.1-70B 1P/2D at C = 128
+(saturation,∼47rps): 1.9×spread with clearer structure. All configurations achieve 100% NATS
+match rate. Bold values mark per-panel minima in saturated regimes; below-saturation panel (a)
+has no meaningful minimum.
+(a) 340B, C = 64 (below sat.)
+(b) 340B, C = 128 (sat.)
+(c) 70B 1P/2D, C = 128 (sat.)
+τ\ω 0.0 0.3 0.7 1.0
+τ\ω 0.0 0.3 0.7 1.0
+τ\ω 0.0 0.3 0.7 1.0
+0.0 18.7 18.6 18.7 18.7
+0.3 18.6 18.6 18.5 18.7
+0.7 18.7 18.7 18.9 18.7
+1.0 18.6 18.8 18.6 18.6
+0.0 31.9 34.6 32.4 36.0
+0.3 36.5 42.5 35.7 26.6
+0.7 32.0 29.4 34.2 34.4
+1.0 37.5 32.7 34.0 38.5
+0.0 19.6 18.4 25.4 19.1
+0.3 27.5 20.6 14.6 15.6
+0.7 28.2 26.4 24.6 20.5
+1.0 21.2 25.7 27.2 15.4
+PoA below saturation requires changing the assignment algorithm from greedy to coordinated batch
+assignment.
+Latency and throughput. While PoA is invariant, TTFT P99 shows mild variation without
+systematic dependence on τ or ω. ITL P99 is stable at 19–23ms (340B) and 11–13ms (70B) across
+all configurations. Throughput is uniformly at the prefill-limited ceiling for each model.
+8.4 Experiment 4b: Pareto Sweep at Saturation
+Panels (b) and (c) of Table 6 present the 4 ×4 parameter sweeps at C = 128 (saturation knee) for
+both models.
+Parameter sensitivity depends on routing game size. The two models reveal a nuanced
+interaction between parameter sensitivity and the number of decode workers. On the 70B with
+1P/2D (m= 2 workers), clear parameter sensitivity emerges at saturation: PoA ranges from 14.6
+to 28.2 (1.9×spread, mean 21.9 ±4.6). On the 340B with 1P/2D (m = 2, TP=8), parameter
+sensitivity is moderate: 1.6×spread (mean 34.3 ±3.7), with variation that is noisy but unstructured.
+On the 70B 1P/5D (m= 5), the spread is 2.0×(mean 57.8 ±10.6), confirming that more decode
+workers amplify the routing game’s parameter sensitivity at saturation.
+Variance increase across configurations. Despite different sensitivity magnitudes, both models
+show the same qualitative transition: cross-configuration variance increases sharply from below
+saturation to at saturation. On the 340B, σgrows∼37×(from ±0.10 at C = 64 to ±3.7 at C = 128).
+On the 70B 1P/2D, σ grows∼58×(from ±0.08 to ±4.6). This variance jump across configurations
+is a candidate saturation signal; confirmation as a robust trigger requires repeated trials per cell.
+Throughput invariance. On both models, throughput is constant across all 16 configurations
+at the prefill-limited ceiling (∼18.9rps for 340B,∼47rps for 70B). Routing parameters affect how
+requests are distributed across decode workers (and hence tail latency), but cannot increase aggregate
+throughput beyond the prefill bottleneck. On the 70B 1P/2D, TTFT P99 varies from 6.7s to 25.6s
+across configurations; on the 340B, from 24.7s to 45.6s.
+27
+
+===== PDF PAGE 28 =====
+0.0
+(a) 340B, C = 64
+ω
+0.0 0.3 0.7 1.0
+18.7 18.6 18.7 18.7
+0.0
+(b) 340B, C = 128
+ω
+0.0 0.3 0.7 1.0
+31.9 34.6 32.4 36.0
+0.0
+(c) 70B, C = 128
+ω
+0.0 0.3 0.7 1.0
+19.6 18.4 25.4 19.1
+0.3
+18.6 18.6 18.5 18.7
+0.3
+36.5 42.5 35.7 26.6
+0.3
+27.5 20.6 14.6 15.6
+τ
+τ
+τ
+0.7
+18.7 18.7 18.9 18.7
+0.7
+32.0 29.4 34.2 34.4
+0.7
+28.2 26.4 24.6 20.5
+1.0
+18.6 18.8 18.6 18.6
+1.0
+37.5 32.7 34.0 38.5
+1.0
+21.2 25.7 27.2 15.4
+Figure 6: PoA heatmaps for the 4 ×4 parameter sweep, shown on a shared color scale (PoA 14.6 →
+42.5 spans the full intensity range). (a) 340B below saturation (C = 64): all 16 configurations yield
+PoA = 18.7 ±0.10, appearing uniformly light. (b) 340B at saturation (C = 128): PoA = 34.3 ±3.7,
+almost every cell deeply tinted (1.6×spread; moderate, unstructured variation). (c) 70B 1P/2D
+at saturation (C = 128): PoA ranges from 14.6 to 28.2 (1.9×spread)—visibly rugged within the
+panel yet still cooler than (b) on the shared scale, showing that the 70B 1P/2D at saturation is
+more parameter-sensitive but absolutely more efficient than the 340B. Bold values mark minima.
+Figure 6 visualizes the contrast: below saturation, the parameter landscape is uniformly flat; at
+saturation, it becomes rugged (70B) or noisy (340B).
+Empirical validation of the cache placement game (Game 2). The overlap weight ω
+controls Game 2’s influence on routing: ω= 0 disables cache affinity (pure congestion game), while
+ω = 1 maximizes it. Slicing the Pareto sweep along the ω dimension isolates the cache game’s
+effect. Below saturation (C = 64), PoA is invariant to ω on both models (CV <0.5%), confirming
+Proposition 5: with spare capacity, selfish cache-aware routing is as efficient as cache-oblivious
+routing, and the cache game’s PoA contribution is negligible. At saturation (C = 128), the cache
+game creates a measurable tradeoff on the 70B 1P/2D: averaging across τ, TTFT P99 drops 1.4×
+as ω increases from 0 to 1 (23.7s →17.4s), because cache-affine routing reduces redundant prefill
+recomputation. However, PoA does not decrease monotonically with ω, because concentrating
+requests on cache-warm workers creates load imbalance; the congestion externality offsets the cache
+benefit, exactly the tradeoff predicted by the coupling between Games 2 and 3 (Section 4.4). On the
+340B (m= 2), TTFT P99 is invariant to ω at saturation (∼30s across all values), consistent with
+the constrained routing game having too few workers for cache affinity to differentiate outcomes.
+8.5 Experiment 3: Adaptive versus Static Routing
+Experiment 3 tests whether the adaptive controller can exploit regime-dependent routing under
+a realistic load spike (C = 32 →128 →32, 120/180/120s, 3 iterations per strategy). We report
+the 340B (1P/2D) and 70B (1P/5D) configurations in detail. The 70B 1P/2D configuration was
+also tested (n= 3): the adaptive controller reduced PoA from 23.1 ±1.6 to 10.7 ±0.5 (2.2×) and
+TTFT P99 from 25.9 ±2.1 s to 3.4 ±0.4 s (7.6×), the strongest TTFT improvement across all
+configurations, achieved with the same (τ = 0.7,ω = 1.0) parameter setting. Switch latency was
+48.6 ±13.0 s. Two strategies are compared:
+• Static: default parameters (τ = 0, ω= 1) throughout all phases.
+• Adaptive: the SaturationDetector monitors TTFT P99 via 5s Prometheus polling with
+EWMA; upon detecting transition, a zero-downtime port switch redirects traffic from a
+28
+
+===== PDF PAGE 29 =====
+Table 7: Experiment 3: Adaptive vs. static routing, Nemotron-4-340B (1P/2D, mean ±sample std
+across 3 iterations).
+Strategy Phase PoA TTFT P99 (s) ITL P99 (ms) rps
+Static Below 19.51 ±0.07 0.29 22.3 5.5
+Static Saturated 33.15 ±1.14 28.26 ±5.9 22.7 18.2
+Static Recovery 19.52 ±0.04 0.30 23.8 5.5
+Adaptive Below 19.55 ±0.02 0.29 22.5 5.5
+Adaptive Saturated 25.78 ±0.07 5.92 ±0.06 22.4 11.6
+Adaptive Recovery 19.55 ±0.08 0.57 22.8 5.5
+Table 8: Experiment 3: Adaptive vs. static routing, Llama-3.1-70B (1P/5D, mean ±sample std
+across 3 iterations).
+Strategy Phase PoA TTFT P99 (s) ITL P99 (ms) rps
+Static Below 14.72 ±0.04 0.11† (n=2) 9.9 16.7
+Static Saturated 66.42 ±12.2 8.19 ±5.6 11.5 50.9
+Static Recovery 14.68 ±0.04 0.094 9.9 16.8
+Adaptive Below 14.66 ±0.03 0.106 10.0 16.8
+Adaptive Saturated 21.53 ±0.17 4.22 ±0.05 11.3 44.3
+Adaptive Recovery 14.75 ±0.11 0.128 9.9 16.8
+default-parameter frontend (port 8000) to a pre-started optimal-parameter frontend (port 8001,
+τ = 0.7, ω= 1.0). No frontend restart is required.
+Results. Tables 7 and 8 summarize the per-phase metrics for both models.
+Figure 7 visualizes the PoA comparison across phases for both models.
+340B results. On the 340B, the adaptive controller reduces aggregate saturated-phase TTFT P99
+by 4.8×(28.26 ±5.9 s →5.92 ±0.06 s) and PoA by 22% (33.15 →25.78). The zero-downtime switch
+fires at 54.8 ±0.2 s into the 180s saturated phase, remarkably consistent across all 3 iterations,
+leaving∼125s under the optimal frontend. The aggregate number therefore mixes two regimes and
+understates the steady-state benefit; we report both:
+• Saturated-phase aggregate (headline): TTFT P99 28.26 →5.92 s, a 4.8×reduction.
+• Post-switch steady state: TTFT P99∼0.97s (versus the static∼28.3s), a∼29×reduction.
+• Pre-switch (∼55s at default params): TTFT P99 tracks the static baseline.
+The aggregate understates the steady-state benefit by a factor of∼6, while conversely the PoA
+reduction (22%) may partially reflect the transient (see saturated-phase discussion in Section 9.2).
+Reported throughput costs refer to the saturated phase only: the adaptive strategy achieves 11.6rps
+vs. 18.2rps for static (a 36% reduction), reflecting a shifted operating point that prioritizes latency
+over throughput at saturation.
+The PoA improvement is less dramatic than TTFT because with only 2 decode workers, the
+routing game is inherently constrained, and parameter tuning cannot differentiate outcomes as much
+as with more workers. Even so, the TTFT improvement shows that moderate routing-efficiency
+gains translate to large user-facing latency benefits at saturation.
+29
+
+===== PDF PAGE 30 =====
+PoA
+70
+60
+50
+40
+30
+20
+10
+0
+66.4
+33.2
+25.8
+21.5
+19.5
+19.6
+14.7
+14.7
+340B Static
+340B Adaptive
+70B Static
+70B Adaptive
+19.5
+19.6
+14.7
+Below Saturated Recovery
+Figure 7: PoA comparison under load spike (mean of 3 iterations each). Below saturation and
+in recovery, both strategies produce identical PoA on each model. At saturation, the adaptive
+controller reduces PoA on the 340B (33.15 →25.78, 22%) and on the 70B (66.42 →21.53, 3.1×).
+The 70B benefits more from parameter switching because its 5-worker routing game (m= 5) has a
+larger action space than the 340B’s 2-worker game (m= 2).
+70B results. On the 70B 1P/5D (m= 5), the adaptive strategy reduces PoA from 66.42 ±12.2
+to 21.53 ±0.17, a 3.1×reduction and our strongest headline improvement. This is the statistically
+robust metric for this configuration: the static PoA baseline has CV = 18% and the 3.1×ratio
+does not straddle zero in any credible interval. Mean TTFT P99 also drops (8.19 →4.22 s, a 1.94×
+reduction), but we demote this number in the headline framing: the static baseline individual
+iterations are 2.6s, 13.8s, 8.2s (CV = 68%), and the n=3 95% t-CI spans [−5.7,22.1] s, so the
+ratio is dominated by the middle iteration and an n≥5 rerun would be needed to report it with
+confidence.1 The switch fired at 58.3 ±15.7 s into the saturated phase. The larger routing game
+enables more differentiation between parameter configurations, yielding the strongerStability. On both models, the adaptive strategy has dramatically lower variance than static:
+• 340B: σPoA = 0.07 (adaptive) vs. 1.14 (static); σTTFT = 0.06 s vs. 5.9s.
+• 70B: σPoA = 0.17 vs. 12.2; TTFT consistently∼4.2s vs. highly variable static (8.2 ±5.6 s).
+The static strategy’s high TTFT variance (21.5–31.8s on the 340B) reflects stochastic queue
+dynamics at the saturation knee. The adaptive controller eliminates this variance by preventing
+queue explosion via the optimal frontend. In recovery, both strategies return to the below-saturation
+baseline on both models, confirming clean regime transitions.
+9 Discussion
+9.1 When Game Theory Applies
+Three assumptions of classical game theory are imperfect fits for LLM inference:
+1One iteration of the 70B static below-saturation phase produced an anomalous TTFT P99 of 2.84s (vs.∼0.1s in
+the other two), likely due to insufficient cool-down from the previous iteration’s saturated phase. The below-saturation
+TTFT (†) in Table 8 reports the mean of the two non-anomalous iterations (0.127s, 0.089s); including the anomalous
+iteration, the 3-iteration mean would be 1.02 ± 1.58 s, dominated by the outlier. For symmetry, the corresponding
+3-iteration PoA under the full 3-iteration treatment is 14.73 ±14.8
+ PoA reduction.
+ 0.06 (unaffected by the TTFT outlier).
+30
+
+===== PDF PAGE 31 =====
+Rationality and the mechanism design interpretation. Inference requests are passive
+workloads, not strategic agents. The mechanism-design framing in Section 1 side-steps this: PoA
+measures the efficiency of the router-as-mechanism, requiring no rationality assumption on requests.
+Strategic considerations re-enter at the tenant level in multi-tenant clusters, where users have
+genuine incentives to game the allocator (Section 9.3).
+Complete information. Output sequence lengths are unknown until generation completes, future
+arrival patterns are stochastic, and execution times depend on dynamic batch composition and
+memory pressure. The games we formalize are therefore games of incomplete information. Our
+controller addresses this pragmatically: rather than computing equilibria under uncertainty, it
+detects regime shifts from observable metrics and applies pre-computed parameter settings.
+Static analysis. Classical game theory analyzes one-shot interactions, but inference serving is a
+continuous system where GPU memory, batch composition, and queue depths evolve at millisecond
+timescales. Dynamic game models (differential games, repeated games with discounting) are the
+appropriate generalization. Our saturation analysis (Section 5) takes a step in this direction by
+characterizing how the game’s structure changes with load, but a full dynamic treatment remains
+future work.
+9.2 Scope and Boundaries
+This work studies two dense models on a 3-node cluster under a controlled workload. Several
+limitations bound the generality of our findings.
+Workload homogeneity. All experiments use a single workload profile: 5 prompt templates,
+128 input tokens, 256 max output tokens, and deterministic generation (temperature 0.0). With
+only 5 distinct prefixes and m= 2–5 workers, the KV cache prefix space is trivially partitionable,
+making the cache placement game (Game 2) degenerate: the parameter invariance observed below
+saturation in the Pareto sweep may partly reflect this trivial cache problem rather than a general
+property. Furthermore, with 128-token inputs, KV cache blocks are small relative to the 192GB
+HBM3e capacity, so cache tier spillover (Game 2’s multi-tier cost structure) is never exercised;
+all blocks remain in HBM throughout. Deterministic generation (temperature 0.0) eliminates
+output-length variance that would create heterogeneous decode loads (Game 3) and limits the
+diversity of congestion patterns. Whether the three-regime PoA structure and parameter invariance
+hold under variable-length, multi-turn, or production-trace workloads is an open question. A
+long_context workload type was implemented in the experiment code but not exercised in the
+reported experiments.
+Game 1 (P/D allocation) is not empirically validated. All experiments use fixed pre-
+fill/decode splits; the Planner’s dynamic GPU reallocation (Game 1) is analyzed theoretically
+(Proposition 1) but never tested. GPU utilization metrics for the P/D equilibrium analysis are
+synthetically generated from the fixed topology. This means our empirical findings validate Games 2
+and 3 (cache placement and routing) but not Game 1.
+Scope. The regime structure holds across both models and all tested topologies; extending to
+MoE architectures, larger clusters (m≫5), and heterogeneous production traffic would map the
+boundaries of where these properties hold.
+31
+
+===== PDF PAGE 32 =====
+Routing baselines: PoA captures temporal dynamics. Our PoA measurements characterize
+Dynamo’s built-in KV-aware greedy router. A static counterfactual analysis (assigning requests
+to workers under the same cost model (Section 6.4) using round-robin, random uniform, and
+power-of-two-choices policies) shows all policies within∼0.3–10% of the Hungarian optimal at C ≥8
+for both m = 2 and m = 5 worker topologies (at C < 8, the small number of in-flight requests
+causes wider divergence between policies).2 This is a key result: it confirms that the empirically
+measured PoA of∼19×(340B) and∼7×(70B) is driven by temporal dynamics (queuing delays,
+prefill/decode contention, and batch scheduling), not by the static assignment algorithm. The
+two-order-of-magnitude gap between the static routing PoA (∼1.02–1.08) and the empirical PoA
+(∼7–19) demonstrates that the PoA metric captures system-level inefficiency that conventional
+routing comparisons miss. Deriving queuing-theoretic baselines (e.g., M/G/k predictions of the
+saturation knee) remains a complementary direction.
+Game 2 (KV cache placement) is validated indirectly through the ω-dimension of the Pareto
+sweep (Section 8.4): the cache game’s PoA contribution is negligible below saturation and creates
+a measurable congestion-affinity tradeoff at saturation. The ω sweep was bounded at ω = 1.0
+(Dynamo’s default upper end); the ω > 1 regime—cache affinity weighted more heavily than
+active-block load—was not exercised and could alter the at-saturation tradeoff between cache-warm
+concentration and load imbalance. Isolating per-block cache placement decisions (tier promotion,
+eviction under capacity pressure) would require controlled cache-capacity experiments with diverse
+prefix-sharing workloads.
+The adaptive controller uses fixed thresholds and fixed per-regime parameters. Continuous
+parameter interpolation or online learning would be natural extensions; we use the simplest viable
+controller to isolate the value of regime detection. Note that the adaptive controller’s TTFT
+improvement on the 340B comes at a throughput cost: 11.6rps (adaptive) vs. 18.2rps (static), a
+36% reduction. This reflects the shifted operating point: the optimal-parameter frontend prioritizes
+latency over throughput at saturation. Whether this tradeoff is desirable depends on the SLO; a
+production deployment would need to select the target point on the Pareto frontier explicitly.
+9.3 Implications for System Design
+Three design implications follow from the regime structure:
+Expose the PoA as a first-class metric. A rising PoA warns that the system is entering
+a regime where selfish routing degrades rapidly—even when absolute latency is still within SLO
+bounds. Serving frameworks should export PoA estimates alongside TTFT and ITL.
+Design for regime transitions, not steady state. The system spends most of its time in
+transient states between regimes, not at equilibrium. Planners and routers should be evaluated on
+their behavior during transitions (convergence speed, overshoot, oscillation), not just steady-state
+throughput.
+Consider the multi-tenant game. In shared clusters, tenants have genuine strategic incentives
+that single-tenant benchmarks cannot capture. Game-theoretic mechanism design (strategy-proof
+auctions, incentive-compatible allocation) becomes directly relevant for multi-tenant disaggregated
+2At a few concurrency levels on m = 5 workers, the KV-aware greedy policy achieves a PoA ratio slightly below 1.0
+(e.g., 0.968 at C = 64). This occurs because the frozen-latency Hungarian assignment is not a strict lower bound when
+the greedy policy exploits KV cache overlap information that the Hungarian cost matrix approximates imperfectly.
+32
+
+===== PDF PAGE 33 =====
+inference, where tenants might overprovision requests, send dummy prefills to warm cache, or
+time batch jobs to avoid contention. Dynamo’s Planner currently optimizes aggregate SLOs; a
+multi-tenant game-theoretic extension would surface incentive properties under strategic tenant
+behavior and characterize the fairness guarantees it provides—a natural next step jointly with the
+Planner team.
+10 Conclusion
+This paper modeled NVIDIA Dynamo’s disaggregated inference architecture as three coupled games
+and measured the Price of Anarchy of one of them—request routing—on a 3-node B200 cluster
+across two models and three topologies.
+The empirical observation was the flatness. Router parameters (τ, ω) did not measurably affect
+PoA below saturation. The index varies by less than ±0.10 across 16 (τ,ω) configurations on
+the 340B, ±0.08 on the 70B 1P/2D, and ±0.06 on the 70B 1P/5D (single trial per configuration;
+cross-config spread, not measurement uncertainty—see the §8 measurement note). Parameters
+start mattering only at the first post-knee grid point, and that point sits at the same concurrency
+(C = 128) on a 70B-parameter and a 340B-parameter model despite a 4.9×size gap and different
+TP configurations and KV transfer paths. One plausible mechanical explanation: both topologies
+use a single prefill worker on identical B200 hardware with identical 128-token inputs, so single-
+prefill-worker compute exhaustion is expected to occur at a similar in-flight-request count. Our
+grid cannot resolve whether the true knees are exactly co-located within (96,128]; denser sweeps on
+other hardware would test whether the coincidence is deeper than single-worker prefill saturation.
+The adaptive controller exploits this structure with the simplest possible mechanism: detect the
+regime, switch the parameters. Measured improvements scale with routing-game size: the largest
+PoA reduction lands on the 70B 1P/5D configuration (m= 5), with smaller but consistent PoA
+and order-of-magnitude TTFT P99 reductions on the 70B and 340B 1P/2D topologies (Section 8.5).
+Run-to-run variance shrinks by an order of magnitude in every case. The deep-saturation PoA
+blow-up (∼200–309) is consistent with single-prefill-worker compute exhaustion rather than routing
+suboptimality; attributing this specifically to Game 1 (P/D split) resource allocation would require
+varying the P/D split (e.g., 2P/1D), which our fixed-topology experiments cannot do.
+Our framework confirms [25, 31] that game theory’s value for inference systems is analytical, not
+algorithmic: vocabulary to characterize behavior, metrics to quantify suboptimality, and regime
+analysis to guide operations—without runtime equilibrium computation.
+10.1 Future Work
+Several directions extend this work:
+Scaling and queuing baselines. Parameter sensitivity at saturation differs by model (1.6×
+spread on the 340B vs. 1.9–2.0×on the 70B), with the 70B showing similar sensitivity on both
+m= 2 and m= 5 topologies. Production-scale clusters (m≫5) would reveal whether this trend
+continues and whether PoA invariance below saturation eventually breaks. Static counterfactual
+analysis already shows all routing policies (round-robin, random, power-of-two-choices) within
+∼0.3–10% of the Hungarian optimal at C ≥8, confirming the measured PoA is driven by temporal
+dynamics rather than algorithm choice (Section 9.2). A queuing-theoretic baseline (e.g., M/G/k)
+would identify which aspects of the regime structure are already predicted by classical models and
+where the game-theoretic lens adds new insight.
+33
+
+===== PDF PAGE 34 =====
+Caching, workloads, and dynamics. Our Pareto sweep validates Game 2’s aggregate effect
+(Section 8.4); isolating per-block placement decisions requires controlled cache-capacity experiments
+with diverse prefix-sharing workloads. Heterogeneous and production-trace workloads would test
+the generality of the regime structure. Dynamic game models (differential games, repeated games
+with discounting) would extend the analysis from stationary equilibria to the transient dynamics
+that dominate bursty production traffic.
+Architecture extensions. MoE models introduce a nested congestion game (requests route to
+GPUs (outer), then to experts (inner)) where the PoA may compound across layers. In multi-tenant
+clusters, tenants are genuine strategic agents; mechanism design [22] for strategy-proofness becomes
+directly relevant (Section 9.3).
+P/D split adaptation. A game-theory-informed Planner could use the PoA signal to drive
+faster, larger P/D adjustments than the load-based Planner’s ±1 worker per 30-second interval (the
+SLA-based Planner, production default since Dynamo 0.4, computes target replica counts directly
+but still runs on minute-scale cadence), directly attacking the saturation-regime bottleneck identified
+above.
+A Game Theory Definitions
+We state the standard game-theoretic definitions used throughout the paper; see Nisan et al. [25]
+for a comprehensive treatment.
+Definition 4 (Normal-form game). A normal-form game Γ = (N,(Si)i∈N,(ui)i∈N) consists of a set
+of players N= {1,...,n}, a strategy set Si for each player i, and a utility function ui : j∈N Sj →R
+for each player i.
+Definition 5 (Nash equilibrium). A strategy profile s∗= (s∗
+1,...,s∗
+n) is a Nash equilibrium if no
+player can improve their utility by unilaterally deviating:
+ui(s∗
+i,s∗
+−i) ≥ui(si,s∗
+−i) ∀i∈N, ∀si ∈Si
+where s∗
+−i denotes the strategies of all players except i.
+Definition 6 (Congestion game [30]). A congestion game consists of a set of players N, a set of
+resources R, and for each player i, a collection of feasible resource subsets Σi ⊆2R. Each resource
+r∈R has a cost function cr : N →R that depends only on the number of players using r. The cost
+to player i under strategy profile σ is Ci(σ) = r∈σi cr(nr(σ)), where nr(σ) is the number of players
+using resource r. Every congestion game is an exact potential game [24]: there exists a potential
+function Φ(σ) = r∈R
+nr (σ)
+k=1 cr(k) such that any unilateral deviation that decreases a player’s cost
+also decreases Φ. Consequently, every congestion game possesses at least one pure Nash equilibrium.
+Definition 7 (Price of Anarchy [32]). The Price of Anarchy of a game is the ratio of the social
+cost at the worst Nash equilibrium to the social cost at the social optimum:
+maxs∗∈NE SC(s∗)
+PoA=
+mins∈SSC(s)
+where SC(s) = iCi(s) is the social cost (sum of individual costs) and NE is the set of Nash
+equilibria. A Price of Anarchy of 1 means selfish behavior is socially optimal; larger values indicate
+inefficiency due to uncoordinated decision-making.
+34
+
+===== PDF PAGE 35 =====
+Definition 8 (Pareto optimality). A strategy profile s is Pareto optimal (or Pareto efficient) if
+there is no alternative profile s′ such that ui(s′) ≥ui(s) for all players i and uj(s′) >uj(s) for at
+least one player j. The Pareto frontier is the set of all Pareto-optimal outcomes. In the context
+of LLM serving, the Pareto frontier typically characterizes the tradeoff surface across throughput,
+TTFT, ITL, and cost.
+Definition 9 (Wardrop equilibrium [35]). In a routing game with a continuum of infinitesimally
+small players, a Wardrop equilibrium is a flow assignment where all used paths between any origin-
+destination pair have equal cost, and no unused path has lower cost. This is the continuous-flow
+analog of Nash equilibrium, applicable when the number of requests is large relative to the number of
+GPUs.
+Acknowledgements
+We thank Kevin Cochrane for the initial discussions that motivated this line of inquiry, and Vultr
+for providing the compute infrastructure used in our experiments.
+References
+[1] Amey Agrawal, Nitin Kedia, Jayashree Mohan, Ashish Panwar, Nipun Kwatra, Bhargav S.
+Gulavani, Ramachandran Ramjee, and Alexey Tumanov. Vidur: A large-scale simulation
+framework for LLM inference. In Proceedings of Machine Learning and Systems (MLSys), 2024.
+[2] Sebastian Aland, Dominic Dumrauf, Martin Gairing, Burkhard Monien, and Florian Schopp-
+mann. Exact price of anarchy for polynomial congestion games. SIAM Journal on Computing,
+40(5):1211–1233, 2011.
+[3] Baruch Awerbuch, Yossi Azar, and Amir Epstein. The price of routing unsplittable flow. In
+Proceedings of the 37th Annual ACM Symposium on Theory of Computing (STOC), pages
+57–66, 2005.
+[4] Xi Chen and Xiaotie Deng. Settling the complexity of two-player Nash equilibrium. In
+Proceedings of the 47th Annual IEEE Symposium on Foundations of Computer Science (FOCS),
+pages 261–272, 2006.
+[5] George Christodoulou and Elias Koutsoupias. The price of anarchy of finite congestion games.
+In Proceedings of the 37th Annual ACM Symposium on Theory of Computing (STOC), pages
+67–73, 2005.
+[6] Byung-Gon Chun, Kamalika Chaudhuri, Hoeteck Wee, Marco Barreno, Christos H Papadim-
+itriou, and John Kubiatowicz. Selfish caching in distributed systems: a game-theoretic analysis.
+In Proceedings of the 23rd Annual ACM Symposium on Principles of Distributed Computing
+(PODC), pages 21–30, 2004.
+[7] Riccardo Colini-Baldeschi, Roberto Cominetti, Panayotis Mertikopoulos, and Marco Scarsini.
+When is selfish routing bad? The price of anarchy in light and heavy traffic. Operations
+Research, 68(2):411–434, 2020.
+[8] Roberto Cominetti, Marco Scarsini, Marc Schröder, and Nicolás E Stier-Moses. Approximation
+and convergence of large atomic congestion games. Mathematics of Operations Research, 48(2):
+784–811, 2023.
+35
+
+===== PDF PAGE 36 =====
+[9] Constantinos Daskalakis, Paul W Goldberg, and Christos H Papadimitriou. The complexity of
+computing a Nash equilibrium. In Proceedings of the 38th Annual ACM Symposium on Theory
+of Computing (STOC), pages 71–78, 2006.
+[10] Bart de Keijzer and Guido Schäfer. Finding social optima in congestion games with positive
+externalities. In Proceedings of the 20th European Symposium on Algorithms (ESA), volume
+7501 of LNCS, pages 395–406. Springer, 2012.
+[11] Francisco Facchinei and Christian Kanzow. Generalized Nash equilibrium problems. 4OR, 5(3):
+173–210, 2007.
+[12] Fatemeh Fardno and S. Rasoul Etesami. A game-theoretic framework for distributed load
+balancing: Static and dynamic game models. arXiv preprint arXiv:2501.15324, 2025. To appear
+in Automatica, 2026.
+[13] Giannis Fikioris, Rachit Agarwal, and Éva Tardos. Incentives in dominant resource fair
+allocation under dynamic demands. In Symposium on Algorithmic Game Theory (SAGT),
+2024.
+[14] Jason Gaitonde and Éva Tardos. The price of anarchy of strategic queuing systems. Journal of
+the ACM, 70(3):20:1–20:63, 2023.
+[15] Ali Ghodsi, Matei Zaharia, Benjamin Hindman, Andy Konwinski, Scott Shenker, and Ion
+Stoica. Dominant resource fairness: Fair allocation of multiple resource types. In Proceedings
+of the 8th USENIX Conference on Networked Systems Design and Implementation (NSDI),
+pages 323–336, 2011.
+[16] Gail Gilboa-Freedman, Refael Hassin, and Yoav Kerner. The price of anarchy in the Markovian
+single server queue. IEEE Transactions on Automatic Control, 59(2):455–459, 2014.
+[17] Sai Gokhale, Devleena Das, Rajeev Patwari, Ashish Sirasao, and Elliott Delaye. KV Pareto:
+Systems-level optimization of KV cache and model compression for long context inference.
+arXiv preprint arXiv:2512.01953, 2025.
+[18] Aaron Grattafiori et al. The Llama 3 herd of models. arXiv preprint arXiv:2407.21783, 2024.
+[19] Moshe Haviv and Tim Roughgarden. The price of anarchy in an exponential multi-server.
+Operations Research Letters, 35(4):421–426, 2007.
+[20] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu,
+Joseph E Gonzalez, Hao Zhang, and Ion Stoica. Efficient memory management for large
+language model serving with PagedAttention. In Proceedings of the 29th Symposium on
+Operating Systems Principles (SOSP), pages 611–626, 2023.
+[21] Qian Ma, Edmund Yeh, and Jianwei Huang. Selfish caching games on directed graphs.
+IEEE/ACM Transactions on Networking, 29(2):709–722, 2021.
+[22] Kshiteej Mahajan, Arjun Balasubramanian, Arjun Singhvi, Shivaram Venkataraman, Aditya
+Akella, Amar Phanishayee, and Shuchi Chawla. Themis: Fair and efficient GPU cluster
+scheduling. In Proceedings of the 17th USENIX Symposium on Networked Systems Design and
+Implementation (NSDI), pages 289–304, 2020.
+36
+
+===== PDF PAGE 37 =====
+[23] Igal Milchtaich. Congestion games with player-specific payoff functions. Games and Economic
+Behavior, 13(1):111–124, 1996.
+[24] Dov Monderer and Lloyd S Shapley. Potential games. Games and Economic Behavior, 14(1):
+124–143, 1996.
+[25] Noam Nisan, Tim Roughgarden, Éva Tardos, and Vijay V Vazirani. Algorithmic Game Theory.
+Cambridge University Press, 2007.
+[26] NVIDIA Corporation. NVIDIA Dynamo: Disaggregated inference serving for LLMs. https:
+//developer.nvidia.com/dynamo, 2025. Version 0.9.0, accessed June 2026.
+[27] Pratyush Patel, Esha Choukse, Chaojie Zhang, Aashaka Shah, Íñigo Goiri, Saeed Maleki, and
+Ricardo Bianchini. Splitwise: Efficient generative LLM inference using phase splitting. In
+Proceedings of the 51st Annual International Symposium on Computer Architecture (ISCA),
+pages 118–132. IEEE, 2024. arXiv:2311.18677.
+[28] Giovanni Perin, Gianluca Fighera, and Leonardo Badia. Comparison of Nash bargaining and
+myopicequilibriumforresourcesallocationincloudcomputing. InIEEE Global Communications
+Conference (GLOBECOM), pages 1–6. IEEE, 2019.
+[29] J Ben Rosen. Existence and uniqueness of equilibrium points for concave N-person games.
+Econometrica, 33(3):520–534, 1965.
+[30] Robert W Rosenthal. A class of games possessing pure-strategy Nash equilibria. International
+Journal of Game Theory, 2(1):65–67, 1973.
+[31] Tim Roughgarden. Intrinsic robustness of the price of anarchy. Journal of the ACM, 62(5):
+1–42, 2015.
+[32] Tim Roughgarden and Éva Tardos. How bad is selfish routing? Journal of the ACM, 49(2):
+236–259, 2002.
+[33] Ying Sheng, Lianmin Zheng, Binhang Yuan, Zhuohan Li, Max Ryabinin, Beidi Chen, Percy
+Liang, Christopher Ré, Ion Stoica, and Ce Zhang. FlexGen: High-throughput generative
+inference of large language models with a single GPU. In Proceedings of the 40th International
+Conference on Machine Learning (ICML), 2023.
+[34] Chao Wang, Pengfei Zuo, Zhangyu Chen, Yunkai Liang, Zhou Yu, and Ming-Chang Yang.
+Prefill-decode aggregation or disaggregation? Unifying both for goodput-optimized LLM serving.
+arXiv preprint arXiv:2508.01989, 2025.
+[35] John Glen Wardrop. Some theoretical aspects of road traffic research. Proceedings of the
+Institution of Civil Engineers, 1(3):325–362, 1952.
+[36] Minrui Xu, Dusit Niyato, and Christopher G Brinton. Serving long-context LLMs at the mobile
+edge: Test-time reinforcement learning-based model caching and inference offloading. arXiv
+preprint arXiv:2501.14205, 2025.
+[37] Tianhao Xu, Yiming Liu, et al. AIConfigurator: Lightning-fast configuration optimization for
+multi-framework LLM serving. arXiv preprint arXiv:2601.06288, 2026.
+37
+
+===== PDF PAGE 38 =====
+[38] Lianmin Zheng, Liangsheng Yin, Zhiqiang Xie, Chuyue Sun, Jeff Huang, Cody Hao Yu, Shiyi
+Cao, Christos Kozyrakis, Ion Stoica, Joseph E. Gonzalez, Clark Barrett, and Ying Sheng.
+SGLang: Efficient execution of structured language model programs. In Advances in Neural
+Information Processing Systems (NeurIPS), 2024.
+[39] Pengfei Zheng, Rui Pan, Tarannum Khan, Shivaram Venkataraman, and Aditya Akella. Shock-
+wave: Fair and efficient cluster scheduling for dynamic adaptation in machine learning. In
+Proceedings of the 20th USENIX Symposium on Networked Systems Design and Implementation
+(NSDI), 2023.
+[40] Yinmin Zhong, Shengyu Liu, Junda Chen, Jianbo Hu, Yibo Zhu, Xuanzhe Liu, Xin Jin, and Hao
+Zhang. DistServe: Disaggregating prefill and decoding for goodput-optimized large language
+model serving. In Proceedings of the 18th USENIX Symposium on Operating Systems Design
+and Implementation (OSDI), pages 193–210, 2024. arXiv:2401.09670.
+38

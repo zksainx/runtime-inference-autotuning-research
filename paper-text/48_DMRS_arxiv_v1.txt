@@ -1,0 +1,1907 @@
+Source: 48_DMRS_arxiv_v1.pdf
+Pages: 30
+
+===== PDF PAGE 1 =====
+arXiv:2610.15579v1 [cs.DS] 11 Oct 2026
+Preprint
+APPROXIMATION ALGORITHMS FOR DUAL-MEMORY
+REQUEST SCHEDULING IN DISAGGREGATED LLM IN-
+FERENCE
+Xin Wanga, Hong Shena, Hui Tianb, Ye Taoa
+aSchool of Engineering and Technology, Central Queensland University, Australia
+bSchool of Information and Communication Technology, Griffith University, Australia
+ABSTRACT
+Disaggregated LLM inference executes the prefill and decode phases on sepa-
+rate resource pools, reducing interference between the two phases. However, this
+architecture introduces a coupled scheduling problem because a request that com-
+pletes prefill retains its prompt KV cache in prefill memory until it is admitted to
+the decode pool. Prefill and decode admission decisions therefore jointly deter-
+mine memory occupancy and request completion times. To the best of our knowl-
+edge, this problem lacks a formal formulation, and no approximation guarantees
+are known for request scheduling in disaggregated LLM inference. We formal-
+ize this setting as the dual-memory request scheduling (DMRS) problem, whose
+objective is to minimize the sum of request completion times, and prove that it is
+strongly NP-hard. We develop two deterministic polynomial-time approximation
+algorithms. The first applies to instances satisfying α<1 and β <1 and achieves
+an approximation ratio of 8+ 4
+1−α+ 8
+1−β, where αand βare the maximum normal-
+ized prefill and peak decode memory demands among all requests, respectively. In
+particular, it yields a 32-approximation when α,β ≤1/2. The second algorithm
+applies to all feasible instances and achieves a uniform 36-approximation. Finally,
+evaluations on two H100 GPUs using trace-derived offline workloads show that
+the proposed algorithms reduce the sum of request completion times relative to
+multiple vLLM deployment baselines.
+1 INTRODUCTION
+Large language model (LLM) inference consists of a prefill phase followed by an autoregressive
+decode phase. During prefill, the model processes the prompt tokens in parallel and constructs
+the key-value (KV) cache. During decoding, output tokens are generated sequentially, and the KV
+cache expands with each token. Prefill is generally compute-bound, whereas decoding is more
+sensitive to memory bandwidth and KV cache capacity (Patel et al., 2024; Zhong et al., 2024).
+When colocated on the same GPUs, the two phases compete for shared resources. To reduce this
+interference, recent systems execute the prefill and decode phases on separate GPU instances or
+resource pools (Patel et al., 2024; Zhong et al., 2024; Hu et al., 2024b; Qin et al., 2026; Jiang et al.,
+2025). This architecture allows resources to be allocated independently to the two phases.
+However, prefill-decode disaggregation does not eliminate the scheduling dependence between the
+two phases. After completing prefill, a request may be unable to enter decoding immediately if the
+available decode memory is insufficient. While waiting, the request retains its prompt KV cache
+in prefill memory, prolonging its occupancy of that memory and potentially blocking subsequent
+prefill admissions. Upon decode admission, the KV cache is transferred to decode memory, and
+the retained prefill memory is released. The request’s decode memory usage then grows as output
+tokens are generated. Consequently, prefill and decode admission decisions are coupled through
+their effects on memory occupancy in the two resource pools.
+Existing systems work has investigated serving architectures and resource allocation (Zhong et al.,
+2024; Patel et al., 2024; Hu et al., 2024b; Jiang et al., 2025), request scheduling and load balancing
+to improve goodput and meet service-level objectives (Wang et al., 2025a; Wu et al., 2025; Jin et al.,
+2024), and KV cache transfer, storage, and management (Qin et al., 2026; Hu et al., 2024a; Luo
+1
+
+===== PDF PAGE 2 =====
+Preprint
+et al., 2026; Hong et al., 2025). These studies focus primarily on the design and implementation of
+practical serving systems. Related theoretical work has analyzed latency-oriented request scheduling
+subject to a unified memory capacity constraint (Jaillet et al., 2025; Ao et al., 2025; Wang et al.,
+2025b; Feng et al., 2026b).
+To the best of our knowledge, no prior theoretical scheduling model jointly considers prefill and
+decode admission decisions under separate memory capacities, and no approximation guarantees
+are known for minimizing the sum of request completion times in this setting. We address this gap
+by studying offline scheduling of a batch of requests under prefill-decode disaggregation. Our main
+contributions are summarized as follows.
+Contribution 1: We develop a system model for prefill and decode admission scheduling in disag-
+gregated LLM inference. Based on this model, we formulate the dual-memory request scheduling
+(DMRS) problem with the objective of minimizing the sum of request completion times. We prove
+that DMRS is strongly NP-hard.
+Contribution 2: We develop a deterministic polynomial-time approximation algorithm for instances
+satisfying α<1 and β <1. It achieves an approximation ratio of 8 + 4
+1−α + 8
+1−β, where αand β
+are the maximum normalized prefill and peak decode memory demands, respectively. In particular,
+it yields a 32-approximation when α,β ≤1/2.
+Contribution 3: We develop a second deterministic polynomial-time algorithm that applies to every
+feasible instance, including α= 1 or β = 1, and achieves a uniform 36-approximation.
+Contribution 4: We evaluate both algorithms on synthetic instances and workloads derived from
+the Azure LLM Inference Trace 2023 (Patel et al., 2024). The CPU experiments compare the al-
+gorithms’ objective values with the exact optimum obtained from a time-indexed integer linear pro-
+gramming (ILP) formulation and with a linear programming (LP) lower bound. Serving experiments
+on two H100 GPUs use Qwen2.5 (7B) (Yang et al., 2024) and Llama 3.1 (8B) (Grattafiori et al.,
+2024) to compare total completion time against three vLLM baselines.
+2 SYSTEM MODEL AND FORMULATION
+In this section, we first present the system model. We then formulate DMRS, establish its com-
+putational complexity, and derive an LP relaxation for our approximation analysis. Appendix A
+summarizes the notation used throughout the paper.
+2.1 SYSTEM MODEL
+In our model, the prefill and decode phases execute on separate resource pools with respective
+memory capacities MP,MD ∈Z>0.
+Execution Setup. Time is divided into slots [t,t+ 1), where t∈{0,1,2,...}. KV cache memory
+is measured in token units, with one unit representing the memory required to store the key and
+value states of one token. During prefill, each active request processes its prompt for a fixed number
+of slots. During decoding, each active request completes one decode iteration and generates one
+output token per slot. Multiple requests may execute concurrently in each phase, subject to the
+corresponding memory capacity. Execution is non-preemptive within each phase: once admitted to
+a phase, a request remains active until it completes that phase.
+Inference Requests. Let I= {1,...,n}denote the set of requests. Each request i∈Iis charac-
+terized by (mi,pi,di) ∈Z3
+>0, where mi is its effective prefill processing time, measured in advance
+under the given deployment configuration and expressed in slots; pi is the number of input tokens
+in its prompt and, equivalently, its prefill memory demand in token units; and di is the number of
+output tokens to be generated and, equivalently, the number of decode iterations. After generating
+uoutput tokens, request ihas decode memory demand ri(u) = pi + u. Its peak decode memory
+demand is hi = ri(di) = pi + di.
+Throughout the paper, we assume that pi ≤MP and hi ≤MD for every i ∈I. These conditions
+are necessary and sufficient for feasibility, since the requests can always be processed sequentially.
+Let α := maxi∈Ipi/MP and β := maxi∈Ihi/MD denote the maximum normalized prefill and
+peak decode memory demands, respectively. The feasibility conditions imply α,β ≤1.
+2
+
+===== PDF PAGE 3 =====
+Preprint
+System Overview. As shown in Figure 1, we consider a batch of requests released at time t = 0,
+with their characteristics (mi,pi,di) known to the scheduler in advance. During execution, each
+unfinished request belongs to one of four state sets.
+Prefill Resource Pool:
+Capacity 𝑴𝑷
+ℰ 𝑡 : executing prefill
+𝒰 𝑡 : unstarted
+Request
+Batch
+• each
+request 𝑖:
+𝑚𝑖 , 𝑝𝑖 , 𝑑𝑖
+𝑡 = 0
+1 2... 𝑚𝑖 (slots)
+PA DA
+𝒕 = 𝑺𝒊
+𝑷
+𝒕 = 𝑺𝒊
+𝑫
+𝒲 𝑡 : waiting for
+decode admission
+ℰ 𝑡 𝒲 𝑡
+Prefill Memory Usage
+subject to Prefill Memory Constraint
+෍
+𝑖∈ℰ 𝑡
+𝑝𝑖 + ෍
+𝑖∈𝒲 𝑡
+𝑝𝑖 ≤ 𝑀𝑃
+Decode Resource Pool:
+Capacity 𝑴𝑫
+𝒟 𝑡 : executing decoding
+1 2... 𝑑𝑖 (iterations)
+𝑝𝑖 + 𝑑𝑖
+𝑝𝑖 + 3
+𝑝𝑖 + 2
+𝑝𝑖 + 1
+...
+1 2 3 𝑑𝑖
+𝑟 𝑖 𝑢 = 𝑝𝑖 + 𝑢
+Decode Memory Usage
+subject to
+Decode Memory Constraint
+෍
+𝑖∈𝒟 𝑡
+𝑟 𝑖 𝑡 − 𝑆𝑖
+𝐷 + 1 ≤ 𝑀𝐷
+Completed
+Figure 1: System model for joint prefill and decode admission scheduling.
+For each slot [t,t+ 1), let U(t), E(t), W(t), and D(t) denote, respectively, the sets of unstarted
+requests awaiting prefill admission (PA), requests executing prefill, requests awaiting decode admis-
+sion (DA), and requests executing decoding. Let SP
+i and SD
+i denote the prefill and decode admission
+times of request i, respectively.
+PA and Prefill Memory Constraint. The scheduler selects a feasible subset of unstarted requests
+for prefill admission. A request iadmitted at time SP
+i enters the prefill pool and belongs to E(t)
+while executing prefill. It requires mi slots to process prompt tokens in parallel and generate its
+prompt KV cache, and it occupies pi units of prefill memory. Requests not admitted remain in U(t).
+After completing prefill, request iis either admitted immediately to decoding or enters W(t) while
+awaiting decode admission. During this waiting period, it retains its prompt KV cache and continues
+to occupy pi units of prefill memory. Therefore, request i occupies pi units of prefill memory
+throughout [SP
+i ,SD
+i ). The prefill memory constraint during slot [t,t+ 1) is thus
+pi +
+pi ≤MP.
+i∈E(t)
+i∈W(t)
+DA and Decode Memory Constraint. At admission time SD
+i , request i enters the decode pool.
+Its prompt KV cache is transferred from prefill memory to decode memory, and its prefill memory
+is released. We model this transfer as instantaneous and omit transfer time and network bandwidth
+constraints. During decoding, request ibelongs to D(t) and completes one iteration per slot.
+After generating uoutput tokens, request ihas decode memory demand ri(u) = pi + u. For u =
+0,...,di, this demand grows from pi at decode admission to the peak value hi = ri(di) = pi + di.
+If request iexecutes decoding during slot [t,t+ 1), it has generated t−SD
+i output tokens before
+the slot and generates one additional token during the slot. Its decode memory demand therefore
+reaches ri(t−SD
+i + 1) during that slot. Hence, the decode memory constraint is
+(pi + t−SD
+i + 1) ≤MD.
+i∈D(t)
+After its di-th decode iteration, request ileaves the system and releases its decode memory.
+2.2 DMRS FORMULATION
+Based on the system model above, we formulate joint prefill and decode admission scheduling as
+the dual-memory request scheduling (DMRS) problem, whose objective is to minimize the sum of
+3
+
+===== PDF PAGE 4 =====
+Preprint
+request completion times. The optimization problem, denoted by (O), is formulated as follows:
+min
+Ci (1a)
+i∈I
+s.t. CP
+i = SP
+i + mi, ∀i∈I, (1b)
+Ci = SD
+i + di, ∀i∈I, (1c)
+SD
+i ≥CP
+i , ∀i∈I, (1d)
+pi1 SP
+i ≤t<SD
+i∈I
+i∈I
+i ≤MP, ∀t∈{0,1,2,...}, (1e)
+pi + t−SD
+i + 1 1 SD
+i ≤t<Ci ≤MD, ∀t∈{0,1,2,...}, (1f)
+SP
+i ,SD
+i ∈Z≥0, ∀i∈I. (1g)
+For each request i ∈I, the scheduler determines its prefill and decode admission times SP
+i and
+SD
+i . Constraints (1b) and (1c) define its prefill completion time and request completion time, re-
+spectively. Constraint (1d) ensures that request iis admitted to decoding after completing prefill.
+Constraints (1e) and (1f) enforce the prefill and decode memory capacities, respectively, where 1{·}
+denotes the indicator function. Constraint (1g) restricts admission times to nonnegative integers.
+Since all requests are released at time zero, Ci is also the end-to-end latency of request i, i.e.,
+minimizing i∈ICi is equivalent to minimizing the average end-to-end latency. Let OPT denote
+the optimal objective value of (O).
+Theorem 1. DMRS is strongly NP-hard, even when every request requires exactly one slot of prefill
+processing and one decode iteration. (The complete proof is given in Appendix B.)
+2.3 LP RELAXATION
+For the approximation analysis, we derive an LP relaxation from necessary conditions satisfied by
+every feasible schedule. The relaxation captures the mandatory memory-time loads imposed by each
+request on the prefill and decode memory pools. Its optimal value provides a lower bound on OPT.
+Prefill Memory-Time Load. During its mi slots of prefill processing, request ioccupies pi units of
+prefill memory. Its mandatory prefill memory-time load is ℓP
+i := pimi.
+Decode Memory-Time Load. During its u-th decode iteration, request irequires pi + uunits of
+decode memory. Its mandatory decode memory-time load is ℓD
+i :=
+di
+u=1(pi+u) = pidi+ di (di +1)
+2.
+Let¯
+Ci denote the relaxed completion-time variable associated with request i. We consider the
+following linear program, denoted by (LP):
+min
+¯
+Ci (2a)
+i∈I
+s.t.¯
+2
+Ci ≥mi + di, ∀i∈I, (2b)
+1
+ℓP
+¯
+Ci ≥
+
+i
+2MP
+i∈S
+i∈S
+ℓP
+i
++
+(ℓP
+i )2
+i∈S
+, ∀∅̸= S⊆I, (2c)
+1
+ℓD
+¯
+Ci ≥
+
+i
+2MD
+i∈S
+i∈S
+ℓD
+i
+2
++
+(ℓD
+i )2
+i∈S
+, ∀∅̸= S⊆I. (2d)
+Let LP⋆denote the optimal value of (LP). Constraint (2b) provides a lower bound on each request’s
+completion time. Constraints (2c) and (2d) provide lower bounds derived from the mandatory pre-
+fill and decode memory-time loads of every nonempty subset of requests, respectively. Lemma 1
+establishes that these constraints are satisfied by the completion times of every feasible schedule.
+Lemma 1. For every feasible schedule of (O), setting¯
+Ci = Ci for all i ∈Iyields a feasible
+solution to (LP). Consequently, LP⋆ ≤OPT. (The complete proof is given in Appendix C.1.)
+4
+
+===== PDF PAGE 5 =====
+Preprint
+Lemma 2. The linear program (LP) can be solved in polynomial time. (The complete proof is
+given in Appendix C.2.)
+3 APPROXIMATION FOR RESTRICTED INSTANCES
+Algorithm 1 applies to instances satisfying α < 1 and β < 1. Hence, every request satisfies
+MP−pi ≥(1−α)MP and MD−hi ≥(1−β)MD. If a request is rejected by the prefill admission
+rule, the prefill memory occupied by requests exceeds (1−α)MP. Similarly, if a request is rejected
+by the decode admission rule, the peak decode memory reserved by requests exceeds (1−β)MD.
+3.1 ALGORITHM DESIGN
+Using an optimal LP solution {¯
+Ci}i∈I, Algorithm 1 partitions the requests into dyadic groups Gq :=
+{i∈I: 2q−1 <¯
+Ci ≤2q}for q∈Z.
+Algorithm 1 LP-Guided Dyadic Group Scheduling
+Require: Requests {(mi,pi,di)}i∈Iand memory capacities MP and MD
+Ensure: Admission times {(SP
+i ,SD
+i )}i∈I
+1: Solve (LP) and obtain an optimal solution {¯
+Ci}i∈I; Construct all nonempty dyadic groups Gq
+2: t←0; E,W,D←∅
+3: for each nonempty Gq, in increasing order of qdo
+4: Uq ←Gq
+5: while Uq ∪E∪W∪D̸= ∅do
+6: Remove every request i∈Dsatisfying SD
+i + di = t
+7: Move every request i∈Esatisfying SP
+i + mi = tto W
+8: W←W
+9: for each i∈W, in nondecreasing order of mi + di do
+10: if j∈Dhj + hi ≤MD then ▷reserve peak decode demands
+11: SD
+i ←t; W←W\{i}; D←D∪{i}
+12: end if
+13: end for
+14: Uq ←Uq
+15: for each i∈Uq, in nondecreasing order of mi + di do
+16: if j∈Epj + j∈Wpj + pi ≤MP then
+17: SP
+i ←t; Uq ←Uq \{i}; E←E∪{i}
+18: end if
+19: end for
+20: if Uq ∪E∪W∪D̸= ∅then
+21: t←min {SP
+i + mi : i∈E}∪{SD
+i + di : i∈D}
+22: end if
+23: end while
+24: end for
+The nonempty groups are processed in increasing order of q. No request from a later group is
+admitted before all requests in the current group have completed. In each group, we order the
+requests by nondecreasing mi + di, with ties broken by request index.
+At each event time, Algorithm 1 performs decode admission before prefill admission. It reserves hi
+for each request executing decoding until completion, while its actual decode memory demand sat-
+isfies ri(u) ≤hi for 0 ≤u≤di. Appendix D.1 provides a line-by-line description of Algorithm 1.
+3.2 APPROXIMATION GUARANTEE
+The analysis partitions the slots before each dyadic prefix completes into four cases: a request
+remains waiting for decode admission, a request remains unadmitted to prefill, or the current group
+is in its final prefill or decode tail. Failed admissions yield lower bounds on reserved decode memory
+5
+
+===== PDF PAGE 6 =====
+Preprint
+or occupied prefill memory, allowing the LP prefix load bounds to control the first two cases; the
+reserved decode memory-time load is less than twice the mandatory decode load. The dyadic group
+bounds control the two tails. The lemmas and charging argument appear in Appendix E.
+Theorem 2. For every instance satisfying α < 1 and β < 1, Algorithm 1 is a deterministic
+polynomial-time 8 + 4
+1−α + 8
+1−β -approximation.
+Proof. For each k ∈Z, define the dyadic prefix G≤k := q≤kGq. For ksuch that G≤k ̸= ∅, let Tk
+denote the time at which requests in G≤k have completed. Lemma 3 bounds the mandatory prefill
+and decode memory-time loads of this prefix by 2MP2k and 2MD2k, respectively. Lemma 4 shows
+that the reserved decode memory-time load is less than twice the mandatory decode load. Using
+these bounds, the charging argument in Lemma 5 shows that requests in G≤k complete by time
+Tk ≤ 4 + 2
+4
++
+1−α
+1−β 2k
+.
+For any request i∈Gk, the group definition gives 2k−1 <¯
+Ci, and hence 2k <2
+¯
+Ci. Since Ci ≤Tk,
+Ci ≤ 8 +
+4
+1−α
++
+8
+1−β
+¯
+Ci.
+Summing over all requests and applying Lemma 1, which gives i
+¯
+Ci = LP⋆ ≤OPT, proves the
+stated approximation ratio.
+By Lemma 2, (LP) can be solved in polynomial time. The grouping, sorting, and event-driven
+scheduling are also polynomial. Hence, Algorithm 1 is deterministic and runs in polynomial time.
+Corollary 1. If α,β ≤ 1/2, equivalently, if pi ≤ MP/2 and hi ≤ MD/2 for every i ∈ I,
+then Algorithm 1 is a 32-approximation. More generally, the approximation bound tends to 20 as
+α,β →0 and diverges as either parameter approaches 1 from below.
+4 APPROXIMATION FOR GENERAL INSTANCES
+To obtain a uniform guarantee, we develop a 36-approximation for every feasible instance, including
+the boundary cases α= 1 or β = 1. Algorithm 2 combines a classification based on prefill and peak
+decode memory demands with geometric grouping based on an optimal LP solution.
+4.1 REQUEST CLASSIFICATION
+We classify each request by its prefill and peak decode memory demands:
+LP := i∈I: pi >
+MP
+2 , SP := i∈I: pi ≤
+MP
+2 ,
+LD := i∈I: hi >
+MD
+2 , SD := i∈I: hi ≤
+MD
+2.
+Requests in LP and SP are called prefill-large and prefill-small, while those in LD and SD are
+called decode-large and decode-small, respectively.
+The sets CLL := LP ∩LD, CSL := SP ∩LD, CLS := LP ∩SD, and CSS := SP ∩SD partition
+I. In each superscript, the first and second letters indicate the prefill and decode classifications,
+respectively. The strict 1/2 threshold ensures that at most one prefill-large request belongs to E(t) ∪
+W(t) and, under peak decode reservation, at most one decode-large request belongs to D(t).
+4.2 ALGORITHM DESIGN
+Fix a geometric grouping ratio ρ>1, let Bq = ρq, and define Hq := {i∈I: Bq/ρ<
+¯
+Ci ≤Bq}
+for q∈Z.
+6
+
+===== PDF PAGE 7 =====
+Preprint
+Algorithm 2 processes the nonempty groups in increasing order of q, completing each group before
+starting the next. Within each group Hq, it processes Hq∩CLL
+, Hq∩CSL
+, Hq∩CLS, and Hq∩CSS in
+this order. The first subset is processed sequentially, while the other three use event-driven admission
+subject to both memory capacities. Within each subset, requests are ordered by nondecreasing
+mi+di, with ties broken by request index. For decode admission, the algorithm reserves hj for every
+request j ∈Duntil that request completes. Thus, decode admission requires j∈Dhj + hi ≤MD
+and is not based on the current decode memory usage. Appendix D.2 provides a detailed line-by-line
+description of Algorithm 2.
+Algorithm 2 LP-Guided Geometric Group Scheduling
+Require: Requests {(mi,pi,di)}i∈I, memory capacities MP,MD, and grouping ratio ρ>1
+Ensure: Admission times {(SP
+i ,SD
+i )}i∈I
+1: Solve (LP) and obtain an optimal solution {¯
+Ci}i∈I; Construct the classes CLL
+,CSL
+,CLS
+,CSS
+2: Construct all nonempty geometric groups Hq
+3: t←0; E,W,D←∅
+4: for each nonempty Hq, in increasing order of qdo
+5: for each i∈Hq ∩CLL, in nondecreasing order of mi + di do
+6: SP
+i ←t; SD
+i ←t+ mi; t←t+ mi + di
+7: end for
+8: for each Cin (CSL
+,CLS
+,CSS) do
+9: Uq,C←Hq ∩C
+10: while Uq,C∪E∪W∪D̸= ∅do
+11: Remove every i∈Dsatisfying SD
+i + di = t
+12: Move every i∈Esatisfying SP
+i + mi = tto W
+13: W←W
+14: for each i∈W, in nondecreasing order of mi + di do
+15: if j∈Dhj + hi ≤MD then ▷reserve peak decode demands
+16: SD
+i ←t; W←W\{i}; D←D∪{i}
+17: end if
+18: end for
+19: Uq,C←Uq,C
+20: for each i∈Uq,C, in nondecreasing order of mi + di do
+21: if j∈Epj + j∈Wpj + pi ≤MP then
+22: SP
+i ←t; Uq,C←Uq,C\{i}; E←E∪{i}
+23: end if
+24: end for
+25: if Uq,C∪E∪W∪D̸= ∅then
+26: t←min {SP
+i + mi : i∈E}∪{SD
+i + di : i∈D}
+27: end if
+28: end while
+29: end for
+30: end for
+4.3 APPROXIMATION GUARANTEE
+The proof assigns each execution slot to one of three types. The slot either processes a request that
+is large in the relevant memory pool, occurs while a small request is blocked by the corresponding
+admission constraint, or belongs to the final prefill or decode tail of a class phase. The LP bounds
+on the cumulative loads of each geometric prefix, together with the peak reservation bound, control
+the first two types. Geometric grouping bounds the accumulated tails.
+Appendix F gives the complete slot classification and charging argument.
+Theorem 3. With ρ = 3/2, Algorithm 2 is a deterministic polynomial-time 36-approximation for
+every feasible DMRS instance.
+7
+
+===== PDF PAGE 8 =====
+Preprint
+Proof. For any nonempty group Hk, define H≤k := q≤kHq and let Tk := maxi∈H≤k Ci.
+Lemma 6 bounds the mandatory prefill and decode memory-time loads of this prefix by 2MPBk
+and 2MDBk, respectively. Using these bounds, the charging argument in Lemma 7 gives Tk ≤
+12 + 4ρ
+ρ−1 Bk.
+¯
+For every i ∈ Hk, the group definition gives Bk < ρ
+Ci, while Ci ≤ Tk. Therefore, Ci <
+12ρ+ 4ρ2
+ρ−1
+¯
+Ci. Let f(ρ) := 12ρ+ 4ρ2
+ρ−1 . For every ρ > 1, f(ρ)−36 = 4(2ρ−3)2
+ρ−1 ≥0, with
+equality at ρ= 3/2. Hence, by Lemma 1, i∈ICi <36 i∈I¯
+Ci = 36 LP⋆ ≤36 OPT.
+Lemma 2, together with the deterministic polynomial-time grouping and scheduling steps, implies
+that Algorithm 2 is deterministic and polynomial-time.
+5 EXPERIMENTS
+CPU Evaluation. We compare the objective values of Algorithms 1 and 2 with the exact optimum
+computed by the ILP in Appendix G and the LP lower bound LP⋆ defined in Section 2.3.
+GPU Evaluation. We compare the total completion time (TCT) of Algorithms 1 and 2 with three
+vLLM baselines: disaggregated prefill and decode serving (P/D), colocated serving (Colocated), and
+colocated serving with chunked prefill (Colocated Chunked).
+5.1 CPU EVALUATION
+Setup. We implement Algorithms 1 and 2 in Python 3.12.12 and solve the ILP and LP using
+Gurobi 13.0.1 on an ARM64 macOS machine. We consider synthetic instances and conversation
+and code workloads derived from the Azure LLM Inference Trace 2023 (Patel et al., 2024).
+Table 1: ALG/OPT and ALG/LP for κ= 2, where MP = ⌈κmaxipi⌉and MD = ⌈κmaxihi⌉.
+Workload Scale Algorithm 1 Algorithm 2
+Synthetic, ALG/OPT n= 10 1.660 1.945
+Synthetic, ALG/LP n= 250 1.749 1.938
+Conversation, ALG/LP n= 250 1.491 1.685
+Code, ALG/LP n= 250 1.695 2.109
+Results. Algorithm 1 has a lower ratio than Algorithm 2 in each reported setting. All ratios are
+below the worst-case guarantees. Further scaling and capacity results appear in Appendix H.
+5.2 GPU EVALUATION
+Setup. We conduct serving experiments on two NVIDIA H100 GPUs using Qwen2.5 (7B) (Yang
+et al., 2024) and Llama 3.1 (8B) (Grattafiori et al., 2024). We use separate offline batches of conver-
+sation and code requests derived from the Azure LLM Inference Trace 2023 (Patel et al., 2024).
+Table 2: TCT normalized by the corresponding P/D result for n= 250 and κ= 1.5.
+Model Workload P/D Colocated Colocated Chunked Algorithm 1 Algorithm 2
+Qwen2.5 (7B) Conversation 1.000 0.759 1.349 0.787 0.878
+Qwen2.5 (7B) Code 1.000 0.840 1.259 0.525 0.582
+Llama 3.1 (8B) Conversation 1.000 0.738 1.239 0.758 0.839
+Llama 3.1 (8B) Code 1.000 0.835 1.227 0.510 0.565
+Algorithms 1 and 2, as well as the vLLM (Kwon et al., 2023) P/D baseline, assign one GPU to
+prefill and the second to decoding. Colocated runs a single vLLM instance using tensor parallelism
+across both GPUs, so both GPUs execute prefill and decoding. Colocated Chunked uses the same
+configuration with chunked prefill enabled.
+8
+
+===== PDF PAGE 9 =====
+Preprint
+Results. Both algorithms reduce TCT relative to P/D for each model and workload shown in Ta-
+ble 2. The reductions range from 21.3% to 49.0% for Algorithm 1 and from 12.2% to 43.5% for
+Algorithm 2. Both achieve larger reductions on the code workloads. Additional memory capacities,
+prefill and decode demands, and batch sizes are evaluated in Appendix H.
+6 RELATED WORK
+LLM Inference Serving and KV Cache Management. Orca (Yu et al., 2022) introduces
+iteration-level scheduling, vLLM (Kwon et al., 2023) manages KV caches with PagedAttention,
+and Sarathi (Agrawal et al., 2023) uses chunked prefills. FastServe (Wu et al., 2023) uses pre-
+emptive scheduling, AlpaServe (Li et al., 2023) multiplexes models through model parallelism, and
+FlexGen (Sheng et al., 2023) offloads model state. DeepSpeed-Inference (Aminabadi et al., 2022)
+optimizes parallel execution, while DeepSpeed-FastGen (Holmes et al., 2024) uses Dynamic Split-
+Fuse. SGLang (Zheng et al., 2024), Preble (Srivatsa et al., 2025), and CacheGen (Liu et al., 2024)
+address prefix reuse, distributed scheduling, and KV cache compression and streaming, respectively.
+These systems do not model joint admission under separate prefill and decode memory capacities.
+Prefill-Decode Disaggregated Serving. Splitwise (Patel et al., 2024) separately provisions pre-
+fill and decoding, DistServe (Zhong et al., 2024) optimizes phase-specific parallelism, and Tetri-
+Infer (Hu et al., 2024b) combines disaggregation with prompt chunking. Mooncake (Qin et al.,
+2026) and MemServe (Hu et al., 2024a) provide disaggregated KV cache storage and reuse; Smart-
+Gen (Luo et al., 2026) studies selective cache transfer, and HexGen-2 (Jiang et al., 2025) targets
+heterogeneous resources. TaiChi (Wang et al., 2025a), Arrow (Wu et al., 2025), and P/D-Serve (Jin
+et al., 2024) adapt serving decisions to workloads and system conditions. These works do not pro-
+vide approximation guarantees for joint admission scheduling.
+Theoretical Scheduling Models. Jaillet et al. (2025) and Ao et al. (2025) study online scheduling
+under a unified memory constraint, while Wang et al. (2025b) consider heterogeneous prefill and
+decode lengths under a shared cache capacity. Feng et al. (2026b) derive competitive and constant-
+factor approximation guarantees for non-clairvoyant and clairvoyant scheduling, respectively, under
+a single KV cache capacity. Their subsequent work develops a general non-clairvoyant schedul-
+ing framework (Feng et al., 2026a). Chen et al. (2025) consider uncertain output lengths. Bari
+et al. (2025) study routing and throughput-oriented scheduling, while Dai et al. (2025) analyze the
+throughput optimality of work-conserving scheduling. These models do not capture retained prompt
+caches across separate prefill and decode memory pools.
+7 CONCLUSION AND FUTURE WORK
+We formulated DMRS for disaggregated LLM inference, jointly scheduling prefill and decode ad-
+missions under separate memory capacities while accounting for prompt KV caches retained in
+prefill memory and growing decode KV caches. We proved strong NP-hardness, derived an LP
+lower bound, and developed two deterministic polynomial-time approximation algorithms. The first
+achieves an approximation ratio of 8+ 4
+1−α+ 8
+1−β for α,β <1, while the second provides a uniform
+36-approximation for every feasible instance, including instances with α= 1 or β = 1.
+The CPU experiments show that both algorithms perform well relative to exact ILP solutions and LP
+lower bounds. Experiments on two H100 GPUs show that both algorithms reduce total completion
+time (TCT) relative to vLLM P/D across all tested settings on code workloads.
+Limitations. We assume that output token counts are known in advance, consistent with the theo-
+retical settings studied by Wang et al. (2025b) and Jaillet et al. (2025). This assumption allows us
+to focus on the coupling between prefill and decode admissions under separate memory capacities.
+The theoretical model assumes instantaneous KV transfer, whereas the completion times measured
+in our GPU experiments include KV transfer overhead.
+Future Work. We can extend DMRS in three directions. An online setting could address requests
+arriving over time and establish competitive guarantees. A non-clairvoyant setting could remove
+the assumption that output lengths are known in advance. A deadline-constrained setting could
+maximize the total weight of requests completed by their deadlines.
+9
+
+===== PDF PAGE 10 =====
+Preprint
+AI USE STATEMENT
+Generative AI tools were used to assist with language editing, LaTeX organization, literature search
+and reference formatting, and the review and presentation of the theoretical formulation, algorithms,
+mathematical claims, proofs, experimental methodology, and results. The authors independently
+reviewed and verified all AI-assisted content, including the cited sources, derivations, algorithms,
+proofs, experimental configurations, code, and reported results. The authors take full responsibility
+for the final content of this work.
+REPRODUCIBILITY STATEMENT
+The model assumptions and algorithms are stated in Sections 2–4. Complete proofs of all theoretical
+claims, the notation table, and an exact time-indexed ILP formulation are provided in the appendix.
+The supplementary CPU and GPU artifacts provide the fixed configurations, trace processing proce-
+dures, implementation and validation code, frozen results, and scripts used to reproduce the reported
+experimental summaries.
+10
+
+===== PDF PAGE 11 =====
+Preprint
+REFERENCES
+Amey Agrawal, Ashish Panwar, Jayashree Mohan, Nipun Kwatra, Bhargav S Gulavani, and Ra-
+machandran Ramjee. Sarathi: Efficient LLM inference by piggybacking decodes with chunked
+prefills. arXiv preprint arXiv:2308.16369, 2023.
+Reza Yazdani Aminabadi, Samyam Rajbhandari, Ammar Ahmad Awan, Cheng Li, Du Li, Elton
+Zheng, Olatunji Ruwase, Shaden Smith, Minjia Zhang, Jeff Rasley, et al. DeepSpeed-Inference:
+enabling efficient inference of transformer models at unprecedented scale. In SC22: International
+Conference for High Performance Computing, Networking, Storage and Analysis, pp. 1–15. IEEE,
+2022.
+Ruicheng Ao, Gan Luo, David Simchi-Levi, and Xinshang Wang. Optimizing LLM inference:
+Fluid-guided online scheduling with memory constraints. arXiv preprint arXiv:2504.11320, 2025.
+Agrim Bari, Parikshit Hegde, and Gustavo de Veciana. Optimal scheduling algorithms for LLM
+inference: Theory and practice. Proceedings of the ACM on Measurement and Analysis of Com-
+puting Systems, 9(3):1–43, 2025.
+Zixi Chen, Yinyu Ye, and Zijie Zhou. Adaptively robust LLM inference optimization under predic-
+tion uncertainty. arXiv preprint arXiv:2508.14544, 2025.
+JG Dai, Tianze Deng, Yueying Li, and Tianyi Peng. Throughput-optimal scheduling algorithms for
+LLM inference and AI agents. arXiv preprint arXiv:2504.07347, 2025.
+Yiding Feng, Siyu Liu, Zonghan Yang, and Yuhao Zhang. General non-clairvoyant KV-cache
+scheduling via regime-aware routing. arXiv preprint arXiv:2607.09248, 2026a.
+Yiding Feng, Zonghan Yang, and Yuhao Zhang. Competitive non-clairvoyant KV-cache scheduling
+for LLM inference. arXiv preprint arXiv:2601.22996, 2026b.
+Michael R. Garey and David S. Johnson. Computers and Intractability: A Guide to the Theory of
+NP-Completeness. W. H. Freeman, 1979.
+Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad
+Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schelten, Alex Vaughan, et al. The Llama 3 herd
+of models. arXiv preprint arXiv:2407.21783, 2024.
+Martin Gr¨ otschel, L´ aszl´ o Lov´ asz, and Alexander Schrijver. Geometric Algorithms and Combinato-
+rial Optimization. Springer, 1993.
+Connor Holmes, Masahiro Tanaka, Michael Wyatt, Ammar Ahmad Awan, Jeff Rasley, Samyam
+Rajbhandari, Reza Yazdani Aminabadi, Heyang Qin, Arash Bakhtiari, Lev Kurilenko, et al.
+DeepSpeed-FastGen: High-throughput text generation for LLMs via MII and DeepSpeed-
+Inference. arXiv preprint arXiv:2401.08671, 2024.
+Ke Hong, Lufang Chen, Zhong Wang, Xiuhong Li, Qiuli Mao, Jianping Ma, Chao Xiong, Guanyu
+Wu, Buhe Han, Guohao Dai, et al. Semi-PD: Towards efficient LLM serving via phase-wise
+disaggregated computation and unified storage. arXiv preprint arXiv:2504.19867, 2025.
+Cunchen Hu, Heyang Huang, Junhao Hu, Jiang Xu, Xusheng Chen, Tao Xie, Chenxi Wang,
+Sa Wang, Yungang Bao, Ninghui Sun, et al. MemServe: Context caching for disaggregated
+LLM serving with elastic memory pool. arXiv preprint arXiv:2406.17565, 2024a.
+Cunchen Hu, Heyang Huang, Liangliang Xu, Xusheng Chen, Jiang Xu, Shuang Chen, Hao Feng,
+Chenxi Wang, Sa Wang, Yungang Bao, et al. Inference without interference: Disaggregate LLM
+inference for mixed downstream workloads. arXiv preprint arXiv:2401.11181, 2024b.
+Patrick Jaillet, Jiashuo Jiang, Konstantina Mellou, Marco Molinaro, Chara Podimata, and Zi-
+jie Zhou. Online scheduling for LLM inference with KV cache constraints. arXiv preprint
+arXiv:2502.07115, 2025.
+Youhe Jiang, Ran Yan, and Binhang Yuan. HexGen-2: Disaggregated generative inference of LLMs
+in heterogeneous environment. In International Conference on Learning Representations, volume
+2025, pp. 3985–4002, 2025.
+11
+
+===== PDF PAGE 12 =====
+Preprint
+Yibo Jin, Tao Wang, Huimin Lin, Mingyang Song, Peiyang Li, Yipeng Ma, Yicheng Shan, Zhengfan
+Yuan, Cailong Li, Yajing Sun, et al. P/D-Serve: Serving disaggregated large language model at
+scale. arXiv preprint arXiv:2408.08147, 2024.
+Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph
+Gonzalez, Hao Zhang, and Ion Stoica. Efficient memory management for large language model
+serving with PagedAttention. In Proceedings of the 29th symposium on operating systems prin-
+ciples, pp. 611–626, 2023.
+Zhuohan Li, Lianmin Zheng, Yinmin Zhong, Vincent Liu, Ying Sheng, Xin Jin, Yanping Huang,
+Zhifeng Chen, Hao Zhang, Joseph E Gonzalez, et al. AlpaServe: Statistical multiplexing with
+model parallelism for deep learning serving. In 17th USENIX Symposium on Operating Systems
+Design and Implementation (OSDI 23), pp. 663–679, 2023.
+Yuhan Liu, Hanchen Li, Yihua Cheng, Siddhant Ray, Yuyang Huang, Qizheng Zhang, Kuntai Du,
+Jiayi Yao, Shan Lu, Ganesh Ananthanarayanan, et al. CacheGen: KV cache compression and
+streaming for fast large language model serving. In Proceedings of the ACM SIGCOMM 2024
+Conference, pp. 38–56, 2024.
+Xuchuan Luo, Jiacheng Shen, Xin Wang, and Yangfan Zhou. SmartGen: Seamless disaggregated
+LLM inference with selective KV cache transfer. arXiv preprint arXiv:2607.28150, 2026.
+´
+Pratyush Patel, Esha Choukse, Chaojie Zhang, Aashaka Shah,
+I˜ nigo Goiri, Saeed Maleki, and Ri-
+cardo Bianchini. Splitwise: Efficient generative LLM inference using phase splitting. In 2024
+ACM/IEEE 51st Annual International Symposium on Computer Architecture (ISCA), pp. 118–
+132. IEEE, 2024.
+Ruoyu Qin, Zheming Li, Weiran He, Jialei Cui, Heyi Tang, Feng Ren, Teng Ma, Shangming Cai,
+Yineng Zhang, Mingxing Zhang, et al. Mooncake: A KVCache-centric disaggregated architecture
+for LLM serving. ACM Transactions on Storage, 22(4):1–38, 2026.
+Alexander Schrijver. A combinatorial algorithm minimizing submodular functions in strongly poly-
+nomial time. Journal of Combinatorial Theory, Series B, 80(2):346–355, 2000.
+Ying Sheng, Lianmin Zheng, Binhang Yuan, Zhuohan Li, Max Ryabinin, Beidi Chen, Percy Liang,
+Christopher R´ e, Ion Stoica, and Ce Zhang. FlexGen: High-throughput generative inference of
+large language models with a single GPU. In International Conference on Machine Learning, pp.
+31094–31116. PMLR, 2023.
+Vikranth Srivatsa, Zijian He, Reyna Abhyankar, Dongming Li, and Yiying Zhang. Preble: Effi-
+cient distributed prompt scheduling for LLM serving. In International conference on learning
+representations, volume 2025, pp. 37057–37082, 2025.
+Chao Wang, Pengfei Zuo, Zhangyu Chen, Yunkai Liang, Zhou Yu, and Ming-Chang Yang. Prefill-
+decode aggregation or disaggregation? unifying both for goodput-optimized LLM serving. arXiv
+preprint arXiv:2508.01989, 2025a.
+Meixuan Wang, Yinyu Ye, and Zijie Zhou. LLM serving optimization with variable prefill and
+decode lengths. arXiv preprint arXiv:2508.06133, 2025b.
+Bingyang Wu, Yinmin Zhong, Zili Zhang, Shengyu Liu, Fangyue Liu, Yuanhang Sun, Gang Huang,
+Xuanzhe Liu, and Xin Jin. Fast distributed inference serving for large language models. arXiv
+preprint arXiv:2305.05920, 2023.
+Yu Wu, Tongxuan Liu, Yuting Zeng, Siyu Wu, Jun Xiong, Xianzhe Dong, Hailong Yang, Ke Zhang,
+and Jing Li. Arrow: Adaptive scheduling mechanisms for disaggregated LLM inference architec-
+ture. arXiv preprint arXiv:2505.11916, 2025.
+An Yang, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chengyuan Li,
+Dayiheng Liu, Fei Huang, Haoran Wei, et al. Qwen2.5 Technical Report. arXiv preprint
+arXiv:2412.15115, 2024.
+12
+
+===== PDF PAGE 13 =====
+Preprint
+Gyeong-In Yu, Joo Seong Jeong, Geon-Woo Kim, Soojeong Kim, and Byung-Gon Chun. Orca: A
+distributed serving system for Transformer-Based generative models. In 16th USENIX symposium
+on operating systems design and implementation (OSDI 22), pp. 521–538, 2022.
+Lianmin Zheng, Liangsheng Yin, Zhiqiang Xie, Chuyue Sun, Jeff Huang, Cody H Yu, Shiyi Cao,
+Christos Kozyrakis, Ion Stoica, Joseph E Gonzalez, et al. SGLang: Efficient execution of struc-
+tured language model programs. Advances in neural information processing systems, 37:62557–
+62583, 2024.
+Yinmin Zhong, Shengyu Liu, Junda Chen, Jianbo Hu, Yibo Zhu, Xuanzhe Liu, Xin Jin, and Hao
+Zhang. DistServe: Disaggregating prefill and decoding for goodput-optimized large language
+model serving. In 18th USENIX symposium on operating systems design and implementation
+(OSDI 24), pp. 193–210, 2024.
+13
+
+===== PDF PAGE 14 =====
+Preprint
+CONTENTS
+1 Introduction 1
+2 System Model and Formulation 2
+2.1 2.2 2.3 System Model . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 2
+DMRS Formulation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 3
+LP Relaxation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+3 Approximation for Restricted Instances 5
+3.1 3.2 Algorithm Design . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+Approximation Guarantee . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+4 Approximation for General Instances 6
+4.1 4.2 4.3 Request Classification . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+Algorithm Design . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+Approximation Guarantee . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+5 Experiments 8
+5.1 CPU Evaluation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+5.2 GPU Evaluation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+6 Related Work 9
+7 Conclusion and Future Work 9
+References 11
+A Notation 15
+B Proof of Strong NP-Hardness C Proofs for the LP Relaxation 15
+16
+D Detailed Algorithm Descriptions 17
+E Proofs for Algorithm 1 F Proofs for Algorithm 2 18
+20
+G Exact ILP Formulation 22
+H Additional Experimental Results 23
+14
+
+===== PDF PAGE 15 =====
+Preprint
+A NOTATION
+The notation used throughout the paper is summarized in Table 3.
+Table 3: Summary of notation.
+Symbol Definition
+I= {1,...,n} The set of LLM inference requests
+mi The effective prefill processing time of request i
+pi The number of input tokens (i.e., prefill memory demand) of request i
+di The number of output tokens (i.e., decode iterations) of request i
+hi = pi + di The peak decode memory demand of request i
+ri(u) = pi + u The decode memory demand after request igenerates uoutput tokens
+MP ,MD The prefill and decode memory capacities
+SP
+i ,SD
+i The prefill and decode admission times of request i
+CP
+i ,Ci The prefill and request completion times of request i
+U (t) The set of requests not yet admitted to prefill during slot [t,t+ 1)
+E(t) The set of requests executing prefill during slot [t,t+ 1)
+W(t) The set of requests waiting for decode admission during slot [t,t+ 1)
+D(t) The set of requests executing decoding during slot [t,t+ 1)
+ℓP
+i ,ℓD
+i The mandatory prefill and decode memory-time loads of request i
+α,β The maximum normalized prefill and peak decode memory demands, respectively
+¯
+Ci The relaxed completion-time variable of request i
+LP⋆
+,OPT The optimal objective values of (LP) and (O), respectively
+Gq ,G≤k The dyadic group and prefix in Algorithm 1
+LP ,SP The prefill-large and prefill-small request sets
+LD ,SD The decode-large and decode-small request sets
+CLL
+,CSL
+,CLS
+,CSS The four memory-demand classes
+ρ,Bq The geometric grouping ratio ρand boundary Bq = ρq
+Hq ,H≤k The geometric group and prefix in Algorithm 2
+B PROOF OF STRONG NP-HARDNESS
+Proof. We reduce from the strongly NP-complete 3-PARTITION problem (Garey & Johnson, 1979).
+Given 3νpositive integers a1,...,a3ν satisfying 3ν
+i=1 ai = νBand B/4 <ai <B/2 for every i,
+3-PARTITION asks whether they can be partitioned into νdisjoint triples, each summing to B.
+Construct a DMRS instance with I= {1,...,3ν}. For each ai, define a request iwith mi = di = 1
+and pi = ai. Set MP = B, MD =
+3ν
+i=1(ai + 1) = νB + 3ν, and K = 3ν(ν + 3)/2. Since
+i∈Ihi = MD, the decode memory constraint never prevents decode admission.
+Suppose that the 3-PARTITION instance has a valid partition, with its triples indexed by r =
+1,...,ν. Admit the three requests in triple r to prefill at time r−1 and to decoding at time r.
+Their total prefill memory demand is B. At time r, their decode admission releases this prefill
+memory, allowing the next triple, if any, to be admitted to prefill at the same time. The requests in
+triple r complete at time r+ 1. Hence, the resulting schedule is feasible and has objective value
+i∈ICi = 3 ν
+r=1(r+ 1) = 3ν(ν+ 3)/2 = K.
+Conversely, suppose that the constructed DMRS instance has a feasible schedule satisfying
+i∈ICi ≤ K. Let C(1) ≤ ··· ≤ C(3ν) denote the completion times in nondecreasing order.
+Since pi > B/4, at most three requests can be admitted to prefill at any slot boundary. The first j
+completed requests must have been admitted to prefill by time C(j)−2, because both phases require
+one slot. Their prefill admission times therefore lie in {0,...,C(j)−2}, which contains C(j)−1
+slot boundaries. Hence, j ≤3(C(j)−1), so C(j) ≥1 + ⌈j/3⌉. Consequently,
+Ci =
+3ν
+C(j) ≥
+3ν
+i∈I
+j=1
+j=1
+1 + j
+3
+= K.
+Thus, equality holds throughout, and in particular C(3ν)= ν+ 1. Since mi = di = 1, every request
+satisfies SP
+i ≤Ci−2 ≤C(3ν)−2 = ν−1.
+15
+
+===== PDF PAGE 16 =====
+Preprint
+For t = 0,...,ν−1, define At = {i ∈I: SP
+i = t}. These sets partition I, and prefill memory
+feasibility gives i∈At pi ≤B. Moreover,
+ν−1
+t=0 i∈At
+pi =
+pi = νB.
+i∈I
+Therefore, i∈At pi = B for every t = 0,...,ν−1. Since B/4 < pi < B/2, each At contains
+exactly three requests. The sets A0,...,Aν−1 therefore yield a valid 3-partition.
+The reduction is computable in polynomial time, and its numerical parameters remain polynomially
+bounded under the strongly NP-complete restriction of 3-PARTITION. Therefore, DMRS is strongly
+NP-hard.
+1
+M
+2M
+C PROOFS FOR THE LP RELAXATION
+C.1 PROOF OF LEMMA 1
+Proof. Constraint (2b) follows from Ci = SD
+i + di ≥SP
+i + mi + di ≥mi + di, where the two
+inequalities follow from SD
+i ≥SP
+i + mi and SP
+i ≥0, respectively.
+Consider a nonempty subset S ⊆Iand either memory pool. Let M denote the capacity of the
+selected pool, and let ℓi denote the corresponding mandatory memory-time load. Reindex the re-
+quests in Sas 1,...,s, where s = |S|, such that C1 ≤···≤Cs. For each j = 1,...,s, define
+Lj= j
+r=1 ℓr.
+For the prefill pool, the mandatory load of request r is completed by CP
+r ≤Cr. For the decode
+pool, its mandatory load is completed by Cr. Therefore, by time Cj, the selected pool must have
+accommodated the total load Lj of requests 1,...,j. Since the pool has capacity M in each slot, it
+can accommodate at most MCj units of memory-time load by that time. Hence, MCj ≥Lj.
+Dividing this inequality by M, multiplying it by ℓj, and summing over j = 1,...,sgives
+s
+j=1
+ℓjCj ≥
+s
+j=1
+1
+ℓjLj=
+  
+ s
+j=1
+ℓj 2
++
+s
+j=1
+ℓ2
+j
+  .
+The equality follows from Lj= j
+r=1 ℓr.
+Taking (ℓi,M) = (ℓP
+i ,MP) proves Constraint (2c), while taking (ℓi,M) = (ℓD
+i ,MD) proves
+Constraint (2d). Thus, every feasible schedule of (O) induces a feasible solution to (LP) with
+¯
+Ci = Ci for all i∈I. Therefore, LP⋆ ≤OPT.
+C.2 PROOF OF LEMMA 2
+Proof. Although (LP) contains exponentially many subset constraints, they admit a polynomial-
+time separation oracle. Given a candidate vector¯
+¯
+C = (
+Ci)i∈I, consider either memory pool. Let
+M denote its capacity and ℓi the corresponding mandatory memory-time load. For each S ⊆I,
+define
+F(S) := 2M
+¯
+ℓi
+i∈S
+Ci−
+i∈S
+ℓi
+2
+−
+ℓ2
+i.
+i∈S
+For every nonempty S, the corresponding subset constraint is violated if and only if F(S) <0.
+An exact separation oracle follows by sorting. Set ai = M¯
+Ci−ℓi/2 and L(S) = i∈Sℓi. Then
+F(S)/2 = i∈Sℓiai−L(S)2/2. Let S⋆ minimize F over all subsets and write L= L(S⋆).
+Removing any i ∈S⋆ cannot improve the minimum, so ai ≤L−ℓi/2. Likewise, adding any
+j / ∈S⋆ cannot improve it, so aj ≥L+ ℓj/2. Since all loads are positive, every member of S⋆
+precedes every nonmember when requests are sorted by ai. Thus, some minimizing subset is a
+prefix of this order. Sorting and checking all prefixes, including the empty prefix with value zero,
+16
+
+===== PDF PAGE 17 =====
+Preprint
+takes O(nlog n) time per pool. A negative minimum identifies a violated subset constraint; a zero
+minimum certifies all subset constraints for that pool. Checking both pools and Constraint (2b) gives
+a polynomial-time separation oracle.
+It remains to bound the search region. Let T0 := i∈I(mi+di). Consider a schedule that processes
+the requests one at a time and completes both phases of each request before starting the next. By
+the feasibility conditions stated in Section 2.1, this schedule is feasible, and every request completes
+by time T0. By Lemma 1, the corresponding completion-time vector is feasible for (LP) and has
+objective value at most nT0. Therefore, LP⋆ ≤nT0. Since¯
+Ci ≥mi + di > 0, every optimal
+solution satisfies
+0 ≤¯
+Ci ≤nT0, i∈I.
+These bounds have encoding length polynomial in the input size and may be added to (LP) without
+changing its optimal value. They can also be separated directly. The equivalence of optimization
+and separation therefore implies that (LP) can be solved in polynomial time using the ellipsoid
+method (Gr¨ otschel et al., 1993).
+LP Implementation. In the CPU experiments, we solve (LP) using Gurobi and an iterative cut-
+ting plane procedure. We first solve the LP without the subset constraints. We then apply the exact
+prefix separator to both memory pools. At each iteration, we add up to 100 previously unseen prefix
+constraints with the largest violations for each pool. We solve the updated LP and repeat this process
+until no checked prefix constraint has a relative violation exceeding 10−8
+.
+For the GPU experiments, we use HiGHS to solve (LP). The initial LP includes the subset con-
+straints for each individual request and for the full request set in both memory pools. We then add
+violated prefix constraints iteratively.
+D DETAILED ALGORITHM DESCRIPTIONS
+D.1 DESCRIPTION OF ALGORITHM 1
+Line 1 solves the LP relaxation, obtains an optimal solution {¯
+Ci}i∈I, and constructs the nonempty
+dyadic groups. Line 2 initializes the current time and the active request sets.
+Lines 3–24 process the nonempty groups in increasing order of q. For each group Gq, Line 4 initial-
+izes Uq = Gq. Lines 5–23 process the current group until Uq, E, W, and Dare all empty. At each
+event time t, Line 6 removes the requests that have completed decoding from D, and Line 7 moves
+the requests that have completed prefill from Eto W.
+Lines 8–13 implement the decode admission rule. Line 8 creates a copy Wof the current waiting
+set. Lines 9–13 consider the requests in Win nondecreasing order of mi + di, with ties broken
+by request index. Line 10 checks the peak reservation condition: request iis admitted only if its
+peak demand hi, together with the peak demands hj reserved by all active requests j ∈D, does not
+exceed MD. Because each request remains in Duntil its decode completion event at Line 6, its peak
+demand remains reserved throughout decoding. Upon admission, Line 11 sets SD
+i = t, removes i
+from W, and adds it to D.
+Lines 14–19 implement the prefill admission rule. Line 14 creates a copy Uq of the current unstarted
+set. Lines 15–19 consider the requests in Uq in nondecreasing order of mi+ di, with ties broken by
+request index. A request iis admitted to prefill if its demand pi, together with the prefill memory
+occupied by the requests in Eand W, does not exceed MP. Upon admission, Line 17 sets SP
+i = t,
+removes ifrom Uq, and adds it to E.
+If the current group remains unfinished after both admission rules, Lines 20–22 advance tto the next
+prefill or decode completion time.
+D.2 DESCRIPTION OF ALGORITHM 2
+Line 1 solves (LP), obtains an optimal solution, and constructs the four request classes. Line 2
+forms the nonempty geometric groups, and Line 3 sets t= 0 and initializes E, W, and Das empty
+sets.
+17
+
+===== PDF PAGE 18 =====
+Preprint
+Line 4 processes the nonempty groups in increasing order of q. Lines 5–7 process the requests
+in Hq ∩CLL one at a time, in nondecreasing order of mi + di. For each request, Line 6 sets its
+admission times and advances tto its completion time.
+Lines 8–29 process the remaining classes in the order CSL
+, CLS, and CSS. Line 9 collects the
+unstarted requests in the current group and class, and the loop in Lines 10–28 continues until all
+of them have completed. At each event time, Lines 11–12 remove completed decode requests and
+move completed prefill requests to W.
+Lines 13–18 implement the decode admission rule. Line 13 creates a copy Wof the current waiting
+set. Lines 14–18 consider the requests in Win nondecreasing order of mi + di, with ties broken
+by request index. Line 15 checks the peak reservation condition: request i is admitted only if
+j∈Dhj + hi ≤MD. Because each request remains in Duntil its decode completion event at
+Line 11, its peak demand remains reserved throughout decoding. Upon admission, Line 16 sets its
+decode admission time and moves it from Wto D.
+Lines 19–24 implement the prefill admission rule. Line 19 creates a copy Uq,C of the unstarted
+requests in the current group and class. Lines 20–24 consider these requests in nondecreasing order
+of mi + di, with ties broken by request index. A request is admitted when its prefill memory
+demand can be accommodated together with the memory occupied by the requests in Eand W.
+Upon admission, Line 22 sets its prefill admission time and moves it from Uq,Cto E.
+If the current class remains unfinished, Lines 25–27 advance tto the next prefill or decode comple-
+tion time.
+E PROOFS FOR ALGORITHM 1
+We first bound the cumulative memory-time loads of the dyadic prefixes defined in the proof of
+Theorem 2.
+Lemma 3. For each k∈Z, the total prefill and decode memory-time loads of the prefix G≤k satisfy
+ℓP
+i∈G≤k
+i ≤2MP 2k and i∈G≤k
+ℓD
+i ≤2MD2k, respectively.
+Proof. If G≤k = ∅, the claim is immediate. Otherwise, each i ∈G≤k belongs to some Gq with
+q≤k, and hence¯
+Ci ≤2q ≤2k. Therefore,
+ℓP
+¯
+i
+Ci ≤2k
+ℓP
+i.
+i∈G≤k
+i∈G≤k
+Applying Constraint (2c) to G≤k and dropping the nonnegative term i∈G≤k (ℓP
+i )2 gives
+ℓP
+¯
+1
+i
+Ci ≥
+2MP
+i∈G≤k
+ i∈G≤k
+ℓP
+i
+ 2
+.
+Combining the two inequalities yields
+.
+i∈G≤k
+Applying the same argument to Constraint (2d) gives
+ℓD
+i ≤2MD2k
+,
+i∈G≤k
+ℓP
+i ≤2MP 2k
+which completes the proof.
+Algorithm 1 reserves the peak decode memory demand hi throughout the di decode slots of request
+i. Lemma 4 shows that this reserved memory-time load is less than twice the mandatory decode
+memory-time load captured by the LP.
+18
+
+===== PDF PAGE 19 =====
+Preprint
+Lemma 4. For each request i ∈I, its reserved decode memory-time hidi satisfies ℓD
+i ≤hidi <
+2ℓD
+i . Consequently, for every k∈Z, i∈G≤k
+hidi <4MD2k
+.
+Proof. Using hi = pi + di and ℓD
+i = pidi + di(di + 1)/2, we have
+di(di−1)
+hidi−ℓD
+i =
+2 ≥0, 2ℓD
+i−hidi = di(pi + 1) >0.
+Hence, ℓD
+i ≤hidi < 2ℓD
+i . If G≤k = ∅, the prefix bound is immediate. Otherwise, summing over
+G≤k and applying Lemma 3 gives
+i∈G≤k
+hidi <2
+i∈G≤k
+ℓD
+i ≤4MD2k
+,
+which completes the proof.
+Lemma 5. For each k∈Z, Algorithm 1 completes all requests in G≤k by time
+4 + 2
+4
++
+1−α
+1−β 2k
+.
+Proof. If G≤k = ∅, the claim is immediate. Otherwise, let Tk denote the time at which all requests in
+G≤k have completed. By the strict group barrier, only requests in G≤k are processed during [0,Tk).
+For each slot t<Tk, let Uq(t), E(t), W(t), and D(t) denote the request sets during [t,t+ 1), where
+Gq is the group currently being processed. Define
+T1 := {t<Tk : W(t) ̸= ∅},
+T2 := {t<Tk : W(t) = ∅, Uq(t) ̸= ∅},
+T3 := {t<Tk : W(t) = Uq(t) = ∅, E(t) ̸= ∅},
+T4 := {t<Tk : W(t) = Uq(t) = E(t) = ∅, D(t) ̸= ∅}.
+For every t∈{0,...,Tk−1}, at least one of Uq(t), E(t), W(t), and D(t) is nonempty. Therefore,
+T1,...,T4 are pairwise disjoint and partition the slots in [0,Tk). Here, |Tr|denotes the number of
+slots in Tr, for r= 1,...,4.
+Case 1: t ∈T1. For any t ∈T1, choose a request i ∈W(t) that remains waiting for decode
+admission. By the decode admission rule in Algorithm 1, j∈D(t) hj + hi > MD. Since hi ≤
+βMD, it follows that
+hj >(1−β)MD.
+j∈D(t)
+Summing this inequality over t∈T1 gives
+|T1|(1−β)MD ≤
+t∈T1 j∈D(t)
+hj ≤
+i∈G≤k
+hidi <4MD2k
+,
+where the final inequality follows from Lemma 4. Therefore,
+|T1|<
+4
+1−β2k
+.
+Case 2: t ∈T2. For any t ∈T2, choose a request i ∈Uq(t) that remains unadmitted to prefill.
+Because W(t) = ∅, the prefill admission rule in Algorithm 1 implies j∈E(t) pj+ pi >MP. Since
+pi ≤αMP, it follows that
+pj >(1−α)MP.
+j∈E(t)
+Summing this inequality over t∈T2 gives
+|T2|(1−α)MP ≤
+t∈T2 j∈E(t)
+ℓP
+i ≤2MP 2k
+,
+19
+pj ≤
+i∈G≤k
+
+===== PDF PAGE 20 =====
+Preprint
+where the final inequality follows from Lemma 3. Therefore,
+|T2|≤ 2
+2k
+.
+1−α
+Case 3: t∈T3. Fix a nonempty group Gq. Suppose that T3 contains a slot during which Gq is being
+processed, and consider the first such slot. At this time, Uq(t) = ∅, so no additional request from
+Gq can enter prefill. The group barrier also prevents requests from later groups from entering prefill.
+For every i∈Gq, Constraint (2b) and the definition of Gq imply
+mi ≤mi + di ≤¯
+Ci ≤2q
+.
+Thus, every request executing prefill in this slot completes prefill within at most 2q additional slots.
+Since no new request can enter prefill, the number of slots in T3 during which Gq is processed is at
+most 2q
+.
+Case 4: t∈T4. Fix a nonempty group Gq. Suppose that T4 contains a slot during which Gq is being
+processed, and consider the first such slot. At this time, Uq(t) = W(t) = E(t) = ∅, so only requests
+executing decoding remain. No additional request can enter decoding thereafter. For every i∈Gq,
+Constraint (2b) and the definition of Gq imply
+di ≤mi + di ≤¯
+Ci ≤2q
+.
+Thus, every remaining request completes decoding within at most 2q additional slots. Therefore, the
+number of slots in T4 during which Gq is processed is at most 2q
+.
+Since
+2q ≤
+q≤k
+k
+q=−∞
+Gq ̸=∅
+2q = 2k+1
+,
+combining the four cases gives
+Tk = |T1|+ |T2|+ |T3|+ |T4|<
+≤
+This completes the proof.
+4
+1−β2k +
+1−α
+2
+4
+1−β2k +
+2k + 4·2k
+= 4 + 2
+1−α
+2
+1−α
+2k + 2
+q≤k
+Gq ̸=∅
+4
++
+1−β 2k
+2q
+.
+F PROOFS FOR ALGORITHM 2
+Slot Categories. To bound the completion time of a geometric prefix, we assign every execution
+slot, after the admission decisions at its starting time, to one charging category. During the CLL
+phase of group Hq, each prefill slot is assigned to the large prefill category and each decode slot to
+the large decode category. For each remaining class C∈{CSL
+,CLS
+,CSS}, consider the phase that
+processes Hq ∩C. Let Uq,C(t), E(t), W(t), and D(t) denote the request sets after admission at time
+t. The slots in these three class phases are assigned by the following priority rules.
+• For CSL, assign the slot to the large decode category if D(t) ̸= ∅. Otherwise, assign it
+to the blocked small prefill category if Uq,C(t) ̸= ∅, and to the prefill tail category in the
+remaining case.
+• For CLS, assign the slot to the blocked small decode category if W(t) ̸= ∅. Otherwise,
+assign it to the large prefill category if E(t) ̸= ∅, and to the decode tail category in the
+remaining case.
+• For CSS, assign the slot to the blocked small decode category if W(t) ̸= ∅. Otherwise,
+assign it to the blocked small prefill category if Uq,C(t) ̸= ∅, to the prefill tail category if
+E(t) ̸= ∅, and to the decode tail category in the remaining case.
+20
+
+===== PDF PAGE 21 =====
+Preprint
+1
+ℓP
+¯
+i
+Ci ≤Bk
+i∈H≤k
+Under this assignment, a prefill tail slot satisfies Uq,C(t) = W(t) = ∅and E(t) ̸= ∅; requests
+in D(t) may execute concurrently. A decode tail slot satisfies Uq,C(t) = E(t) = W(t) = ∅and
+D(t) ̸= ∅. These rules are exhaustive. In a CSL phase, if D(t) = ∅, then W(t) = ∅, since any
+waiting request fits in an empty decode pool. If Uq,C(t) = ∅as well, every unfinished request must
+be in E(t), which gives a prefill tail. In a CLS phase, if W(t) = E(t) = ∅, then Uq,C(t) = ∅,
+since any unstarted request fits in an empty prefill pool. Every unfinished request must therefore
+be in D(t), which gives a decode tail. The four priority cases for CSS directly cover every possible
+unfinished state. The strict group and class barriers ensure that no request outside the current phase
+affects this classification.
+Lemma 6. For every k ∈Z, the prefix H≤k satisfies i∈H≤k
+ℓP
+i ≤2MPBk and i∈H≤k
+ℓD
+i ≤
+2MDBk.
+Proof. The claim is immediate when H≤k = ∅. Otherwise, every i ∈H≤k satisfies¯
+Ci ≤Bk.
+Applying Constraint (2c) to H≤k gives
+2MP
+ i∈H≤k
+ℓP
+i
+ 2
+≤
+i∈H≤k
+ℓP
+i.
+Since the total prefill load is positive, division gives
+ℓP
+i ≤2MPBk.
+i∈H≤k
+Replacing (ℓP
+i ,MP) with (ℓD
+i ,MD) and applying Constraint (2d) proves the decode bound.
+Lemma 7. For every k∈Z, Algorithm 2 completes all requests in H≤k by time 12 + 4ρ
+ρ−1 Bk.
+Proof. The claim is immediate when H≤k = ∅. Otherwise, define Tk := maxi∈H≤k Ci, the time at
+which the algorithm completes the prefix H≤k. The strict group barrier implies that only requests in
+this prefix are processed during [0,Tk).
+Let TPL, TPS, TDL, and TDS denote the sets of slots assigned to the large prefill, blocked small
+prefill, large decode, and blocked small decode categories, respectively. Let Ttail contain all prefill
+and decode tail slots.
+1. Prefill Categories. For every i∈LP, pi >MP/2, and hence
+mi =
+ℓP
+i
+pi
+<
+2ℓP
+i
+MP
+.
+Therefore,
+mi ≤
+|TPL|≤
+i∈H≤k ∩LP
+2
+MP i∈H≤k ∩LP
+ℓP
+i.
+For every t∈TPS, a prefill-small request remains unadmitted while W(t) = ∅. If iis such a request,
+then pi ≤MP/2, and the failed prefill admission implies j∈E(t) pj + pi > MP. Consequently,
+j∈E(t) pj > MP
+2 . All requests in E(t) belong to SP. Summing over TPS gives
+|TPS|MP
+2 ≤
+t∈TP S j∈E(t)
+pj ≤
+i∈H≤k ∩SP
+ℓP
+i.
+Combining the two prefill bounds and applying Lemma 6 yields
+|TPL|+ |TPS|≤ 2
+MP i∈H≤k
+ℓP
+i ≤4Bk.
+21
+
+===== PDF PAGE 22 =====
+Preprint
+2. Decode Categories. Under peak decode reservation, each admitted request ireserves hi until its
+completion. Hence, no two decode-large requests can overlap in the decode pool. For every i∈LD,
+hi >MD/2. By Lemma 4, hidi <2ℓD
+i , and hence di < 2hi di
+< 4ℓD
+i
+MD
+MD . Therefore,
+|TDL|≤
+i∈H≤k ∩LD
+di ≤
+4
+MD i∈H≤k ∩LD
+ℓD
+i.
+For every t ∈TDS, a decode-small request remains waiting after decode admission. If iis such a
+request, then hi ≤MD/2, and the failed decode admission implies
+hj + hi >MD.
+j∈D(t)
+Consequently, j∈D(t) hj > MD
+2 . All requests in D(t) belong to SD. Summing over TDS and
+using hidi <2ℓD
+i gives
+|TDS|MD
+2 ≤
+t∈TDS j∈D(t)
+hj ≤
+i∈H≤k ∩SD
+hidi ≤2
+i∈H≤k ∩SD
+ℓD
+i.
+Combining the two decode bounds and applying Lemma 6 yields
+|TDL|+ |TDS|≤ 4
+MD i∈H≤k
+ℓD
+i ≤8Bk.
+3. Tail Categories. For each nonempty group Hq, tail slots can occur in four class phases: the prefill
+tail of CSL, the decode tail of CLS, and the prefill and decode tails of CSS. Every i ∈Hq satisfies
+mi + di ≤¯
+Ci ≤Bq, and hence mi,di ≤Bq.
+When a prefill tail first occurs in a class phase, no unstarted request remains, so no additional re-
+quest can enter prefill during that phase. All requests currently executing prefill therefore complete
+prefill within at most Bq slots. When a decode tail first occurs, no request remains in Uq,C(t), E(t),
+or W(t). Hence, no additional request can enter decoding, and all requests currently executing
+decoding complete within at most Bq slots. Therefore,
+|Ttail|≤4
+q≤k
+Hq ̸=∅
+Bq ≤4
+q≤k
+ρq =
+Because the slot categories partition [0,Tk),
+Tk = |TPL|+ |TPS|+ |TDL|+ |TDS|+ |Ttail|
+4ρ
+≤4Bk + 8Bk +
+ρ−1
+Bk = 12 +
+4ρ
+ρ−1
+Bk.
+4ρ
+ρ−1
+Bk.
+This completes the proof.
+G EXACT ILP FORMULATION
+The following time-indexed ILP computes exact optimal solutions for every instance satisfying pi ≤
+MP and hi ≤MD for all i∈I. Under these conditions, processing the requests sequentially, with
+each request entering decoding immediately after completing prefill, gives a feasible schedule with
+makespan
+H :=
+(mi + di).
+i∈I
+An optimal schedule can be chosen with makespan at most H. Indeed, for any feasible schedule
+with makespan Cmax := maxi∈ICi,
+Cmax−1
+t=0
+|E(t)|+ |D(t)|=
+(mi + di) = H.
+i∈I
+22
+
+===== PDF PAGE 23 =====
+Preprint
+If Cmax > H, some slot contains no request executing prefill or decoding. Deleting this slot and
+shifting all subsequent events one slot earlier preserves precedence, does not increase memory usage
+in either pool, and strictly decreases at least one completion time, contradicting optimality.
+Define the slot set T := {0,...,H−1}and the feasible prefill and decode admission-time sets
+TP
+i := {0,...,H−mi−di}and TD
+i := {0,...,H−di}, respectively. For each i∈I, let xP
+i,s and
+xD
+i,s indicate whether request iis admitted to prefill and decoding at time s, respectively. The ILP is
+(ILP) min
+i∈Is∈TD
+(s+ di)xD
+i,s (3a)
+i
+s.t.
+xP
+s∈TP
+i
+i,s = 1, ∀i∈I, (3b)
+xD
+s∈TD
+i
+i,s = 1, ∀i∈I, (3c)
+sxD
+i,s ≥
+(s+ mi)xP
+s∈TD
+s∈TP
+i
+i
+i,s, ∀i∈I, (3d)
+pi
+i∈I
+   s∈TP
+xP
+i,s−
+xD
+i,s
+i
+s∈TD
+i
+≤MP, ∀t∈T, (3e)
+s≤t
+s≤t
+   
+i∈I s∈TD
+(pi + t−s+ 1)xD
+i,s ≤MD, ∀t∈T, (3f)
+i
+s≤t<s+di
+xP
+i,s ∈{0,1}, ∀i∈I, ∀s∈TP
+i , (3g)
+xD
+i,s ∈{0,1}, ∀i∈I, ∀s∈TD
+i. (3h)
+The objective minimizes the sum of request completion times. Constraints (3b) and (3c) assign
+one admission time to each phase, while Constraint (3d) enforces prefill-to-decode precedence. In
+Constraint (3e), the difference between the two cumulative sums equals one exactly when SP
+i ≤t<
+SD
+i , thereby enforcing the prefill memory capacity. Constraint (3f) accounts for the pi + t−s+ 1
+units of decode memory used during slot [t,t+ 1) by a request admitted to decoding at time s.
+Theorem 4. Problems (ILP) and (O) have the same optimal objective value.
+Proof. Consider an optimal schedule for (O) with makespan at most H. The horizon bound and
+precedence relation imply SP
+i ∈TP
+i and SD
+i ∈TD
+i . Setting xP
+= xD
+= 1 and all other
+i,SP
+i
+i,SD
+i
+variables to zero yields a feasible solution to (ILP) with the same objective value.
+Conversely, Constraints (3b) and (3c) define admission times SP
+i and SD
+i for every request. The
+remaining constraints enforce precedence and both memory capacities in every slot, while the ob-
+jective equals i(SD
+i + di) = iCi. Thus, every feasible ILP solution defines a feasible schedule
+for (O) with the same objective value.
+H ADDITIONAL EXPERIMENTAL RESULTS
+This appendix provides the complete CPU and GPU results supporting Section 5. In the CPU exper-
+iments, ALG/OPT denotes the algorithmic objective divided by the exact optimum obtained from
+the time-indexed ILP, whereas ALG/LP uses the LP lower bound LP⋆. In the GPU experiments, to-
+tal completion time (TCT) is normalized by the corresponding P/D baseline under the same model,
+workload, and operating condition.
+H.1 CPU RESULTS
+We evaluate both algorithms on synthetic and trace-derived instances. Each synthetic setting uses 30
+random seeds. For each request, we randomly select one of four sampling schemes with equal prob-
+23
+
+===== PDF PAGE 24 =====
+Preprint
+ability: uniform, bimodal, heavy-tailed, or correlated sampling. The correlated scheme generates
+mi,pi,di from a shared random variable. All three parameters lie in {1,...,20}. The supplemen-
+tary code specifies the sampling rules.
+For each trace workload, we use 30 windows of 250 requests and take the first n requests from
+each window. We set pi and di to the recorded input and output token counts, respectively, and use
+mi = ⌈pi/512⌉. All CPU instances assume that requests are released at time zero.
+For the capacity experiments, we set MP = ⌈κmaxipi⌉and MD = ⌈κmaxihi⌉, where κis the
+capacity multiplier.
+Synthetic Workloads. Figure 2 compares both algorithms with the exact ILP optimum on small
+instances. ALG/OPT generally increases with n, and Algorithm 1 has the lower ratio across the
+tested capacities. For larger instances, Figure 3 shows that ALG/LP decreases as ngrows, while LP
+solution time increases.
+(a) Request scaling
+(b) Capacity sensitivity
+Objective / OPT
+3.0
+2.5
+2.0
+1.5
+1.0
+Algorithm 1 Algorithm 2
+Algorithm 1 Algorithm 2
+2 4 6 8 10
+Number of requests, n
+1.5 2 2.5 3 3.5 4
+Capacity multiplier, κ
+Figure 2: (a) ALG/OPT versus nat κ= 2. (b) ALG/OPT versus κat n= 10.
+(a) Solution quality
+(b) LP runtime (s)
+Objective / LP lower bound
+3.0
+2.5
+2.0
+1.5
+1.0
+Algorithm 1 Algorithm 2
+100
+10−1
+10−2
+50 100 150 200 250
+50 100 150 200 250
+Number of requests, n
+Number of requests, n
+Figure 3: (a) ALG/LP versus nat κ= 2. (b) LP solution time versus nat κ= 2.
+Trace-Derived Workloads. We use conversation and code workloads derived from the Azure
+LLM Inference Trace 2023 (Patel et al., 2024). Figure 4 shows that ALG/LP decreases with nfor
+both workloads, with Algorithm 1 yielding lower ratios throughout.
+Figures 5 and 6 show that ALG/LP generally increases with κ, while algorithm runtime increases
+with n. Runtime includes both LP solution and schedule construction. The two runtime curves
+nearly overlap because both algorithms use the same LP solution, which accounts for most of their
+runtime, especially for larger n.
+24
+
+===== PDF PAGE 25 =====
+Preprint
+(a) Conversation workload
+(b) Code workload
+Objective / LP lower bound
+3.0
+2.5
+2.0
+1.5
+1.0
+Algorithm 1
+Algorithm 2
+Algorithm 1
+Algorithm 2
+50 100 150 200 250
+Number of requests, n
+50 100 150 200 250
+Number of requests, n
+Figure 4: ALG/LP versus nat κ= 2 for (a) conversation and (b) code workloads.
+(a) Conversation, solution quality
+(b) Conversation, algorithm runtime (s)
+Objective / LP lower bound
+2.5
+2.0
+1.5
+1.0
+101
+100
+10−1
+Algorithm 1
+Algorithm 2
+Algorithm 1
+Algorithm 2
+1.5 2 2.5 3 3.5 4
+Capacity multiplier, κ
+50 100 150 200 250
+Number of requests, n
+Figure 5: Conversation workload. (a) ALG/LP versus κat n= 250. (b) Runtime versus nat κ= 2.
+(a) Code, solution quality
+(b) Code, algorithm runtime (s)
+Objective / LP lower bound
+2.5
+2.0
+1.5
+1.0
+Algorithm 1
+Algorithm 2
+101
+100
+10−1
+10−2
+Algorithm 1
+Algorithm 2
+1.5 2 2.5 3 3.5 4
+Capacity multiplier, κ
+50 100 150 200 250
+Number of requests, n
+Figure 6: Code workload. (a) ALG/LP versus κat n= 250. (b) Runtime versus nat κ= 2.
+25
+
+===== PDF PAGE 26 =====
+Preprint
+(a) Conversation workload
+(b) Code workload
+Objective / LP lower bound
+3.5
+3.0
+2.5
+2.0
+1.5
+1.0
+Algorithm 1
+Algorithm 2
+Algorithm 1
+Algorithm 2
+0.25 0.35 0.45 0.55 0.65 0.7
+Prefill-memory share, θ
+0.25 0.35 0.45 0.55 0.65 0.7
+Prefill-memory share, θ
+Figure 7: ALG/LP versus θfor (a) conversation and (b) code workloads.
+We further examine how a fixed total memory budget is divided between the two pools. For each
+instance, let B= ⌈2 maxipi⌉+ ⌈2 maxihi⌉denote the total budget at κ= 2. We set MP = ⌊θB⌋
+and MD = B−MP, and vary θ∈{0.25,0.35,0.45,0.55,0.65,0.70}at n= 250.
+Figures 7 and 8 report ALG/LP and total completion time (TCT), respectively. ALG/LP generally
+decreases as θincreases. By contrast, TCT rises with θfor the conversation workload and is lowest
+near θ= 0.35 for the code workload.
+×106 (a) Conversation workload
+×105 (b) Code workload
+Objective ∑
+Ci (time slots)
+i
+1.4
+1.2
+1.0
+0.8
+0.6
+0.4
+Algorithm 1
+Algorithm 2
+Algorithm 1
+Algorithm 2
+1.0
+0.8
+0.6
+0.25 0.35 0.45 0.55 0.65 0.7
+Prefill-memory share, θ
+0.25 0.35 0.45 0.55 0.65 0.7
+Prefill-memory share, θ
+Figure 8: Total completion time versus θfor (a) conversation and (b) code workloads.
+H.2 GPU SERVING RESULTS
+We conduct serving experiments on two NVIDIA H100 GPUs using vLLM 0.12.0 with BF16 pre-
+cision. We evaluate Qwen2.5 (7B) (Yang et al., 2024) and Llama 3.1 (8B) (Grattafiori et al., 2024)
+on conversation and code workloads.
+For each request i, pi is the input token count measured by the model’s tokenizer. We fix the
+output length to di tokens by ignoring the end of sequence token. We set mi = ⌈tP
+i /τ⌉, where tP
+i
+is the prefill time estimated by interpolating measured prefill times at different prompt lengths on
+logarithmic scales, and τ is the measured median time per decode step for the model. For n= 250,
+(maxipi,maxihi) equals (4107,4176) for conversation and (7436,7448) for code for both models.
+P/D and Algorithms 1 and 2 use one GPU for prefill and one for decoding. Colocated runs a single
+tensor parallel vLLM instance across both GPUs, which execute both phases. Colocated Chunked
+uses the same configuration with chunked prefill enabled. Each KV cache block holds 16 tokens.
+For P/D and both algorithms, we configure ⌈MP/16⌉prefill blocks and ⌈MD/16⌉decode blocks.
+Both colocated baselines use a unified cache with ⌈MD/16⌉blocks.
+26
+
+===== PDF PAGE 27 =====
+Preprint
+Admission Control. An external proxy enforces the offline schedule before forwarding requests
+to the two vLLM instances. It waits until the full batch is registered, then applies the algorithm’s
+group barriers and admission order. To enforce the prefill capacity, the proxy counts both requests
+executing prefill and requests retaining their prompt cache while awaiting decode. Before forward-
+ing request i to decode, it checks j∈Dhj + hi ≤MD, where Dcontains requests admitted to
+decode but not yet completed. When request icompletes, the proxy releases hi from this accounting
+budget. This is a software admission rule, not a physical reservation of hi KV cache units inside
+vLLM, which manages actual KV allocation separately.
+KV Transfer. The prefill and decode instances transfer KV state using vLLM’s
+P2pNcclConnector. The recorded GPU topology shows an NV12 connection between the
+two H100 GPUs. Although the theoretical model assumes instantaneous KV transfer, the
+completion times measured in the GPU experiments include KV transfer overhead.
+Memory Capacity. We use n = 250 requests and vary κ ∈{1.5,2,2.5,3,3.5,4}, where MP =
+⌈κmaxipi⌉and MD = ⌈κmaxihi⌉.
+Figure 9 shows that both algorithms reduce TCT relative to P/D across all tested capacities on
+the code workloads. On the conversation workloads, their TCT advantage diminishes as capacity
+increases.
+P/D Colocated Colocated Chunked Algorithm 1 Algorithm 2
+(a) Qwen, conversation (b) Qwen, code
+Normalized TCT
+1.0
+0.5
+0.0
+(c) Llama, conversation
+(d) Llama, code
+Normalized TCT
+1.0
+0.5
+0.0
+1.5 2 2.5 3 3.5 4
+Capacity multiplier, κ
+1.5 2 2.5 3 3.5 4
+Capacity multiplier, κ
+Figure 9: Total completion time as κvaries, normalized by the P/D result.
+At κ= 2, Figure 10 shows that both algorithms have lower P50 but higher P99 request completion
+times than P/D across all four model and workload combinations. Their P95 times are lower than
+P/D on code workloads but higher on conversation workloads.
+Prefill and Decode Demands. We use n = 250 requests and target three demand settings:
+(α,β) = (0.9,0.5), (0.75,0.75), and (0.5,0.9), representing prefill-heavy, balanced, and decode-
+heavy demands, respectively.
+Figure 11 shows that, for both models, both algorithms reduce TCT relative to P/D on code work-
+loads under all three demand settings. The reductions are generally larger than those on conversa-
+tion workloads. On conversation workloads, Algorithm 1 remains below P/D, whereas Algorithm 2
+slightly exceeds P/D for Qwen under prefill-heavy demand.
+27
+
+===== PDF PAGE 28 =====
+Preprint
+(a) Qwen, conversation
+(b) Qwen, code
+Algorithm 2
+Algorithm 1
+Colocated Chunked
+Colocated
+P/D
+0 30000 60000 90000
+(c) Llama, conversation
+0 5000 10000 15000 20000 25000
+(d) Llama, code
+Algorithm 2
+Algorithm 1
+Colocated Chunked
+Colocated
+P/D
+0 30000 60000 90000
+Request completion time (ms)
+0 5000 10000 15000 20000 25000
+Request completion time (ms)
+Figure 10: Request completion times at κ = 2 and n = 250. Each segment spans P50 to P99; the
+filled marker denotes P95.
+P/D Colocated Colocated Chunked Algorithm 1 Algorithm 2
+(a) Qwen, conversation (b) Qwen, code
+Normalized TCT
+Normalized TCT
+1.5
+1.0
+0.5
+0.0
+1.5
+1.0
+0.5
+0.0
+(c) Llama, conversation
+(d) Llama, code
+Prefill Balanced Decode
+Demand setting
+Prefill Balanced Decode
+Demand setting
+Figure 11: Total completion time for different values of αand β, normalized by the P/D result.
+Time to first token (TTFT) is measured from the time each request is sent until its first output token
+is received. In the balanced setting, Figure 12 shows that both algorithms have lower P50 TTFT than
+P/D for both models and workloads. Their P99 TTFT is higher than P/D, except for Algorithm 1 on
+the Llama code workload, where it is slightly lower.
+Number of Requests. We vary n ∈{50,100,150,200,250}. The capacities are fixed across n
+at (MP,MD) = (8214,8352) for conversation and (14872,14896) for code, corresponding to the
+n= 250, κ= 2 settings.
+28
+
+===== PDF PAGE 29 =====
+Preprint
+(a) Qwen, conversation
+(b) Qwen, code
+Algorithm 2
+Algorithm 1
+Colocated Chunked
+Colocated
+P/D
+0 30000 60000 90000 120000
+(c) Llama, conversation
+0 10000 20000 30000
+(d) Llama, code
+Algorithm 2
+Algorithm 1
+Colocated Chunked
+Colocated
+P/D
+0 30000 60000 90000 120000
+Time to first token (ms)
+0 10000 20000 30000
+Time to first token (ms)
+Figure 12: TTFT at (α,β) = (0.75,0.75). Each segment spans P50 to P99; the filled marker denotes
+P95.
+Figure 13 shows that the algorithms’ normalized TCT generally decreases as n increases. Both
+algorithms remain below P/D across all batch sizes on code workloads; on conversation workloads,
+their TCT advantage appears at larger batch sizes.
+P/D Colocated Colocated Chunked Algorithm 1 Algorithm 2
+(a) Qwen, conversation (b) Qwen, code
+Normalized TCT
+1.0
+0.5
+0.0
+(c) Llama, conversation
+(d) Llama, code
+Normalized TCT
+1.0
+0.5
+0.0
+50 100 150 200 250
+50 100 150 200 250
+Number of requests, n
+Number of requests, n
+Figure 13: Total completion time as nvaries, normalized by the P/D result.
+29
+
+===== PDF PAGE 30 =====
+Preprint
+Throughput (requests/s)
+Throughput (requests/s)
+10
+8
+6
+4
+10
+8
+6
+4
+P/D Colocated Colocated Chunked Algorithm 1 Algorithm 2
+(a) Qwen, conversation
+17.5
+15.0
+12.5
+10.0
+(b) Qwen, code
+0 20 40 60 80
+(c) Llama, conversation
+0 5 10 15 20
+(d) Llama, code
+14
+12
+10
+8
+0 20 40 60 80
+P95 completion time (s)
+0 5 10 15 20
+P95 completion time (s)
+Figure 14: Throughput versus P95 request completion time as nvaries. Marker size increases with
+n.
+Figure 14 compares throughput and P95 request completion time at each batch size. At compara-
+ble values of n, Colocated achieves higher throughput and lower P95 completion time than either
+algorithm.
+(a) Qwen, conversation
+(b) Qwen, code
+Algorithm 2
+Algorithm 1
+Colocated Chunked
+Colocated
+P/D
+Algorithm 2
+Algorithm 1
+Colocated Chunked
+Colocated
+P/D
+0 5 10 15 20
+(c) Llama, conversation
+0 10 20 30
+(d) Llama, code
+0 5 10 15 20
+Time per output token (ms/token)
+0 10 20 30
+Time per output token (ms/token)
+Figure 15: TPOT at n= 250. Each segment spans P50 to P99; the filled marker denotes P95.
+Time per output token (TPOT) measures the average generation time per output token after the first
+token. At n = 250, Figure 15 shows that both algorithms have lower P95 TPOT than P/D on
+the conversation workloads and slightly higher P95 TPOT than P/D on the code workloads. Both
+algorithms remain below Colocated Chunked, while Colocated has substantially higher P95 TPOT
+on the code workloads.
+30

@@ -1,0 +1,213 @@
+{
+  "checked_on": "2026-11-15",
+  "record_created_at_utc": "2026-11-15T05:24:19Z",
+  "timezone": "Asia/Shanghai",
+  "scope": "Focused primary-source rereading for the new PD request-level SLO routing and tail-latency proposal. No new papers were added, no framework implementation or PD/GPU experiment was performed, and no novelty or performance claim is established by this record. Publication identities and additional mechanism evidence remain in the earlier immutable audits referenced below.",
+  "new_papers": 0,
+  "prior_evidence": [
+    "evidence/pd-elasticity-literature-2026-11-06.json",
+    "evidence/parameterized-scheduler-research-2026-11-13.json",
+    "evidence/web-verification.json",
+    "evidence/source-audit-2026-11-03.json",
+    "evidence/pd-rdma-source-audit-2026-11-03.json"
+  ],
+  "papers": [
+    {
+      "id": "21",
+      "title": "Splitwise: Efficient Generative LLM Inference Using Phase Splitting",
+      "pdf_file": "papers/21_Splitwise_ISCA2024.pdf",
+      "pdf_sha256": "e22b6534854fd86e892a6184c2e55f7de06eb04f6e6c466cc59f8c960cd38013",
+      "text_file": "paper-text/21_Splitwise_ISCA2024.txt",
+      "text_sha256": "097577523a35b7fa1ad44afb03ea51b0bf50d9ec3474ad1ebd6c45031a0ed9ba",
+      "finding": "The cluster scheduler simultaneously assigns prompt and token machines using pending-token JSQ; simultaneous assignment supports layerwise transfer overlap. Serialized and layerwise transfer have different prompt-size and interference conditions.",
+      "anchors": [
+        {
+          "label": "joint_p_d_jsq",
+          "line_start": 652,
+          "line_end": 661,
+          "physical_pdf_pages": [6],
+          "line_block_sha256": "a33389981730b68f19ec578896cfb7cd2919734a136b733fc019d33c6a74c7b5"
+        },
+        {
+          "label": "kv_transfer",
+          "line_start": 725,
+          "line_end": 773,
+          "physical_pdf_pages": [6, 7],
+          "line_block_sha256": "479cbfe9072e7276de6ec8de41f7b862ff8d37528d5ed43c8fea9be572bd8b8a"
+        }
+      ]
+    },
+    {
+      "id": "22",
+      "title": "Mooncake: A KVCache-centric Disaggregated Architecture for LLM Serving",
+      "pdf_file": "papers/22_Mooncake_FAST2025.pdf",
+      "pdf_sha256": "543e56c541523c5e807d2231370f96749b2294bc901266397a7265b18ae2c130",
+      "text_file": "paper-text/22_Mooncake_FAST2025.txt",
+      "text_sha256": "6639a68c7f1871cd64633f729bd4626c85b60f64bcebfd357e34685b16169c76",
+      "finding": "Prefill placement considers prefix reuse, queueing, execution and transfer estimates. Algorithm 1 returns both prefill and decoding instances and includes TTFT/TBT-based rejection; these mechanisms are baselines rather than new contributions of the proposal.",
+      "anchors": [
+        {
+          "label": "cache_aware_prefill",
+          "line_start": 722,
+          "line_end": 751,
+          "physical_pdf_pages": [8],
+          "line_block_sha256": "0367e60218c74368b837e1a7778733e5b8f420794571e1695d918cd6c207a096"
+        },
+        {
+          "label": "joint_selection_algorithm",
+          "line_start": 807,
+          "line_end": 870,
+          "physical_pdf_pages": [9],
+          "line_block_sha256": "8fffbb8c907ff2e1fa5786be45318742d1b3f7588955ed28d54dbfac18c441b3"
+        }
+      ]
+    },
+    {
+      "id": "28",
+      "title": "Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture",
+      "version_note": "Author arXiv v2; unresolved independent publication identity in the existing survey.",
+      "pdf_file": "papers/28_Arrow_arxiv_v2.pdf",
+      "pdf_sha256": "e9b06b2700f3e1e1a79015010f6aa9013fc4931153a00c6d2d71c7249ec9c80e",
+      "text_file": "paper-text/28_Arrow_arxiv_v2.txt",
+      "text_sha256": "8d79fe8f089d07340598552a17b6afa45a7e5270a621ed3d1e3fcc72f8da63e6",
+      "finding": "The global scheduler selects a prefill instance and then selects another instance after prefill completion, with the latter pulling KV. Its SLO-aware global scheduling uses real-time request and instance state. Post-prefill decode selection is therefore a direct existing baseline.",
+      "anchors": [
+        {
+          "label": "post_prefill_decode_selection",
+          "line_start": 604,
+          "line_end": 622,
+          "physical_pdf_pages": [6],
+          "line_block_sha256": "5a5b31b9ef1f3ee24e41f3f71f59e5c93c45d1bdf0cf609fc1b6a737b624de2f"
+        },
+        {
+          "label": "slo_global_scheduling",
+          "line_start": 655,
+          "line_end": 669,
+          "physical_pdf_pages": [6],
+          "line_block_sha256": "09439bc61d866d378ceb68b8106fdde2bc36989eeb70ac02d9e58057e4c39e75"
+        }
+      ]
+    },
+    {
+      "id": "33",
+      "title": "Libra",
+      "pdf_file": "papers/33_Libra_NSDI2026.pdf",
+      "pdf_sha256": "536ead5dbaa75cdac79e4c8f30be6c6ddd8a4b2a216ce6770b420f814cb4f9bf",
+      "text_file": "paper-text/33_Libra_NSDI2026.txt",
+      "text_sha256": "a84ee911471ab0cbf8ea8512325cd143a82088b82df0aaa32591a69b2bc5913e",
+      "finding": "Libra combines global request splitting/routing with local SLO-aware batching and chunk KV transfer. Its least-loaded micro-request placement belongs to a broader action space than fixed-role prompt-boundary PD routing.",
+      "anchors": [
+        {
+          "label": "global_and_local_scheduling",
+          "line_start": 492,
+          "line_end": 523,
+          "physical_pdf_pages": [6],
+          "line_block_sha256": "0c60d15026d6e97372f0901850710a9ffceee8de85fb86db1fee5aaf1f53bdcd"
+        },
+        {
+          "label": "least_loaded_routing",
+          "line_start": 673,
+          "line_end": 681,
+          "physical_pdf_pages": [7],
+          "line_block_sha256": "559bc16c95b6b6f3bd6c9f6076fd2cd0f36a479f6251ad1d22e83d0bd6c20011"
+        }
+      ]
+    },
+    {
+      "id": "26",
+      "title": "TaiChi",
+      "version_note": "Future SC 2026 program identity; this anchor uses the local author arXiv v1 only.",
+      "pdf_file": "papers/26_TaiChi_SC2026_arxiv_v1.pdf",
+      "pdf_sha256": "636b9e5a29b5592a014e21de313309a455a1c0411c905cdc4b74e77515676e8b",
+      "text_file": "paper-text/26_TaiChi_SC2026_arxiv_v1.txt",
+      "text_sha256": "d96c11aaee869aa7d8791a6dc0053ef66f7a72a62fdbb57eb98b77590d6f358a",
+      "finding": "The latency-shifting discussion explicitly describes reallocating latency across phases and requests. It motivates separating reduced avoidable waiting from transferring delay to other requests.",
+      "anchors": [
+        {
+          "label": "latency_shifting",
+          "line_start": 666,
+          "line_end": 711,
+          "physical_pdf_pages": [6],
+          "line_block_sha256": "e405268a3dc601f6448e4ffa2ceee2e341fefa2c9ed931da5883e93b35195945"
+        }
+      ]
+    },
+    {
+      "id": "31",
+      "title": "FluidPD",
+      "version_note": "Author arXiv v1; unresolved independent publication identity in the existing survey.",
+      "pdf_file": "papers/31_FluidPD_arxiv_v1.pdf",
+      "pdf_sha256": "0c109435f4a44db49f64e4a09c66c460826778f6910e77a0236cbf6808e11d33",
+      "text_file": "paper-text/31_FluidPD_arxiv_v1.txt",
+      "text_sha256": "580858a5c1f6786542bff5b744382d781fa14d35c59fa6932d6f3ac6fb8dbf3b",
+      "finding": "Decode pressure includes active and reserved KV, current batch and the largest SLO-compatible decode batch. This directly supports distinguishing active, reserved and allocable decode capacity in routing.",
+      "anchors": [
+        {
+          "label": "decode_reservation_pressure",
+          "line_start": 611,
+          "line_end": 655,
+          "physical_pdf_pages": [6],
+          "line_block_sha256": "0028a52ff2a48eada5f0ad5b3e64369ad35eb0ff0ec6dfb74d52dfc8ff0fc759"
+        }
+      ]
+    },
+    {
+      "id": "39",
+      "title": "Beyond Prediction: Tail-Aware Scheduling for LLM Inference",
+      "pdf_file": "papers/39_TailAwareScheduling_ICML2026.pdf",
+      "pdf_sha256": "a724614a4c53c6d9c1117b9f0c9d93ab8f6ef53e9c8f963bdb14dcd64418eef7",
+      "text_file": "paper-text/39_TailAwareScheduling_ICML2026.txt",
+      "text_sha256": "ff9613b043b055faaf5729f1e18d8f7af2f0cb38d2db473b98bc7fe8944f37c2",
+      "finding": "The paper documents forced preemption, batch-dependent service rate and mixed distributions as challenges to the basic queueing assumptions. Its appendix distinguishes global instance dispatch from UniBoost's within-instance scheduling and evaluates composition with random, round-robin and JSQ dispatch.",
+      "anchors": [
+        {
+          "label": "model_limits",
+          "line_start": 619,
+          "line_end": 635,
+          "physical_pdf_pages": [5],
+          "line_block_sha256": "f7cc43f1d7bcbcdca7d6eaf8f66ce7979ce894329adf53fb60a0f673acecc018"
+        },
+        {
+          "label": "global_dispatch",
+          "line_start": 1678,
+          "line_end": 1697,
+          "physical_pdf_pages": [15],
+          "line_block_sha256": "097af481305b5b65fe26208f5777150748e5a397a901ef2b1dd6520cb4760b98"
+        }
+      ]
+    },
+    {
+      "id": "08",
+      "title": "Llumnix",
+      "pdf_file": "papers/08_Llumnix_OSDI2024.pdf",
+      "pdf_sha256": "2e99cfc54473cd0a0aeabbb9bf16706b23300a7717e5b370ee256cf75801a9d6",
+      "text_file": "paper-text/08_Llumnix_OSDI2024.txt",
+      "text_sha256": "88481001d7f9627bd0fe8d02412f2a243eb2f61f519c39daa7e91115d6e81d76",
+      "finding": "Live migration pipelines append-only KV copying with ongoing decode and then copies the remaining suffix. It is an alternative to the proposal's deliberately excluded post-commit rebinding or active decode migration.",
+      "anchors": [
+        {
+          "label": "live_migration",
+          "line_start": 529,
+          "line_end": 567,
+          "physical_pdf_pages": [6],
+          "line_block_sha256": "07b02e30de02ed2b5664a3afb945c5b40f8a857db6fdd243315f174a2a2cb732"
+        }
+      ]
+    }
+  ],
+  "workload_provenance": {
+    "mooncake": "Arrival, length and remapped block-hash fields were previously verified in evidence/web-verification.json. Reconstructed prompts must not be described as original production text.",
+    "agentx": {
+      "scope": "Optional multi-turn long-context workload for the new proposal. Fixed source identifiers and downloaded artifact hashes were recorded by the existing local parameterized-scheduler project; this research repository did not redownload the large trace.",
+      "harness_official_url": "https://api.github.com/repos/SemiAnalysisAI/agentx-harness/tarball/18015a2d77a6077bee9750c6929a889d52c7df54",
+      "harness_revision": "18015a2d77a6077bee9750c6929a889d52c7df54",
+      "dataset": "semianalysisai/cc-traces-weka-062126-256k",
+      "dataset_revision": "8fecd2fc56694469f758f0afbbb6335ad3043740",
+      "dataset_official_url": "https://huggingface.co/datasets/semianalysisai/cc-traces-weka-062126-256k/resolve/8fecd2fc56694469f758f0afbbb6335ad3043740/traces.jsonl",
+      "downloaded_trace_sha256": "e39cd2ff3eba21d4a3664be51da743ac3d2149a1933898cafc7bfeac8147eeef",
+      "external_audit_file": "/Users/zkx/Documents/parameterized-scheduler-vllm/configs/source_downloads.json",
+      "external_audit_sha256": "3692d4f72af60ef19447b492799263569fed1d58f64f8919f987731a75efeb80"
+    }
+  },
+  "interpretation_limits": "The cited papers establish direct prior art for early joint P/D selection, cache/SLO-aware routing and post-prefill D selection. The proposed provisional lifecycle, avoidable-tail headroom and any end-to-end improvement remain unimplemented hypotheses. Historical framework audits do not establish current upstream support for the proposed protocol."
+}
