@@ -1,0 +1,128 @@
+{
+  "record": "pd-live-role-morphing-2026-11-17",
+  "created_utc": "2026-11-17",
+  "scope": "Replacement of the former proposal-03 design with a standalone fixed-resource live PD role-morphing problem. The active proposal and survey no longer contain reserve-group bridging, reserve-capacity recovery or prepare-first path selection. This record captures the literature boundary and the new dual-role runtime, resource-lease and evaluation design. It does not report a prototype, source audit, novelty proof or GPU experiment.",
+  "research_question": "With a fixed number of execution groups and resident model weights/parallel layouts, admit target-role work while source-role requests are still running, subject to source and target SLOs and explicit compute/HBM/DRAM/network leases. Optimize target activation latency, capacity-valley area and cumulative SLO-compliant delivery over the transition window.",
+  "mechanism_boundary": {
+    "cluster_service_continuity": "Existing dynamic PD systems can keep the cluster serving through other instances.",
+    "process_weight_continuity": "FluidPD and Evolving Infra preserve worker processes, model weights and parallel communication state.",
+    "source_request_continuity": "FluidPD continues in-flight source work through DRAIN.",
+    "proposal_increment": "Target-role admission begins before source draining completes. Target first service, effective target capacity and complete source draining are separate events. The transition is a continuous resource-reallocation path with dual-role state, leases, routing epochs, pause and rollback."
+  },
+  "artifacts": [
+    {
+      "id": "31",
+      "title": "FluidPD: In-Place Elasticity for SLO-Aware Prefill-Decode Disaggregated LLM Serving",
+      "venue": "arXiv preprint v1",
+      "pdf": "papers/31_FluidPD_arxiv_v1.pdf",
+      "pdf_sha256": "0c109435f4a44db49f64e4a09c66c460826778f6910e77a0236cbf6808e11d33",
+      "text": "paper-text/31_FluidPD_arxiv_v1.txt",
+      "text_sha256": "580858a5c1f6786542bff5b744382d781fa14d35c59fa6932d6f3ac6fb8dbf3b"
+    },
+    {
+      "id": "40",
+      "title": "Evolving Infra: Agent-Adaptive LLM Serving at Scale",
+      "venue": "arXiv preprint v2",
+      "pdf": "papers/40_EvolvingInfra_arxiv_v2.pdf",
+      "pdf_sha256": "84f4d8948bf0decb9336b0e5a2ea670c693b924aaa42950a3eb7428854f0c269",
+      "text": "paper-text/40_EvolvingInfra_arxiv_v2.txt",
+      "text_sha256": "1b7838cd8c228508200d1aba77538242309315ae79538661c6f49791009b9238"
+    },
+    {
+      "id": "21",
+      "title": "Splitwise: Efficient Generative LLM Inference Using Phase Splitting",
+      "venue": "ISCA 2024",
+      "pdf": "papers/21_Splitwise_ISCA2024.pdf",
+      "pdf_sha256": "e22b6534854fd86e892a6184c2e55f7de06eb04f6e6c466cc59f8c960cd38013",
+      "text": "paper-text/21_Splitwise_ISCA2024.txt",
+      "text_sha256": "097577523a35b7fa1ad44afb03ea51b0bf50d9ec3474ad1ebd6c45031a0ed9ba"
+    },
+    {
+      "id": "28",
+      "title": "Arrow: Adaptive Scheduling Mechanisms for Disaggregated LLM Inference Architecture",
+      "venue": "arXiv preprint v2",
+      "pdf": "papers/28_Arrow_arxiv_v2.pdf",
+      "pdf_sha256": "e9b06b2700f3e1e1a79015010f6aa9013fc4931153a00c6d2d71c7249ec9c80e",
+      "text": "paper-text/28_Arrow_arxiv_v2.txt",
+      "text_sha256": "8d79fe8f089d07340598552a17b6afa45a7e5270a621ed3d1e3fcc72f8da63e6"
+    },
+    {
+      "id": "08",
+      "title": "Llumnix: Dynamic Scheduling for Large Language Model Serving",
+      "venue": "OSDI 2024",
+      "pdf": "papers/08_Llumnix_OSDI2024.pdf",
+      "pdf_sha256": "2e99cfc54473cd0a0aeabbb9bf16706b23300a7717e5b370ee256cf75801a9d6",
+      "text": "paper-text/08_Llumnix_OSDI2024.txt",
+      "text_sha256": "88481001d7f9627bd0fe8d02412f2a243eb2f61f519c39daa7e91115d6e81d76"
+    }
+  ],
+  "mechanism_readings": [
+    {
+      "id": "31",
+      "sections": "Appendix C, extracted lines 853-937",
+      "finding": "FluidRole preserves the worker process, weights, parallel layout and communication groups. Its state machine is ACTIVE(old) to DRAIN to SWITCH to ACTIVE(new). P-to-D waits for the current prefill and outstanding KV sends; D-to-P waits for active generations. Target activation therefore follows role-specific draining."
+    },
+    {
+      "id": "40",
+      "sections": "§2-§3 and Figure 3; extracted lines 182-205 and 357-361",
+      "finding": "Evolving Infra decouples node phase from KV management, supports runtime phase switches and keeps shared host-memory KV readable across roles. Its switch measurement description places the fast phase switch after running requests finish."
+    },
+    {
+      "id": "21",
+      "sections": "§IV, extracted lines 637-670",
+      "finding": "Splitwise mixed-pool machines execute both task types using mixed continuous batching and return to the original pool after the opposite-kind queue drains. This is a mixed-execution baseline rather than a persistent target-role ramp with source leases and routing epochs."
+    },
+    {
+      "id": "28",
+      "sections": "§5.2-§5.6",
+      "finding": "Arrow separates role assignment from instance execution capability and lets local scheduling continue existing work while later assignments change. It is a direct general-instance and mixed-work baseline."
+    },
+    {
+      "id": "08",
+      "sections": "§4.2-§4.4",
+      "finding": "Llumnix migrates live requests and KV to accelerate draining and instance reconfiguration. Proposal 03 compares natural source completion, active migration and overlapping target admission under the same fixed resource budget."
+    }
+  ],
+  "design": {
+    "execution_group": "Resident weights, model executor and communication groups; independently initialized P/D queues, graphs, workspace, KV pools and transfer endpoints. Dual-role overhead is charged to the fixed resource budget.",
+    "resource_lease": "Each request, transfer and runtime component records owner, role epoch, HBM/DRAM pages, workspace, transfer registration, release condition and completion/failure event. Active source KV is protected.",
+    "states": [
+      "STABLE_SOURCE",
+      "PREPARING_TARGET",
+      "OVERLAPPING",
+      "TARGET_ACTIVE_WITH_SOURCE_TAIL",
+      "STABLE_TARGET"
+    ],
+    "target_capabilities": "P-side chunked prefill, append-prefill, full prefill, KV send and cache publication; D-side KV receive, decode batch, graph execution, output streaming and incremental KV save. Admission requires both capability validation and resource feasibility.",
+    "routing": "Requests carry execution group, role epoch, P/D pairing and KV ownership. Pause stops further target ramp-up; rollback withdraws unstarted target admissions and reservations while started requests follow their leases.",
+    "controller": "Distinguishes transient pressure from sustained composition shifts and selects admission rates, work classes, chunk/token budgets, resource budgets and target component initialization. Stable mixed states are valid operating points."
+  },
+  "directional_evaluation": {
+    "D_to_P": "Old decodes continue while new prefill starts within ITL/HBM/DRAM budgets. Target prefill capability expands as old decode leases release. Other decode workers' capacity and ITL are included when new decode bindings are reduced.",
+    "P_to_D": "Target decode receive/graph/scheduler state initializes while source prefill and KV sends continue. New decode admission expands as source KV pins and transfer leases release; prompt KV supply is part of feasibility."
+  },
+  "baselines": [
+    "Best fixed P/D ratio",
+    "FluidPD ACTIVE-DRAIN-SWITCH",
+    "Evolving Infra runtime switch with shared KV",
+    "Splitwise/Arrow/TaiChi fixed mixed execution",
+    "PPD/AMPD/Kairos local prefill transfer",
+    "Llumnix active migration",
+    "Offline future-aware transition reference"
+  ],
+  "metrics": [
+    "Time to first target-role request execution",
+    "Time to 25%, 50% and 90% effective target capacity",
+    "Time to complete source draining",
+    "Cumulative SLO-compliant requests and sessions in the transition window",
+    "Source request completion time and ITL p95/p99",
+    "Target request TTFT",
+    "Capacity-valley depth and time integral",
+    "Dual-role graph, queue, connection, buffer and KV-pool overhead",
+    "KV reuse and migration bytes",
+    "Pause, rollback and recovery time",
+    "Final stable state and transition count"
+  ],
+  "falsification": "If a tuned fixed mixed-execution policy matches cumulative SLO delivery and target activation without lease-driven ramping, the role-morphing controller has no independent performance contribution. The study then reduces to the dual-role runtime feasibility region and its fixed-resource costs.",
+  "historical_records": "pd-elasticity-literature-2026-11-06.json and its companion source excerpts remain unchanged as literature audit artifacts. They no longer define an active reserve-based proposal."
+}
