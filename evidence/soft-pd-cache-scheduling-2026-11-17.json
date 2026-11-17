@@ -1,0 +1,187 @@
+{
+  "record": "soft-pd-cache-scheduling-2026-11-17",
+  "created_utc": "2026-11-17",
+  "scope": "Literature and mechanism synthesis for proposal 07: asymmetric soft-boundary PD, joint L1/L2/L3 KV-cache and prefill-placement scheduling under a fixed GPU budget, and gradual D-to-prefill-heavy adaptation. This record does not establish novelty, framework support, or serving performance. Proposal 07 is a design; no implementation or GPU experiment was run.",
+  "artifacts": [
+    {
+      "id": "08",
+      "title": "Llumnix: Dynamic Scheduling for Large Language Model Serving",
+      "venue": "OSDI 2024",
+      "pdf": "papers/08_Llumnix_OSDI2024.pdf",
+      "pdf_sha256": "2e99cfc54473cd0a0aeabbb9bf16706b23300a7717e5b370ee256cf75801a9d6",
+      "text": "paper-text/08_Llumnix_OSDI2024.txt",
+      "text_sha256": "88481001d7f9627bd0fe8d02412f2a243eb2f61f519c39daa7e91115d6e81d76"
+    },
+    {
+      "id": "21",
+      "title": "Splitwise: Efficient Generative LLM Inference Using Phase Splitting",
+      "venue": "ISCA 2024",
+      "pdf": "papers/21_Splitwise_ISCA2024.pdf",
+      "pdf_sha256": "e22b6534854fd86e892a6184c2e55f7de06eb04f6e6c466cc59f8c960cd38013",
+      "text": "paper-text/21_Splitwise_ISCA2024.txt",
+      "text_sha256": "097577523a35b7fa1ad44afb03ea51b0bf50d9ec3474ad1ebd6c45031a0ed9ba"
+    },
+    {
+      "id": "22",
+      "title": "Mooncake: Trading More Storage for Less Computation — A KVCache-centric Architecture for Serving LLM Chatbot",
+      "venue": "FAST 2025",
+      "pdf": "papers/22_Mooncake_FAST2025.pdf",
+      "pdf_sha256": "543e56c541523c5e807d2231370f96749b2294bc901266397a7265b18ae2c130",
+      "text": "paper-text/22_Mooncake_FAST2025.txt",
+      "text_sha256": "6639a68c7f1871cd64633f729bd4626c85b60f64bcebfd357e34685b16169c76"
+    },
+    {
+      "id": "23",
+      "title": "BlitzScale: Fast and Live Large Model Autoscaling with O(1) Host Caching",
+      "venue": "OSDI 2025",
+      "pdf": "papers/23_BlitzScale_OSDI2025.pdf",
+      "pdf_sha256": "a129034ac6fbd9510212de0c1dbbf79bd13affc51e1a80cb0eed5982e9439ae9",
+      "text": "paper-text/23_BlitzScale_OSDI2025.txt",
+      "text_sha256": "860d73929fa1246d7e5fd2df4bdc5a53f14dd14b553ea7bbd5501a00849d0c6c"
+    },
+    {
+      "id": "26",
+      "title": "Prefill-Decode Aggregation or Disaggregation? Unifying Both for Goodput-Optimized LLM Serving",
+      "venue": "SC 2026 (official program; presentation scheduled 2026-11-18)",
+      "pdf": "papers/26_TaiChi_SC2026_arxiv_v1.pdf",
+      "pdf_sha256": "636b9e5a29b5592a014e21de313309a455a1c0411c905cdc4b74e77515676e8b",
+      "text": "paper-text/26_TaiChi_SC2026_arxiv_v1.txt",
+      "text_sha256": "d96c11aaee869aa7d8791a6dc0053ef66f7a72a62fdbb57eb98b77590d6f358a"
+    },
+    {
+      "id": "31",
+      "title": "FluidPD: In-Place Elasticity for SLO-Aware Prefill-Decode Disaggregated LLM Serving",
+      "venue": "arXiv preprint (conference identity not verified)",
+      "pdf": "papers/31_FluidPD_arxiv_v1.pdf",
+      "pdf_sha256": "0c109435f4a44db49f64e4a09c66c460826778f6910e77a0236cbf6808e11d33",
+      "text": "paper-text/31_FluidPD_arxiv_v1.txt",
+      "text_sha256": "580858a5c1f6786542bff5b744382d781fa14d35c59fa6932d6f3ac6fb8dbf3b"
+    },
+    {
+      "id": "47",
+      "title": "Towards Load-Aware Prefill Deflection for Disaggregated LLM Serving",
+      "venue": "arXiv preprint",
+      "pdf": "papers/47_PrefillDeflection_arxiv_v1.pdf",
+      "pdf_sha256": "403485ad86bb0b050bbd613497a17c91c74bc91d89e4551d082a92dfe1c0e3a0",
+      "text": "paper-text/47_PrefillDeflection_arxiv_v1.txt",
+      "text_sha256": "a3e6d1275bbf10e30f84d4571dc06f8376afd56e82a0cd6b246da1f88afa1978"
+    },
+    {
+      "id": "49",
+      "title": "Not All Prefills Are Equal: PPD Disaggregation for Multi-turn LLM Serving",
+      "venue": "arXiv preprint",
+      "pdf": "papers/49_PPD_arxiv_v1.pdf",
+      "pdf_sha256": "e13e7c959ac4eda0bf5080a059834fef98bb2c26a4ae352b9b7a8ac978e44f70",
+      "text": "paper-text/49_PPD_arxiv_v1.txt",
+      "text_sha256": "d5ba1ff3f161ebdf8aa00843eee74f24703c737be4a365d9a8b5e2e3445735d0"
+    },
+    {
+      "id": "50",
+      "title": "Strata: Hierarchical Context Caching for Long Context Language Model Serving",
+      "venue": "OSDI 2026",
+      "pdf": "papers/50_Strata_OSDI2026.pdf",
+      "pdf_sha256": "c8e0f2148aada4f18d7dbb2f54dca35a1e8a782375d3dc4786a5dc66e13f1b77",
+      "text": "paper-text/50_Strata_OSDI2026.txt",
+      "text_sha256": "ef7d923e7025e18318a36d578fb6bddf71c87cad4c68597288c2a740ded99d2f"
+    },
+    {
+      "id": "57",
+      "title": "DualPath: Breaking the Storage Bandwidth Bottleneck in Agentic LLM Inference",
+      "venue": "arXiv preprint",
+      "pdf": "papers/57_DualPath_arxiv_v2.pdf",
+      "pdf_sha256": "6d135c6563a7b6db1c5f2b27de50dee65f1bbdb4507bc6ddf871b88e3e0d6aa2",
+      "text": "paper-text/57_DualPath_arxiv_v2.txt",
+      "text_sha256": "d5f0741fabcfd554413917d902bafa4fb8ace7e7842f9751e1e7ea976718d706"
+    },
+    {
+      "id": "60",
+      "title": "Efficient Multi-round LLM Inference over Disaggregated Serving",
+      "venue": "ICML 2026",
+      "pdf": "papers/60_AMPD_ICML2026.pdf",
+      "pdf_sha256": "17b0dcc325045603e63d26f949c5da387927fa33932f485abc736d13a3e292c0",
+      "text": "paper-text/60_AMPD_ICML2026.txt",
+      "text_sha256": "8a5384bdc9398c9493c843da482678a04d4ce372ffcc63eeeff1ef9277b8cb16"
+    }
+  ],
+  "new_paper_60": {
+    "system": "AMPD",
+    "identity": "Efficient Multi-round LLM Inference over Disaggregated Serving, ICML 2026, PMLR 306:41479-41493",
+    "official_page": "https://proceedings.mlr.press/v306/he26r.html",
+    "downloaded_pdf": "https://raw.githubusercontent.com/mlresearch/v306/main/assets/he26r/he26r.pdf",
+    "identity_note": "Title and venue verified on the official PMLR v306 index and paper page; the archived PDF is the official proceedings version, not the arXiv v2."
+  },
+  "mechanism_readings": [
+    {
+      "id": "60",
+      "sections": "§3-§4.1, PDF pages 3-5; extracted lines 298-388 and 416-462",
+      "finding": "A session is bound to a decode worker. Incremental prefill can execute locally on that worker or remotely on a prefill worker; remote execution may read history KV from the decode worker and returns only incremental KV. Routing uses windowed TTFT/ITL slack and profiled local/remote cost."
+    },
+    {
+      "id": "60",
+      "sections": "§5, PDF page 6; extracted lines 563-626",
+      "finding": "Offline deployment planning has an explicit fixed total-GPU constraint, but is separate from online per-request prefill routing."
+    },
+    {
+      "id": "57",
+      "sections": "§4.1, PDF pages 4-5; extracted lines 412-522",
+      "finding": "DualPath loads hit KV either directly into the prefill engine or into a decode engine followed by transfer to prefill. Prefill remains on P. Splitting one request across both read paths is left as future work in §6.1, lines 859-863."
+    },
+    {
+      "id": "49",
+      "sections": "§1, §5, Appendix B; extracted lines 68-112, 576-600, 1020-1042",
+      "finding": "PPD routes Turn 2+ append-prefill to decode nodes holding local cached KV; the implementation uses a local prefix cache and session table. It does not study external-storage loading paths."
+    },
+    {
+      "id": "47",
+      "sections": "§2-§4; extracted lines 102-165, 209-229, 613-649",
+      "finding": "Kairos executes deflected prefill on decode nodes as chunked prefill under TBT constraints, with per-request chunk schedules."
+    },
+    {
+      "id": "31",
+      "sections": "Appendix C, PDF pages 7-8; extracted lines 853-937",
+      "finding": "FluidRole uses ACTIVE(old) -> DRAIN -> SWITCH -> ACTIVE(new). D-to-P stops new decode and waits for active requests to finish before activating prefill; drain time depends on the longest remaining sequence."
+    },
+    {
+      "id": "21",
+      "sections": "request routing around Fig. 10; extracted lines 637-670",
+      "finding": "Splitwise mixed-pool machines retain their original identity, execute mixed batching, and return to the original pool after the opposite-kind queue drains."
+    },
+    {
+      "id": "26",
+      "sections": "Abstract and design overview; extracted lines 30-60 and 157-211",
+      "finding": "TaiChi uses prefill-heavy/decode-heavy instances and a hybrid mode with request scheduling and chunk-size controls."
+    },
+    {
+      "id": "08",
+      "sections": "Introduction/design; extracted lines 42-43, 152-155, 477-496",
+      "finding": "Llumnix provides live request/KV migration to support continuous rescheduling and instance draining."
+    },
+    {
+      "id": "23",
+      "sections": "Abstract/introduction; extracted lines 22-45 and 69-85",
+      "finding": "BlitzScale allows model-serving work while parameters are loading; it addresses instance preparation, not the proposal-07 cache-path decision."
+    },
+    {
+      "id": "22",
+      "sections": "KVCache-centric disaggregated serving and distributed storage; local manifest and prior Part II reading",
+      "finding": "Provides the distributed KV-cache/storage baseline; no new performance claim is made in proposal 07."
+    },
+    {
+      "id": "50",
+      "sections": "§4.2; extracted lines 571-664",
+      "finding": "Strata covers host-memory/external-storage data management, opportunistic prefetch and I/O-aware scheduling; proposal 07 uses it as a tiered-cache and I/O baseline."
+    }
+  ],
+  "design_boundaries": [
+    "P and D are asymmetric: P is prefill-priority, D is decode-priority with bounded append-prefill; P is not assumed to become a decode worker.",
+    "L1/L2/L3 are proposal-specific logical names for device HBM, host DRAM and external persistent/distributed KV storage respectively; they are not claimed as a universal framework naming standard.",
+    "The four L3 paths are A=P-load/P-compute, B=D-load/P-compute, C=D-load/D-compute, D=P-load/D-compute. Decode stays on the selected D; P-local decode is not assumed.",
+    "Gradual adaptation primarily targets D-to-prefill-heavy: old decodes continue while controlled new prefill is admitted. Full physical P-role conversion is claimed only if the instance supports all required capabilities.",
+    "P-to-D conversion, arbitrary full-prefill on D, active request migration and split-load are conditional extensions, not first-version claims."
+  ],
+  "research_increment_to_test": [
+    "Whether the joint cache-source and compute-placement action set outperforms DualPath-style loading-only and PPD/AMPD-style local/remote-prefill policies.",
+    "Whether admitting controlled new prefill while old decodes continue improves cumulative SLO delivery relative to FluidPD-style drain-first role switching and Splitwise-style temporary mixed pooling.",
+    "Whether each of the four paths has a non-dominated operating region; paths that never win should be removed."
+  ]
+}

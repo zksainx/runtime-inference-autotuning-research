@@ -1,0 +1,134 @@
+{
+  "record": "soft-pd-cache-scheduling-review-2026-11-17",
+  "created_utc": "2026-11-17",
+  "scope": "Focused review and revision of proposal 07 after the initial soft-pd-cache-scheduling-2026-11-17 synthesis. Adds primary-source papers for holder/executor scheduling, closed-loop stability, load-versus-recompute decisions and cache discovery; updates PPD and DualPath publication identities; revises the path, memory and evaluation model. This record describes a research design and archived mechanisms. It does not report a prototype, framework capability audit, novelty proof or GPU experiment.",
+  "publication_updates": [
+    {
+      "id": "49",
+      "system": "PPD",
+      "identity": "ICML 2026, PMLR volume 306",
+      "official_page": "https://proceedings.mlr.press/v306/li26dq.html",
+      "software": "https://github.com/freelulul/vllm-ppd",
+      "archived_version": "Author arXiv v1; existing mechanism readings and artifact hashes remain unchanged."
+    },
+    {
+      "id": "57",
+      "system": "DualPath",
+      "identity": "SIGCOMM 2026",
+      "final_title": "DualPath: Accelerating Agentic LLM Inference by Harvesting Disaggregated KV-Cache Storage I/O",
+      "official_doi": "https://doi.org/10.1145/3789240.3829159",
+      "official_program": "https://conferences.sigcomm.org/sigcomm/2026/program/papers/",
+      "archived_version": "Author arXiv v2 under the earlier title DualPath: Breaking the Storage Bandwidth Bottleneck in Agentic LLM Inference; existing mechanism readings and artifact hashes remain unchanged."
+    },
+    {
+      "id": "64",
+      "system": "KVCompass",
+      "identity": "POMACS volume 10, issue 3, article 68, December 2026",
+      "official_doi": "https://doi.org/10.1145/3857371",
+      "evidence": "The complete publication citation appears on PDF page 1 and extracted text lines 29-50 of the archived author arXiv v1."
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "40",
+      "title": "Evolving Infra: Agent-Adaptive LLM Serving at Scale",
+      "venue": "arXiv preprint v2",
+      "pdf": "papers/40_EvolvingInfra_arxiv_v2.pdf",
+      "pdf_sha256": "84f4d8948bf0decb9336b0e5a2ea670c693b924aaa42950a3eb7428854f0c269",
+      "text": "paper-text/40_EvolvingInfra_arxiv_v2.txt",
+      "text_sha256": "1b7838cd8c228508200d1aba77538242309315ae79538661c6f49791009b9238"
+    },
+    {
+      "id": "61",
+      "title": "Vesta: Queueing-Aware LLM Scheduling for Real-World Workloads",
+      "venue": "arXiv preprint v1",
+      "source": "https://arxiv.org/abs/2610.14686v1",
+      "pdf": "papers/61_Vesta_arxiv_v1.pdf",
+      "pdf_sha256": "38778971785bbe89795d9e2a6eddcda80495ad22d92191e19593d892b8b1ccb6",
+      "text": "paper-text/61_Vesta_arxiv_v1.txt",
+      "text_sha256": "cb7c38d71cf214c97ab279b54e3345bdb66f5112ac48cc9292775e774246b3b0",
+      "pages": 14
+    },
+    {
+      "id": "62",
+      "title": "Bursts That Outlast Themselves: Persistent Degradation in Prefix-Cached Agent Serving",
+      "venue": "arXiv preprint v1",
+      "source": "https://arxiv.org/abs/2611.13412v1",
+      "pdf": "papers/62_Bursts_arxiv_v1.pdf",
+      "pdf_sha256": "61b884329d0f37824d6c02e291cd2e85ae5ad54895ed87777b46cad7c20c942e",
+      "text": "paper-text/62_Bursts_arxiv_v1.txt",
+      "text_sha256": "7f7a4d26e65357f118327987455d7e634b7d5cc0fc826b3d71e1e44aa70b85ac",
+      "pages": 12
+    },
+    {
+      "id": "63",
+      "title": "When the KV Cache Is Slower Than the GPU: Scaling Remote KV Tiers for Context-Parallel Prefill",
+      "venue": "arXiv preprint v1",
+      "source": "https://arxiv.org/abs/2610.21500v1",
+      "pdf": "papers/63_RemoteKVTiers_arxiv_v1.pdf",
+      "pdf_sha256": "714f0fb0077145cf71015887eadf99b85a38491bff8ca121c6f92c157e4331ba",
+      "text": "paper-text/63_RemoteKVTiers_arxiv_v1.txt",
+      "text_sha256": "ba09086ba38d5c0baef83a646606ca3df29f2ebf93a24b93977c97c01fd040c8",
+      "pages": 9
+    },
+    {
+      "id": "64",
+      "title": "KVCompass: A Discovery Plane for Internet-Scale Prefix Cache Sharing in LLM Serving",
+      "venue": "POMACS 2026; archived author arXiv v1",
+      "source": "https://arxiv.org/abs/2610.24179v1",
+      "pdf": "papers/64_KVCompass_arxiv_v1.pdf",
+      "pdf_sha256": "a85c2569f4abfbce04d3b555b0a80e2d99d8731db542e0ce7ac8c6dbebad548a",
+      "text": "paper-text/64_KVCompass_arxiv_v1.txt",
+      "text_sha256": "859c64596bfc4161d51b9087d54a00501132c1e24f12a1a67390d4a20f7c9548",
+      "pages": 26
+    }
+  ],
+  "mechanism_readings": [
+    {
+      "id": "61",
+      "sections": "Abstract and §4.1-§4.3; extracted lines 30-57, 640-688 and 778-899",
+      "finding": "Vesta assigns each session a stable authoritative KV holder and independently selects an executor. A remote executor fetches the prefix and writes the new suffix back to the holder. Executor selection includes backlog, transfer work and a congestion price for additional service demand."
+    },
+    {
+      "id": "40",
+      "sections": "§3-§4.3; extracted lines 417-479 and 744-750",
+      "finding": "Evolving Infra combines shared node host-memory KV, peer reads, dynamic PD roles and branch/version reference counts. It is a direct baseline for shared L2, cache lifetime and effective role-capacity adaptation."
+    },
+    {
+      "id": "63",
+      "sections": "Abstract, §4-§6 and §7; extracted lines 11-48, 243-309, 394-400 and 686-710",
+      "finding": "A remote hit can cost more than recomputation, and synchronous loading can overload an engine queue even with low GPU utilization. The paper models bandwidth plus fixed hit cost, shards and asynchronously loads the remote tier, and identifies load-or-recompute decisions as a next step."
+    },
+    {
+      "id": "62",
+      "sections": "Abstract, §1, §4-§6; extracted lines 9-65, 417-571 and 759-770",
+      "finding": "Closed-loop agent sessions can sustain a degraded cache/recompute/backlog regime after a short trigger. Suspending admitted sessions and bounding active resident-KV demand recover the evaluated single-colocated-engine setting. Proposal 07 uses this budget as a common experimental constraint and separates path selection from admission control."
+    },
+    {
+      "id": "64",
+      "sections": "§1, §3-§5 and §6 limitations; extracted lines 73-95, 518-525, 613-655 and 1238-1270",
+      "finding": "KVCompass decouples prefix identity from dynamic holder placement. False or stale locators affect forwarding performance while the selected worker validates usable local KV and recomputes missing tokens. Decode output enters its discovery index after a later prefill rather than through a decode-time publication protocol."
+    }
+  ],
+  "design_revisions": [
+    "The primary question is joint warm-request path selection under fixed GPU count and fixed session decode binding. Sustained-load adaptation is an evaluation scenario for effective warm-prefill capacity.",
+    "R is an explicit full/partial recompute path alongside A/B/C/D. Every cached path is compared with recompute under the same transfer and memory model.",
+    "Cache tier and holder are orthogonal state. L2 includes local and peer host-memory copies, and a source descriptor carries prefix, version, holder, tier and valid length.",
+    "Committed, loading, backing-up and evictable states enter the scheduler. Only published and validated contiguous prefixes form executable hits; directory hints share common validation and fallback rules.",
+    "Every path reserves and accounts for HBM history and incremental KV, append workspace, L2 staging, duplicate copies and HBM/DRAM byte-seconds.",
+    "B/C/D early decode binding and reservation time enter path cost. Dynamic decode binding is a separate experiment.",
+    "Vesta-style queueing externality is a required baseline and scheduler feature. Strata delay-hit merging is common across compared policies.",
+    "Closed-loop experiments use a common session working-set budget. Fixed-admission/path-only and fixed-path/admission-only ablations separate path gains from stability gains.",
+    "Append, rewrite and compaction requests use exact valid-prefix semantics. Position-independent and approximate cross-version reuse are extensions.",
+    "D-side append capacity directly offloads eligible warm work and indirectly frees P capacity for cold requests. Full physical role conversion remains in proposal 03.",
+    "Phase zero audits D-local append, D-to-P lazy reads, P/D storage reads, incremental return, peer L2 reads and publication/release events on the target framework before global scheduler implementation.",
+    "Evaluation compares against the strongest comparable composition of DualPath, PPD/AMPD and Vesta-style mechanisms, not only isolated single-mechanism baselines."
+  ],
+  "artifact_operations": {
+    "download_script": "python3 scripts/download_papers.py 61 62 63 64",
+    "extractor": "./scripts/extract_pdf papers/61_Vesta_arxiv_v1.pdf papers/62_Bursts_arxiv_v1.pdf papers/63_RemoteKVTiers_arxiv_v1.pdf papers/64_KVCompass_arxiv_v1.pdf",
+    "downloads": "All four PDFs completed and passed the repository PDF header/EOF check.",
+    "text_extraction": "All four PDFs were extracted with page boundaries: 14, 12, 9 and 26 pages respectively.",
+    "full_validator": "Not run; the user did not request the repository-wide validator."
+  }
+}
