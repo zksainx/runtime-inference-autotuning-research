@@ -1,0 +1,1670 @@
+Source: 61_Vesta_arxiv_v1.pdf
+Pages: 14
+
+===== PDF PAGE 1 =====
+Vesta: Queueing-Aware LLM Scheduling for
+Real-World Workloads
+Bowen Li
+Tencent
+China
+Wei Mao
+Tencent
+China
+Lancheng Zou
+The Chinese Univeristy of Hong Kong
+Tencent
+China
+Wenbin Ye
+Tencent
+China
+Chao Deng
+Tencent
+China
+Lecheng Li
+Tencent
+China
+Jianchen Zhu
+Tencent
+China
+arXiv:2610.14686v1 [cs.DC] 10 Oct 2026
+Abstract
+Agentic applications generate multi-turn sequences of LLM
+requests, with each new turn extending the context accumu-
+lated from prior interactions and tool calls. Prefix caching
+reuses the KV cache of earlier turns and avoids redundant
+prefill, but routing every turn to its cache-affine instance
+can create severe local queues while capacity remains idle
+elsewhere. Remote KV cache access relaxes this tension, yet
+migrating execution adds transfer work and is harmful when
+the cluster is already congested. Thus, deciding where to exe-
+cute a request requires reasoning jointly about cache locality,
+queueing, and the current operating point of the cluster.
+We present Vesta, a queueing-aware scheduler for dis-
+tributed agentic LLM serving. Vesta assigns each session a
+stable holder for its authoritative KV cache while indepen-
+dently selecting an executor for every request. Grounded in
+classical queueing theory, its objective accounts for backlog,
+reusable prefixes, KV cache transfer, and the queueing exter-
+nality of additional service demand; it migrates execution to
+recover idle capacity when beneficial and favors placements
+that add the least prefill and transfer work as congestion rises.
+Vesta also migrates reusable prefixes across length buckets
+to avoid cold starts. On real-world agentic workloads, Vesta
+improves throughput by 14.0% and reduces mean TTFT by
+57.8% over the state-of-the-art scheduler in a PD-colocated
+deployment. In PD-disaggregated deployments, it reduces
+mean TTFT by up to 18.1% and P99 TTFT by up to 29.0% at
+matched throughput.
+1 Introduction
+Large language models (LLMs) increasingly serve as the
+reasoning engine of autonomous agents [2, 20, 21, 27]. Rather
+than issuing isolated prompts, an agent solves a task through
+a session: it asks the model for a next step, invokes tools,
+appends their outputs to the context, and issues the next
+request. Consequently, later turns usually extend the context
+of earlier ones. Prefix caching can reuse the KV cache of the
+Kai Liu
+Tencent
+China
+Bei Yu
+The Chinese Univeristy of Hong Kong
+China
+shared prefix and avoid most prefill work, making it essential
+to efficient agentic serving [6, 7, 37].
+Our production trace shown in Section 3.1 confirms that
+this reuse is both prevalent and persistent: 80.6% of requests
+reuse at least 90% of their prompt. At the same time, the num-
+ber of active sessions changes substantially over the course
+of a day, so a serving cluster alternates between periods
+with abundant idle capacity and periods close to saturation.
+These two properties make request placement stateful. The
+instance selected for a session determines where its accu-
+mulated KV cache can be reused on later turns, while the
+instantaneous system state determines whether that instance
+can serve the next turn promptly.
+Together, these two properties put cache affinity and load
+in conflict. Routing a session to the instance that holds its
+KV cache minimizes computation, but many active turns
+can accumulate at the same cache-affine instance. Other in-
+stances may then be idle while requests wait, wasting cluster
+capacity. Routing to a less loaded instance instead pools that
+capacity, and a hierarchical KV cache can preserve reuse
+by fetching the prefix remotely. However, remote execution
+incurs KV cache transfer work. It can reduce a request’s im-
+mediate wait while increasing the cluster’s service demand
+and thus delaying later requests. The appropriate decision
+therefore depends not only on cache locality and the holder’s
+queue, but also on the cluster’s congestion state.
+Queueing theory makes this trade-off explicit. A cache-
+affine instance is a queue whose utilization is determined
+by the work routed to it. Waiting time grows sharply near
+saturation, so moving work away from a locally busy holder
+can have a large benefit when other instances have slack. In
+contrast, when all instances are busy, the capacity-pooling
+opportunity largely vanishes and extra KV cache transfer
+work only pushes the cluster closer to saturation. Thus, the
+same execution migration should be aggressive under local
+congestion in an otherwise underloaded cluster, but con-
+servative under global congestion. The system objective is
+1
+
+===== PDF PAGE 2 =====
+consequently not only to minimize the latency of a single
+request, but also to maximize the throughput the cluster can
+sustain.
+Recent LLM scheduling systems explore different points
+in this design space. LMetric [36] combines cache-locality
+and load indicators into a hyperparameter-free scheduling
+score. SMetric [29] adopts a session-centric policy that load-
+balances the first turn of each session while favoring cache
+affinity for later turns unless the assigned instance becomes
+overloaded. DualMap [35] routes each request to two can-
+didate instances and selects between them according to the
+current system state. Another line of work leverages analyti-
+cal performance models to estimate candidate-instance be-
+havior and guide placement [3, 19, 23, 40]. These approaches
+make decisions based on the current system state, taking into
+account cache locality, instance load, and predicted latency.
+However, they do not explicitly account for the downstream
+effects of these decisions. Each decision has two such effects:
+first, the KV cache replicas it creates reduce the cluster’s
+effective cache capacity, thereby lowering the overall hit ra-
+tio and degrading serving performance; second, the placed
+request delays subsequently arriving requests.
+To account for both effects, we present Vesta, a queueing-
+aware scheduler for distributed agentic LLM serving. Vesta
+separates two placement decisions that operate at different
+timescales. It assigns every session a stable holder, chosen
+by hashing the session within its current length bucket, that
+retains the session’s authoritative KV cache and thereby
+keeps long-term cache ownership balanced across the clus-
+ter. For each request, it independently selects an executor. If
+the executor differs from the holder, it fetches the reusable
+prefix from the holder, executes the request, and writes the
+newly generated KV cache back to the holder. This holder–
+executor disaggregation addresses the cache-capacity effect:
+Vesta can use spare capacity without scattering a session’s
+KV cache over the local caches of many instances. Vesta fur-
+ther targets bucket-based deployments, in which instances
+are grouped into size-homogeneous length buckets so that
+batches contain requests of comparable length [38]. Since
+agentic sessions grow monotonically across turns, a session
+eventually outgrows its bucket and is rehashed to a holder in
+a larger one. Vesta then transfers the longest reusable prefix
+to that new holder, avoiding a cache cold start at the bucket
+boundary.
+Vesta then addresses the delay effect when selecting an
+executor, by pricing the queueing externality [8] of a place-
+ment, i.e., the additional delay it imposes on later requests.
+For every candidate, it estimates the unfinished backlog, the
+prefill work remaining after local or remote KV cache reuse,
+and the KV cache transfer cost. Taking the demand of the
+cheapest candidate as a baseline, it charges only the service
+demand that a placement adds on top of that baseline, us-
+ing a bounded function of cluster utilization and the M/M/𝑐
+waiting probability. The price is small when the cluster has
+Zou et al.
+idle capacity, enabling execution migration to relieve a busy
+holder; it rises with congestion, favoring placements that
+avoid additional transfer and prefill work.
+We implement Vesta on vLLM [28] and Dynamo [19], and
+evaluate it with real-world agentic traces. On a 32-instance
+prefill/decode (PD)-colocated deployment, Vesta improves
+throughput by 14.0% over the state-of-the-art scheduler while
+reducing mean TTFT by 57.8%. On PD-disaggregated deploy-
+ments for Qwen [32] and Hy3 [26], it reduces mean TTFT
+by 18.1% and 14.5%, respectively, while retaining comparable
+KV cache reuse and throughput. Vesta also lowers tail TTFT,
+improves prefill load balance, and reduces P95 and P99 TTFT
+by 35.6% and 32.6% when migrating a reusable prefix across
+length buckets.
+In summary, this paper makes the following contributions:
+•We characterize real-world agentic workloads, includ-
+ing their KV cache reuse patterns and time-varying
+request arrivals.
+•We adopt holder–executor disaggregation, which pre-
+serves stable session KV cache ownership while allow-
+ing each request to execute on a different, less loaded
+instance to enable a flexible scheduling strategy.
+•We design Vesta with a queueing-aware objective that
+balances backlog reduction against the queueing ex-
+ternality on later requests, and with cross-bucket KV
+cache migration that preserves cache reuse as sessions
+lengthen in the bucket-based deployment.
+•We evaluate Vesta on production agentic traces in both
+serving architectures, demonstrating lower mean and
+tail TTFT with higher or comparable throughput.
+2 Background
+2.1 LLM Inference
+Autoregressive LLM inference comprises a prefill phase fol-
+lowed by an iterative decode phase. Given a sequence of 𝐿
+tokens, a transformer layer first projects the hidden states
+into queries, keys, and values 𝑄,𝐾,𝑉 ∈R𝐿×𝑑 . Self-attention
+is then computed as
+Attention(𝑄,𝐾,𝑉)= softmax 𝑄𝐾T
+√𝑑
+𝑉, (1)
+where 𝑑 is the attention-head dimension. During prefill, the
+engine processes all prompt tokens and generates the KV
+cache for each transformer layer. The attention-score com-
+putation has 𝑂(𝐿2𝑑)time complexity, which is quadratic in
+the prompt length 𝐿. Thus, long prompts substantially in-
+crease prefill latency. In contrast, during decode, the engine
+generates one token at a time. With the keys and values of
+the preceding 𝐿tokens retained, each decoding step attends
+a single query over the existing context in 𝑂(𝐿𝑑)time.
+The KV cache also makes a processed prefix reusable
+across requests. If a new request shares a prefix of length 𝐿𝑝
+with a previous request, the engine can reuse the prefix’s KV
+2
+
+===== PDF PAGE 3 =====
+Vesta: Queueing-Aware LLM Scheduling for Real-World Workloads
+Instance 1
+Prompt Tokens GPU
+Prefill Tokens
+GPU
+(a)
+(b)
+Decode Tokens
+Instance 1
+Prompt Tokens GPU
+Prefill Tokens
+GPU
+KV Transfer
+Instance 2
+GPU
+Decode Tokens
+GPU
+Figure 1. Illustration of two LLM serving system architec-
+tures: (a) PD-colocation and (b) PD-disaggregation.
+cache and prefill only the unmatched suffix. This eliminates
+the redundant computation for the shared prefix, thereby
+substantially reducing TTFT for long-context and multi-turn
+workloads. Modern serving engines usually treat the KV
+cache management as a first-class concern of the serving
+system and increasingly support prefix caching to reuse KV
+cache across requests [13, 37].
+2.2 LLM Serving Systems
+At scale, an LLM service comprises a front-end scheduler and
+a collection of GPU instances, each of which hosts a model
+replica. The scheduler routes every arriving request to one of
+these instances for execution. Serving systems organize the
+two inference phases in one of two ways, as shown in Fig-
+ure 1. PD-colocated serving assigns both prefill and decode
+to the same serving instance throughout a request’s execu-
+tion. Consequently, the request’s KV cache remains local
+to that instance, avoiding inter-instance KV-cache transfers.
+However, the compute-intensive prefill phase and latency-
+sensitive decoding share the instance’s GPU resources, which
+can lead to resource contention. PD-disaggregated serving
+assigns prefill and decode to distinct instance pools [22, 39].
+After prefill finishes, its KV cache is transferred to a decode
+instance via RDMA, so the two pools can be independently
+sized and tuned. Regardless of the serving architecture, reuse
+on a subsequent request requires that its KV cache remain
+local or be fetched from a remote cache tier.
+Within each instance, requests are usually executed under
+the optimization technique called continuous batching [34]:
+instead of running a fixed batch to completion, the engine
+dynamically incorporates newly arrived requests without
+waiting for the batch to drain. Compared with static batching,
+where a batch slot stays occupied until the longest sequence
+in the batch terminates, this greatly improves GPU utilization
+under variable prompt and output lengths. Continuous batch-
+ing, however, batches requests as they arrive and leaves them
+Req 1 Req 2
+Req 1
+Instance 1
+Instance 2
+Instance 1
+Instance 2
+GPU
+GPU
+GPU
+GPU
+(a)
+(b)
+Figure 2. Two paths for loading reusable KV cache into a
+GPU’s HBM. A request can read its prefix from local host
+memory (a) or fetch it from a remote node’s host memory
+(b). In (a), the orange arrow indicates that the KV cache is
+offloaded to local host memory.
+heterogeneous in sequence length and memory footprint.
+Under such mixed batches, padding to the longest sequence
+wastes computation and GPU memory, and short requests
+are stalled behind long ones, which inflates latency and can
+trigger SLO violations. Bucket-based dynamic batching miti-
+gates this by grouping requests into size-homogeneous buck-
+ets according to their sequence length and forming batches
+within a bucket [38], which reduces padding overhead and
+yields more efficient GPU memory usage. In such a bucket-
+based deployment, each bucket is served by its own pool of
+instances. Bucketing is thus complementary to cluster-level
+scheduling: it determines how requests of similar length are
+batched, whereas a scheduler still decides which instance
+within a bucket serves each request.
+Sustaining cross-request reuse requires retaining the KV
+cache of finished requests, but GPU memory alone is far
+from sufficient: a single 64K-token request already consumes
+10GB of KV cache on the Hy3 model [26]. Production sys-
+tems therefore organize the KV cache into a memory hier-
+archy [4, 23]. The L1 cache consists of an instance’s device
+(GPU) memory, offering faster access but lower capacity. The
+L2 cache consists of host (CPU) memory across the cluster,
+offering slower access but greater capacity. As illustrated in
+Figure 2, an instance can load a reusable prefix from its own
+host memory over PCIe, or fetch it from the host memory
+of remote nodes over RDMA. Cache blocks are therefore
+effectively shared cluster-wide instead of being confined to
+the instance that produced them. Consequently, load balanc-
+ing need not come at the expense of cache reuse: a request
+routed to a less-loaded instance can still reuse its prefix from
+the remote L2 cache, incurring a transfer cost rather than
+a recomputation cost. In this paper, we build our system
+design on this two-tier memory hierarchy, where a GPU can
+read the KV cache from both local and remote host memory.
+3
+
+===== PDF PAGE 4 =====
+Fraction of Requests (%)
+69.7%
+60
+40
+20
+0
+8.3%
+0 10 20 30 40 50 60 70 80 90 100
+KV Cache Hit Rate (%)
+Figure 3. Distribution of request-level KV cache hit rates.
+Most requests (80.6%) reuse at least 90% of their prompt
+cache, whereas 8.3% have a low cache reuse rate (< 5% ).
+2.3 Agentic Workloads
+Requests in agentic workloads are organized into sessions. A
+session 𝑠 is the sequence of requests 𝑟1,...,𝑟𝑛 that an agent
+application submits to the serving system while working on
+a single task, and its state is entirely captured by a context
+that the agent maintains on the client side. The context starts
+as a system prompt plus the user’s initial task description.
+Thereafter, the agent extends it in place: after receiving reply
+𝑦𝑖 to request 𝑟𝑖 , it executes the actions requested therein,
+typically tool calls, and appends both 𝑦𝑖 and the resulting
+tool outputs 𝑜𝑖 to the context before issuing 𝑟𝑖+1. The user
+may also intervene between turns, for instance to refine
+the task or to approve an action, in which case the new
+instruction 𝑢𝑖 is appended as well. The typical context of
+successive requests therefore satisfies
+ctx(𝑟𝑖+1)= ctx(𝑟𝑖 )⊕𝑦𝑖 ⊕𝑜𝑖 ⊕𝑢𝑖 , (2)
+where ⊕denotes concatenation. Two consequences follow:
+First, the model is stateless across requests, so the growing
+context must be resent in full on every turn, and prompt
+length increases monotonically within a session. Second,
+and more importantly for the serving system, ctx(𝑟𝑖 )is by
+construction a prefix of ctx(𝑟𝑖+1), regardless of whether the
+turn was driven by a tool or by the user. Prefix reuse in
+agentic serving is thus not an empirical regularity that a
+workload happens to exhibit, but a structural invariant of
+the interaction with the model.
+The arrival process of such real-world workloads is highly
+non-stationary: the number of concurrently active sessions
+can vary substantially over the course of a day, often reflect-
+ing the working hours of the users who drive the agents. As
+a result, a serving cluster operates across a broad spectrum
+of load conditions: during off-peak periods, much of its ca-
+pacity may remain idle, whereas during peak periods, most
+instances can become saturated. Since deployments must
+be provisioned for peak demand, the primary constraint un-
+der these conditions shifts from the latency of individual
+requests to the aggregate request rate that the cluster can
+sustain.
+Zou et al.
+𝜌
+2.4 A Queueing-Theoretic View of LLM Scheduling
+The components of a serving system map naturally onto a
+queueing model [8, 9]. The requests arriving at the cluster
+form the arrival process, whose rate we denote by 𝜆. Each
+serving instance acts as a server that completes requests at
+rate 𝜇, determined by the model, the hardware, and how
+much of each request’s prefill can be skipped through KV
+cache reuse. The requests that an instance has received but
+not yet completed constitute its queue, and the scheduler is
+the routing policy that decides which queue a request joins on
+arrival. Consider first a single instance in isolation. Writing
+𝜆for the rate at which the scheduler feeds it, its utilization is
+𝜆
+𝜌=
+, (3)
+𝜇
+the fraction of time the instance is busy, and its queue is
+stable only while 𝜌 < 1.
+Utilization is central because queueing delay depends on it
+non-linearly. Under the classical M/M/1 model [8], the mean
+queueing delay before service is
+1
+𝑊𝑞 =
+·
+, (4)
+𝜇
+1−𝜌
+which is convex in 𝜌 and diverges as 𝜌 →1. Adding the
+same amount of work to a lightly loaded instance is therefore
+almost free, whereas adding it to a nearly saturated one is
+very expensive.
+Thus, scheduling affects the queueing time through two
+mechanisms. It determines how the aggregate arrival stream
+is divided across instances, thereby controlling each instance’s
+𝜆and 𝜌. It also affects the request’s service demand: placing
+a request on an instance without a reusable KV cache incurs
+additional prefill computation, increasing service time and
+reducing the effective service rate 𝜇. Thus, from a queueing-
+theoretic standpoint, scheduling is central to LLM serving
+performance because each placement decision jointly shapes
+load, service demand, and ultimately queueing delay.
+3 Motivations
+3.1 Workload Characterization
+We analyze traces collected from real-world agentic work-
+loads to characterize their key properties.
+High KV Cache Reuse. As shown in Figure 3, 80.6% of
+requests reuse at least 90% of their prompt, while 8.3% have
+a hit rate below 5%. Thus, the payoff from cache locality
+is close to all-or-nothing rather than a quantity that varies
+smoothly with placement: a scheduler commonly faces either
+a nearly complete KV cache reuse opportunity or none at all.
+Preserving cache affinity is therefore particularly valuable for
+the former group, whose prefill work can be almost entirely
+avoided, while the latter group provides substantially more
+placement flexibility.
+4
+
+===== PDF PAGE 5 =====
+Vesta: Queueing-Aware LLM Scheduling for Real-World Workloads
+CDF (%)
+100
+80
+60
+40
+20
+0
+P50: 20.8 s P90: 120.6 s P99: 594.1 s
+100 101 102 103
+Intra-session request interval (s)
+Figure 4. CDF of intra-session request arrival intervals. Ver-
+tical dashed lines mark the P50, P90, and P99 intervals. The
+logarithmic x-axis exposes the distribution’s long tail while
+retaining resolution for short intervals.
+KV-cache hit rate (%)
+KV Cache Hit Rate 94
+93
+92
+91
+90
+89
+Normalized Request Count
+1
+0.75
+0.5
+0.25
+0
+Normalized request count
+06:00 08:00 10:00 12:00 14:00 16:00 18:00
+Time of day
+Figure 5. Request-count and KV-cache-hit-rate trends from
+06:00 to 18:00. Request counts are normalized.
+Request Arrival Pattern. Figure 4 first shows the CDF
+of intervals between consecutive requests within the same
+session. Most turns arrive in quick succession: the median
+interval is only 20.8 s and 90% of intervals are below 120.6 s.
+These short inter-arrival times help explain the high KV
+cache hit rates above, since a session’s recently produced
+KV cache is likely to remain available when its next turn
+arrives. The distribution nevertheless has a long tail: the 99th
+percentile reaches 594.1 s, owing to agent actions or user
+interaction. A hierarchical memory system can retain such
+inactive session KV caches in higher-capacity tiers, reducing
+capacity-driven evictions as the number of sessions increases
+while keeping their prefixes available for later reuse.
+Figure 5 further shows pronounced diurnal variation in
+request volume, with a low-load period followed by sharp
+ramp-ups and a sustained high-load window. During some
+rapid increases in request volume (e.g., from 06:30 to 08:00),
+the KV cache hit rate drops as new or cold sessions comprise
+a larger share of arriving requests. Such requests cannot
+benefit from high KV cache reuse and must perform more
+prefill computation, inflating per-request service demand and
+thus lowering the effective service rate 𝜇exactly when the
+arrival rate 𝜆is rising. By Equation (3), utilization climbs on
+both counts, and the resulting queueing pressure makes these
+transition periods particularly important for scheduling.
+Trace 1 2059.86
+87.3%
+Queueing Computation
+Trace 2
+3328.95
+68.8%
+5456.99
+50.6%
+2819.14
+75.2% TTFT (ms)
+6,000
+4,500
+3,000
+1,500
+0
+SMetric Cache Affinity SMetric Cache Affinity
+Figure 6. TTFT decomposition on two traces. Queueing de-
+lay is represented by the dark segment, and the computation
+share is shown inside the light segment.
+3.2 Queueing Effects of Cache-Aware Scheduling
+To quantify how cache-aware routing affects queueing, we
+replay two one-hour traces—Trace 1 with 2,779 requests
+and Trace 2 with 4,036 requests—on Qwen2.5-7B-Instruct-
+1M [32], based on their original request timestamps. The two
+traces represent different load regimes, allowing us to exam-
+ine queueing effects under different levels of load pressure.
+The serving cluster comprises four prefill and four decode
+instances (4P4D), each equipped with one H20 GPU and
+128 GB of host DRAM. We compare two scheduling policies.
+Cache Affinity pins all requests in a session to the instance
+that serves its first request, maximizing local KV cache reuse.
+SMetric [29] is a session-centric policy that load-balances a
+session’s first request and routes follow-up requests to the
+same instance for cache affinity; it migrates a session’s pre-
+fill to another instance only after its cache-affine instance
+becomes overloaded.
+Figure 6 decomposes TTFT under the two policies into
+queueing and computation time. At the lower average clus-
+ter utilization of 29% in Trace 1, SMetric reduces average
+TTFT from 2,819.14 to 2,059.86 ms (26.9%). More importantly,
+queueing falls from 699.76 ms (24.8% of TTFT) under Cache
+Affinity to 261.52 ms (12.7%) under SMetric. At the higher
+45% utilization of Trace 2, this gap widens: SMetric reduces
+TTFT from 5,456.99 to 3,328.95 ms (39.0%) and queueing from
+2,697.80 ms (49.4% of TTFT) to 1,038.00 ms (31.2%). Hence, as
+utilization rises, queueing becomes the dominant source of
+Cache Affinity’s TTFT inflation. Although SMetric alleviates
+this effect, its reactive, overload-triggered migration leaves
+substantial queueing delay, particularly in Trace 2.
+To understand the remaining opportunity, consider 𝑐 ho-
+mogeneous prefill instances with aggregate arrival rate 𝜆and
+per-instance service rate 𝜇. Strict Cache Affinity partitions
+the cluster into 𝑐logical queues: each session is pinned to one
+instance, so the system is approximated by 𝑐 independent
+M/M/1 queues. Under balanced average assignment, each
+queue receives 𝜆/𝑐requests per unit time and has utilization
+𝜆
+𝜌=
+< 1, (5)
+𝑐𝜇
+5
+
+===== PDF PAGE 6 =====
+Global Router
+Global Router
+Holder: Instance 1 Executor: Instance 1
+Holder: Instance 1 Executor: Instance 2
+Instance 1
+Instance 2
+Instance 1
+Instance 2
+GPU
+GPU
+GPU
+GPU
+oﬄoad
+1. fetch
+2. write back
+(a)
+(b)
+Figure 7. Illustration of the Holder/Executor-disaggregated
+architecture. (a) The holder and executor are assigned to the
+same instance. (b) The holder and executor are assigned to
+different instances. The orange blocks represent the matched
+prefix cache, while the blue blocks indicate the newly gener-
+ated KV cache.
+which yields the mean queueing delay
+𝑊aff
+𝑞
+=
+𝜌
+𝜇(1−𝜌). (6)
+Although the average assignment is balanced, the per-session
+pinning prevents an idle instance from serving work queued
+at a busy cache holder. The cluster therefore forgoes the
+pooling gain that a shared queue would provide.
+The fully pooled M/M/𝑐 queue provides an idealized ref-
+erence point for the opportunity missed by SMetric. Let
+𝑎 = 𝜆/𝜇= 𝑐𝜌 denote the offered load. In this model, the
+Erlang-C formula [8] gives the probability that an arriving
+request must wait:
+𝑎𝑐
+1
+𝑐!
+1−𝜌
+𝑃wait =
+. (7)
+1
+𝑐−1
+∑︁
+𝑛=0
+𝑎𝑛
+𝑛!
++
+𝑎𝑐
+𝑐!
+1−𝜌
+Its mean queueing delay is therefore
+𝑊pool
+𝑞 =
+𝑃wait
+𝑐𝜇−𝜆=
+𝑃wait
+𝑐𝜇(1−𝜌), (8)
+and the resulting relative delay is
+𝑊pool
+𝑞
+𝑊aff
+𝑞
+=
+𝑃wait
+𝑐𝜌
+. (9)
+For four homogeneous prefill instances at the same average
+per-instance utilization, the ideal pooled M/M/4 model pre-
+dicts mean queueing delays only 2.9% and 7.1% of those under
+Cache Affinity at 29% and 45% utilization, respectively. SMet-
+ric’s overload-triggered migration can capture only part of
+this benefit, because it retains session pinning until a queue
+has already become overloaded.
+Zou et al.
+4 Vesta: Queueing-Aware Scheduling
+4.1 Holder-Executor Disaggregation
+Before presenting the scheduling algorithm, we describe
+Vesta’s serving architecture. Our workload characterization
+exposes a fundamental tension between cache affinity and
+load balance. Strong intra-session KV cache reuse eliminates
+most prefill computation for follow-up requests, reducing
+server utilization and increasing the effective service rate.
+Cache-affine routing exploits this benefit by directing a ses-
+sion’s requests to the instance that holds its KV cache. How-
+ever, it can create severe local queueing when that instance is
+busy, even if other instances have spare capacity. The global
+L2 cache hierarchy provides a way to resolve this tension:
+another instance can fetch and reuse the prefix remotely,
+paying a transfer cost rather than recomputing it.
+Vesta exploits this capability by decoupling KV cache own-
+ership from request execution. As shown in Figure 7, each
+session 𝑠 is associated with a holder ℎ(𝑠), whose role is to
+maintain the authoritative KV cache of 𝑠 across turns. For
+each request, Vesta selects an executor 𝑒from the serving in-
+stances to perform the computation. The executor can be the
+holder itself: when 𝑒 = ℎ(𝑠)(Figure 7a), it reads the reusable
+KV cache locally and executes without a network transfer.
+Alternatively, when the holder is busy and another instance
+offers lower queueing pressure, Vesta can choose 𝑒 ≠ ℎ(𝑠)
+(Figure 7b). The remote executor fetches the reusable prefix
+from the holder’s L2 cache into its HBM, performs the pre-
+fill computation, and writes the newly generated suffix KV
+cache back to the holder.
+Notably, the remote executor does not offload either the
+fetched prefix KV cache or the newly generated suffix KV
+cache to its local L2 cache. Such replicas would occupy L2
+cache that could instead hold the KV cache of the sessions
+this instance holds, thereby reducing the cluster’s effective
+cache capacity. Instead, these KV caches remain in HBM and
+can be reused if a subsequent request from the same session
+is again assigned to this executor. The executor then fetches
+only the newly missing suffix from the holder, substantially
+reducing the remote-transfer cost of subsequent execution
+migration when the holder is busy and this remote executor
+remains lightly loaded. Because L2 cache capacity is much
+larger than HBM capacity, retaining execution-side copies
+in HBM does not reduce the L2 capacity available for the
+instance to serve as a holder for other sessions.
+This write-back protocol preserves the holder as the owner
+of the longest KV cache accumulated for its session despite
+dynamic execution placement. Subsequent turns can there-
+fore always locate the session’s complete KV cache at ℎ(𝑠),
+while Vesta remains free to migrate the current turn to a
+less-loaded executor. Holder-executor disaggregation thus
+retains the long-term cache locality required by agentic ses-
+sions while recovering the short-term capacity-pooling op-
+portunity needed to reduce queueing. The scheduler must
+6
+
+===== PDF PAGE 7 =====
+Vesta: Queueing-Aware LLM Scheduling for Real-World Workloads
+then decide when the queueing reduction from execution
+migration exceeds its remote KV-cache transfer cost; we
+describe this decision next.
+4.2 Session-Balanced Holder Assignment
+Holder-executor disaggregation separates placement into
+two timescales: a holder binding that persists for the lifetime
+of a session, and an executor choice made anew for each of
+its requests. Because the executor can adapt to instantaneous
+queueing conditions without changing KV cache ownership,
+holder assignment can instead prioritize the long-term distri-
+bution of sessions. Vesta assigns each session to a holder by
+hashing its session ID. Specifically, given an ordered holder
+set H= (ℎ0,...,ℎ𝑐−1), Vesta defines
+ℎ(𝑠)= ℎHash(𝑠 )mod 𝑐 , (10)
+where Hash is a uniform hash function and 𝑐 = |H|. This
+mapping makes the holder of a session deterministic and
+independent of request arrival order or transient load condi-
+tions.
+To characterize its long-term balancing property, consider
+𝑁 sessions assigned over a sufficiently long period and let
+𝑐 = |H|be the number of holders. Under a uniform hash,
+the number of sessions assigned to any holder 𝑖, denoted by
+𝑋𝑖 , follows
+𝑋𝑖∼Binomial 𝑁,
+1
+𝑐
+, E[𝑋𝑖 ]=
+𝑁
+. (11)
+𝑐
+Moreover, for any 0 < 𝜖 ≤1, a Chernoff bound [18] gives
+Pr 𝑋𝑖−
+𝑁
+𝑐
+𝑁
+≥𝜖
+𝑐
+≤2 exp−
+𝜖2𝑁
+3𝑐
+. (12)
+Thus, as the number of assigned sessions grows, each holder’s
+session count concentrates around 𝑁/𝑐. This long-term guar-
+antee concerns session count, not instantaneous request load,
+which is handled separately by executor selection.
+Hash-based assignment also eliminates the need for a
+centralized session-to-holder mapping: given a session ID
+and a consistent ordered holder set, any scheduler can inde-
+pendently compute ℎ(𝑠). This stateless property simplifies
+scheduler recovery and supports decentralized routing, fa-
+cilitating large-scale deployment.
+Cross-Bucket KV Cache Migration. Agentic sessions
+lengthen monotonically across turns as model responses and
+tool outputs are appended to the context. Consequently, a
+session may move to a larger size-homogeneous bucket over
+time, e.g., from a 64K-token bucket to a 256K-token bucket.
+When a request is new to its target bucket, Vesta queries the
+session’s bucket-level metadata. If the session has a holder in
+a smaller bucket, Vesta identifies the holder with the longest
+available KV cache prefix and uses it as the migration source.
+Vesta also assigns the session a holder in the target bucket
+through session hashing. To avoid cold-starting the target
+bucket, Vesta transfers the reusable prefix cache from the
+Algorithm 1 Queueing-aware executor selection
+Require: Request 𝑟 of session 𝑠 with 𝑁 prompt tokens,
+holder set H, executor set E
+1: ℎ(𝑠)←ℎHash(𝑠 )mod |H| ⊲ assign on the first turn;
+recompute thereafter
+2: (𝐻,{𝐺𝑖 ,𝐵𝑖 }𝑖 ∈E,𝜌)←CollectState(𝑟)
+3: for all 𝑖 ∈Edo
+4: 𝑅𝑖 ←max{𝐺𝑖 ,𝐻}; 𝐷𝑖 ←𝑅𝑖−𝐺𝑖
+5: 𝑆𝑖 ←𝑇prefill (𝑅𝑖 ,𝑁−𝑅𝑖 )+𝛼𝑖 𝐷𝑖
+6: end for
+7: 𝑆min ←min𝑖 ∈E𝑆𝑖 ; 𝜋 ←CongestionPrice(𝜌)
+8: 𝑒 ←arg min𝑖 ∈E{𝐵𝑖 +𝑆𝑖 +𝜋(𝑆𝑖−𝑆min)}
+9: return (ℎ(𝑠),𝑒)⊲ write the suffix KV cache back to ℎ(𝑠)
+source holder to the two-tier cache of the target-bucket
+holder. The target holder then retains the newly generated
+suffix KV cache for subsequent requests in that bucket. In this
+way, it preserves the session cache accumulated before the
+bucket transition instead of recomputing the entire context.
+4.3 Queueing-Aware Executor Selection
+After fixing a session’s holder, Vesta selects an executor for
+each request by jointly considering its predicted completion
+time and the additional service demand introduced by its
+placement. This distinction is essential. Routing a request
+away from a busy holder can reduce its immediate queueing
+delay, but it may also require extra KV-cache movement and
+prefill work. The latter increases cluster utilization and, as
+Equations (4) and (8) show, can sharply increase queueing
+delay as the system approaches saturation.
+For a request with 𝑁 prompt tokens, let 𝐺𝑖 denote the
+longest reusable prefix already resident in candidate execu-
+tor 𝑖’s HBM, and let 𝐻 denote the longest reusable prefix
+available anywhere in the cluster’s L2 cache, located through
+the KV cache indexer. Once the holder has served a turn
+of the session, the write-back protocol makes its copy the
+longest, so 𝐻 resides at ℎ(𝑠). Two cases depart from this. On
+a session’s first turn the holder has cached nothing for it, so
+𝐻is at best a prefix shared across sessions, such as a common
+system prompt, which some other instance may hold; the ex-
+ecutor’s own HBM may likewise already hold such a prefix,
+making 𝐺𝑖 the larger of the two. The holder may also have
+evicted part of the session’s KV cache. Vesta therefore takes
+the longer of the two as the prefix that executor 𝑖 reuses:
+𝑅𝑖 = max{𝐺𝑖 ,𝐻}, 𝐷𝑖 = 𝑅𝑖−𝐺𝑖 , (13)
+where 𝐷𝑖 ≥0 is the number of KV-cache tokens that must
+be loaded into 𝑖’s HBM. Pulling from an instance other than
+ℎ(𝑠)does not affect ownership: the executor writes back
+whatever portion of the context the holder does not already
+hold, so ℎ(𝑠)again covers the session in full and remains
+its single accumulation point. Vesta estimates the service
+7
+
+===== PDF PAGE 8 =====
+demand of placing the request at 𝑖 as
+𝑆𝑖 = 𝑇prefill (𝑅𝑖 ,𝑁−𝑅𝑖 )+𝛼𝑖 𝐷𝑖. (14)
+Here, 𝑇prefill (𝑅𝑖 ,𝑁−𝑅𝑖 )is an offline-calibrated prefill-latency
+model for a request with 𝑅𝑖 cached and 𝑁−𝑅𝑖 uncached
+tokens, and 𝛼𝑖 is the per-token cost of loading KV cache into
+𝑖’s HBM, which is lower when 𝑖 reads from its own host
+memory than when it fetches from another instance over
+the network. Thus, 𝑆𝑖 captures both the computation saved
+by KV cache reuse and the transfer work required to make a
+reusable prefix available at the executor.
+Let 𝐵𝑖 be the predicted unfinished prefill work at executor 𝑖.
+Let 𝑆min denote the minimum service cost across candidates.
+The end-to-end procedure is summarized in Algorithm 1.
+Vesta selects the executor that minimizes a congestion-priced
+completion-time objective:
+∗
+𝑒
+= arg min 𝑖 ∈E
+𝐵𝑖 +𝑆𝑖
+(15)
++𝜋(𝜌)𝑆𝑖−𝑆min.
+Here, 𝐵𝑖 +𝑆𝑖 estimates the request’s completion time at
+𝑖. Minimizing this term alone is insufficient: it optimizes
+the current request but ignores the queueing externality
+of placing extra service demand on a shared cluster. In an
+M/M/1 queue, for example, the sensitivity of mean queueing
+delay to utilization is
+𝜕𝑊𝑞
+1
+=
+𝜕𝜌
+𝜇(1−𝜌)2 , (16)
+which diverges as 𝜌 → 1. The same convexity arises in
+M/M/𝑐: an incremental increase in service demand has little
+system-wide effect at low utilization, but delays many sub-
+sequent requests when the cluster is congested. The final
+term in Equation (15) prices this externality. It penalizes only
+𝑆𝑖−𝑆min, i.e., the service demand that placing the request
+at 𝑖 adds over the least-demanding candidate, while leaving
+the unavoidable cost 𝑆min unpriced.
+Vesta uses a bounded, queueing-theory-inspired surrogate
+for this price. It is derived from the cluster-level forward-
+time utilization 𝜌and the M/M/𝑐waiting probability in Equa-
+tion (7):
+𝜋(𝜌)= min 𝜋max,
+𝜌
+1−𝜌
+𝑃(𝑐 )
+wait (𝜌)𝛾
+. (17)
+The factor 𝜌/(1−𝜌)captures the rapidly increasing marginal
+queueing cost near saturation, while 𝑃(𝑐 )
+wait (𝜌)suppresses the
+price when an arriving request is unlikely to wait in the
+pooled cluster. 𝛾 controls how sharply this waiting prob-
+ability affects the price, and 𝜋max bounds the influence of
+measurement and modeling error. Thus, at low cluster uti-
+lization, 𝜋(𝜌)is near zero and Vesta can migrate requests
+aggressively to recover idle capacity from other executors.
+As utilization and queue pressure rise, the price increasingly
+favors placements with smaller 𝑆𝑖 , such as the holder itself
+or other instances with relatively long KV cache prefixes.
+Zou et al.
+By avoiding additional KV-cache transfer work, these place-
+ments limit the incremental service demand and help prevent
+further increases in 𝜌.
+Vesta more closely approaches the capacity pooling of an
+M/M/𝑐 queue than SMetric. SMetric preserves cache affinity
+until the holder becomes overloaded, so requests can remain
+queued at a busy holder while other executors have capac-
+ity. In contrast, Vesta evaluates every executor for every
+request: the backlog term 𝐵𝑖 exposes idle capacity beyond
+the holder, while the congestion-priced service term triggers
+execution migration only when its queueing benefit justifies
+the additional KV-cache transfer demand. Vesta can there-
+fore exploit capacity-pooling opportunities before a holder
+becomes overloaded without blindly increasing 𝜌, bringing
+its queueing behavior closer to the pooled M/M/𝑐 model.
+5 Evaluation
+5.1 Experimental Setup
+Implementation. Our cluster comprises 12 GPU servers
+totally, each equipped with 8 NVIDIA H20 GPUs (96 GB
+HBM each), 96 CPU cores, and 1,024 GB of DRAM. The
+servers are interconnected via 200 Gb/s RDMA NICs. The in-
+stances in the cluster are running the same vLLM engine [28].
+Dynamo [19] serves as the KV cache indexer, tracking the
+locations of KV cache blocks across instances to support
+cache lookup and prefill latency estimation. Empirically, we
+set the congestion-price exponent 𝛾= 0.5 and cap 𝜋max = 2
+for Vesta in all experiments.
+Models. We evaluate Qwen2.5-7B-Instruct-1M [32] and Hy3-
+FP8 [26], two models at different scales that both support
+long contexts. Each Qwen2.5-7B-Instruct-1M instance uses
+one GPU, whereas each Hy3-FP8 instance uses eight GPUs.
+Real-World Agentic Workloads. We collect Trace Agent,
+a one-hour trace of peak-time real-world agentic workloads
+(36K requests in total, mean input length: 83K, P90 input
+length: 133K), from an online serving system. In all exper-
+iments, we replay the trace according to its original times-
+tamps to preserve the observed request-arrival pattern, while
+serializing requests within each session to prevent concur-
+rent processing of dependent turns. Following prior work [29,
+36], we force each evaluated model to generate exactly the
+number of tokens recorded in the trace.
+Baselines. We compare Vesta with the state-of-the-art LLM
+scheduling strategies including LMetric [36] and SMetric [29].
+LMetric uses the product of the number of uncached to-
+kens and batch size as its scheduling score. SMetric adopts a
+session-centric policy that load-balances first-turn requests
+and routes follow-up requests to the same instance for cache
+affinity, unless that instance is overloaded or the session’s
+KV cache has been evicted.
+8
+
+===== PDF PAGE 9 =====
+53.4
+Mean latency (s)
+LMetric SMetric Vesta
+(b) Tokens per second (TPS).
+Vesta: Queueing-Aware LLM Scheduling for Real-World Workloads
+LMetric SMetric Vesta
+6
+4
+2
+0
+TTFT Queueing
+(a) Mean TTFT and queueing delay.
+45
+30
+15
+0
+P50 P90 P95 P99
+(c) TTFT percentiles.
+TPS (tokens/s)
+60
+46.9
+45
+38.2
+30
+15
+0
+30
+20
+10
+0
+P50 P90 P95 P99
+(d) Queueing-delay percentiles.
+Figure 8. Serving performance on Qwen2.5-7B-Instruct-1M
+with 32 PD-colocated instances.
+TTFT (s)
+Queueing delay (s)
+83.09 83.73
+36.54
+LMetric SMetric Vesta
+(b) KV cache hit rate.
+LMetric SMetric Vesta
+Mean latency (s)
+40
+30
+4
+3
+2
+1
+0
+TTFT Queueing
+(a) Mean TTFT and queueing delay.
+100
+60
+20
+TTFT (s)
+15
+10
+5
+0
+P50 P90 P95 P99
+(c) TTFT percentiles.
+KV cache hit rate (%)
+Queueing delay (s)
+100
+75
+50
+25
+0
+75
+60
+45
+30
+15
+0
+P50 P90 P95 P99
+(d) Queueing-delay percentiles.
+Figure 9. Serving performance on Qwen2.5-7B-Instruct-1M
+with 24P8D.
+5.2 Serving Performance in PD-Colocated
+Architecture
+We evaluate Qwen2.5-7B-Instruct-1M with 32 instances on
+Trace Agent, each colocating prefill and decode execution.
+Figure 8 compares the serving performance of LMetric,
+SMetric, and Vesta in the PD-colocated setting. Vesta achieves
+both the highest tokens per second (TPS) and the lowest
+mean TTFT. Figure 8b shows that Vesta reaches 53.4 tokens/s,
+13.9% higher than SMetric (46.9 tokens/s), the stronger base-
+line for TPS, and 39.8% higher than LMetric (38.2 tokens/s).
+This improvement does not come at the cost of a longer
+wait for the first token: Figure 8a shows that Vesta reduces
+mean TTFT to 1,685.63 ms, compared with 3,993.89 ms under
+SMetric (57.8% lower) and 5,568.87 ms under LMetric (69.7%
+lower).
+Figure 8a also reports the queueing delay, which accounts
+for much of this TTFT gap. Although SMetric has lower
+mean TTFT than LMetric, its mean queueing delay is higher:
+1,463.64 versus 296.04 ms. Vesta lowers this delay to 63.91 ms,
+a reduction of 95.6% relative to SMetric and 78.4% relative
+to LMetric. Consequently, the fraction of mean TTFT spent
+waiting falls from 36.6% under SMetric to 3.8% under Vesta. It
+is consistent with Vesta’s queueing-aware executor selection:
+rather than preserving affinity until an overload condition
+triggers migration, Vesta weighs each candidate’s backlog
+against its service cost for every request. Its congestion-
+priced objective in Equation (15) is designed to exploit capac-
+ity beyond a busy holder while accounting for the additional
+service demand of migration.
+The latency percentiles further distinguish the schedulers.
+Figure 8c shows that Vesta has the lowest TTFT at every re-
+ported percentile. Relative to SMetric, Vesta reduces P90
+and P95 TTFT by 68.5% and 58.9%, respectively. At P99,
+LMetric is the stronger baseline, despite its higher mean
+TTFT: it reaches 32,713.80 ms versus 40,366.72 ms under
+SMetric. Vesta lowers P99 TTFT to 20,457.44 ms, 37.5% be-
+low LMetric and 49.3% below SMetric. Figure 8d shows zero
+queueing delay for Vesta at all four reported percentiles,
+whereas P99 queueing reaches 8,065.00 ms under LMetric
+and 28,143.52 ms under SMetric. These zero percentiles do
+not imply that every request avoids queueing, as Vesta’s
+mean queueing delay remains nonzero. Together, the results
+show that Vesta improves TPS while reducing both mean
+TTFT and the measured latency tail in this PD-colocated
+experiment.
+Despite its higher TPS and lower mean TTFT, SMetric
+has 23.4% higher P99 TTFT and 3.49×the P99 queueing de-
+lay of LMetric. This reversal highlights that improvements
+in throughput and mean latency do not necessarily trans-
+late into better tail performance. This observation aligns
+with Vesta’s motivation to jointly model KV cache transfer
+costs and their queueing externality: the additional service
+demand induced by migration can amplify waiting near sat-
+uration, even when migration benefits the current request.
+5.3 Serving Performance in PD-Disaggregated
+Architecture
+Qwen2.5-7B-Instruct-1M. We first evaluate Qwen2.5-7B-
+Instruct-1M on a 24P8D deployment with 2552 sessions (33K
+requests) sampled from Trace Agent.
+Figure 9 compares the serving performance of LMetric,
+SMetric, and Vesta in the 24P8D PD-disaggregated setting.
+Vesta achieves the lowest mean TTFT and queueing delay
+among the three schedulers. Its mean TTFT is 2,778.05 ms,
+18.1% lower than SMetric (3,391.52 ms), the stronger baseline,
+and 93.2% lower than LMetric (41,040.53 ms).
+9
+
+===== PDF PAGE 10 =====
+TTFT (s)
+30
+10
+3
+1
+0.5
+6
+5
+4
+3
+2
+1
+0
+TTFT (s)
+TTFT (s)
+LMetric SMetric Vesta
+20
+15
+10
+5
+0
+TTFT (s)
+100
+30
+10
+3
+1
+TTFT (s)
+100
+50
+20
+10
+Zou et al.
+50
+40
+30
+20
+10
+TTFT (s)
+15 18 21 24 27 30 33 36
+Requests (×103)
+(a) Mean TTFT.
+15 18 21 24 27 30 33 36
+Requests (×103)
+(b) P90 TTFT.
+15 18 21 24 27 30 33 36
+Requests (×103)
+(c) P99 TTFT.
+100,000
+10,000
+1,000
+100
+10
+0
+Vesta
+Smetric
+P instance (rank)
+1
+5
+9
+13
+17
+21
+24
+1
+5
+9
+13
+17
+21
+24
+300k
+0
+token load
+0% 20% 40% 60% 80% 100%
+Time (%)
+0% 20% 40% 60% 80% 100%
+Time (%)
+Mean queueing (ms)
+10,000
+1,000
+100
+10
+P90 queueing (ms)
+100,000
+10,000
+1,000
+100
+10
+0
+P99 queueing (ms)
+15 18 21 24 27 30 33 36
+Requests (×103)
+15 18 21 24 27 30 33 36
+Requests (×103)
+15 18 21 24 27 30 33 36
+Requests (×103)
+(d) Mean queueing delay.
+(e) P90 queueing delay.
+(f) P99 queueing delay.
+Figure 10. Latency under varying workload sizes on Qwen2.5-7B-Instruct-1M with 24 prefill and 8 decode vLLM instances
+(24P8D). (a)–(c) show TTFT and (d)–(f) the corresponding queueing delay; queueing uses log10 (1 +𝑞)to retain zero values.
+In (a)–(c), LMetric is substantially slower than the other methods at every load and is therefore shown against the orange
+logarithmic left axis; SMetric and Vesta use the right linear axis.
+More importantly, Vesta lowers queueing delay while pre-
+serving KV cache reuse. Figure 9a shows that mean queueing
+delay falls from 651.20 ms under SMetric to 268.14 ms under
+Vesta (58.8%), reducing its share of mean TTFT from 19.2%
+to 9.7%. Meanwhile, Figure 9b shows that their KV cache
+hit rates remain comparable: 83.73% for Vesta versus 83.09%
+for SMetric. Relative to LMetric, Vesta improves both met-
+rics: its hit rate increases from 36.54% to 83.73%, while mean
+queueing delay decreases from 29,369.56 to 268.14 ms (99.1%).
+Hence, the improvement over SMetric is accompanied by
+substantially less waiting, rather than a large increase in
+cache hit rate.
+These results are consistent with Vesta’s holder–executor
+separation: it uses capacity beyond a busy holder while pre-
+serving cache reuse through write-back. The benefit extends
+to the tail: relative to SMetric, Vesta reduces P90, P95, and
+P99 TTFT by 20.5%, 11.6%, and 15.6%, respectively, while
+lowering P99 queueing delay by 54.5% (from 16,252.34 to
+7,397.11 ms).
+Prefill load balance. Figure 11 examines how the lower la-
+tency relates to load distribution across prefill instances. We
+count a request’s input tokens from its logged P Process event
+until completion or cancellation, then take a time-weighted
+mean within each bin. Following the max-to-mean compari-
+son used by SMetric, we divide the maximum instance load
+by the mean instance load in each bin and average these
+ratios over fully observed bins with positive total load. A
+ratio closer to one indicates more even load distribution.
+Figure 11. Prefill token load on Qwen2.5-7B-Instruct-1M
+(24P8D). Each cell reports the time-weighted mean inflight
+input tokens; instances are ranked by peak load.
+Vesta weakens the load hotspots that SMetric exhibits
+during the high-load period. The maximum instance-bin
+load falls from 287.3k to 176.4k tokens (38.6%), and the P99
+load across observed instance-bin cells falls from 189.7k to
+131.9k tokens (30.5%). These are load statistics, not latency
+percentiles. On the 44 corresponding bins with complete
+observations for both policies, the mean max-to-mean ratio
+decreases from 3.045×to 2.987×(1.9%). Thus, the reduction
+in absolute hotspot intensity is more pronounced than the
+improvement in relative balance. Together with the compa-
+rable cache hit rates, these profiles are consistent with Vesta
+using capacity beyond a busy holder without abandoning
+cache reuse.
+Performance under varying load. We evaluate the three
+schedulers on Qwen2.5-7B-Instruct-1M in the 24P8D deploy-
+ment at eight workload sizes from 15k to 36k requests from
+10
+
+===== PDF PAGE 11 =====
+91.67 91.13
+TTFT (s)
+Mean latency (s)
+Vesta: Queueing-Aware LLM Scheduling for Real-World Workloads
+LMetric SMetric Vesta
+65
+50
+1.2
+0.6
+0
+TTFT Queueing
+(a) Mean TTFT and queueing delay.
+120
+90
+60
+20
+15
+10
+5
+0
+P50 P90 P95 P99
+(c) TTFT percentiles.
+KV cache hit rate (%)
+100
+75
+61.18
+50
+25
+0
+Queueing delay (s)
+120
+90
+60
+8
+4
+0
+P50 P90 P95 P99
+(d) Queueing-delay percentiles.
+Figure 12. Serving performance on Hy3-FP8 with 6P6D.
+LMetric SMetric Vesta
+(b) KV cache hit rate.
+Vesta
+SMetric
+P instance (rank)
+1
+2
+3
+4
+5
+6
+1
+2
+3
+4
+5
+6
+200k
+0
+token load
+0% 20% 40% 60% 80% 100%
+Time (%)
+0% 20% 40% 60% 80% 100%
+Time (%)
+Figure 13. Hy3-FP8 prefill token load with 6P6D.
+Trace Agent. Figure 10 reports mean, P90, and P99 TTFT and
+queueing delay; its queueing axes use log10 (1 +𝑞)to retain
+zero-valued measurements.
+Vesta achieves the lowest mean TTFT at every load. Its
+advantage over SMetric is modest at 15k–24k requests (4.4%–
+5.1%), but grows to 18.1% and 20.0% at 33k and 36k, respec-
+tively. From 30k to 36k, Vesta’s mean TTFT increases by
+2,640.79 ms, 26.8% less than SMetric’s increase, while its
+mean queueing delay increases by 753.64 ms, 47.7% less. At
+33k and 36k, Vesta also reduces mean queueing by 58.8% and
+45.8% relative to SMetric.
+The tail results show the same high-load benefit: at 33k
+and 36k, Vesta reduces P90 TTFT by 20.5% and 21.3% and
+P99 TTFT by 15.6% and 10.0%, respectively. Its P90 queue-
+ing remains zero through 36k, whereas SMetric reaches
+3,390.00 ms. The advantage is not uniform at every inter-
+mediate load, but Vesta consistently provides lower mean
+latency and substantially better tail latency at the highest
+offered loads. Furthermore, at a matched mean TTFT, Vesta
+sustains higher prefill throughput than the baselines.
+Hy3-FP8. We next evaluate Hy3-FP8 on a 6P6D deployment
+with 644 sessions (11K requests) sampled from Trace Agent.
+Figure 12 confirms the same pattern on Hy3-FP8. Vesta
+lowers mean TTFT to 1,332.91 ms, 14.5% below SMetric and
+its cache hit rate remains close to SMetric’s. The gain again
+comes from queueing: mean queueing delay falls from 362.44
+TPS (tokens/s)
+24 19.6 19.4
+80 67.2 67.2
+18
+12
+6
+0
+SMetric Vesta
+(a) Qwen, 24P8D.
+TPS (tokens/s)
+60
+40
+20
+0
+SMetric Vesta
+(b) Hy3-FP8, 6P6D.
+Figure 14. TPS under PD disaggregation: (a) Qwen2.5-7B-
+Instruct-1M, 24P8D; (b) Hy3-FP8, 6P6D.
+to 147.39 ms, which accounts for 94.9% of the mean TTFT
+reduction. The improvement grows toward the tail: median
+TTFT is unchanged at 0.40 s, while P90, P95, and P99 TTFT
+fall by 7.5%, 16.2%, and 29.0%. This mirrors where the two
+systems queue at all: neither waits at P50 or P90, and the gap
+widens from 1.10 s at P95 to 6.38 s at P99.
+Prefill load balance. Figure 13 compares the prefill token
+load of SMetric and Vesta on Hy3-FP8. Vesta again weakens
+SMetric’s hotspots, lowering the maximum instance-bin load
+from 190.0k to 140.1k tokens (26.3%). Over all 12 fully ob-
+served bins, the mean max-to-mean ratio falls from 1.521×
+to 1.289×(15.2%). Unlike on Qwen, where Vesta mainly re-
+duces absolute hotspot intensity, here it also balances load
+markedly more evenly across the six prefill instances.
+TPS. Figure 14 shows that Vesta retains essentially the same
+TPS as SMetric: 19.4 versus 19.6 tokens/s on Qwen and 67.2 to-
+kens/s on Hy3-FP8. Thus, the TTFT reductions above do not
+come at the expense of throughput.
+5.4 Ablation Study
+Comparison with Vesta Variants. In this experiment,
+we evaluate the impact of the congestion-priced completion-
+time objective and the write-back protocol on the serving per-
+formance. We evaluate Qwen2.5-7B-Instruct-1M on a 6P2D
+deployment by replaying 8,030 requests from 453 sessions
+sampled from Trace Agent, emulating peak-period demand
+at an average rate of 2.07 requests/s.
+We construct Vesta-C by removing the final, congestion-
+pricing term from Equation (15) to isolate the contribution
+of accounting for the queueing externality. In Vesta-W, a
+remote executor offloads the KV cache to its L2 cache when
+it fetches the remote cache, and the newly generated KV
+cache is retained and offloaded to local L2 cache rather than
+written back to the original holder. Consequently, the remote
+executor becomes the session’s new holder. Unlike Vesta,
+which determines a stable holder by hashing the session
+ID, Vesta-W selects the holder for each request according
+to the instance with the longest matched prefix; thus, each
+migration can change the session’s holder.
+Figure 15 compares the Vesta variants. Compared with
+Vesta-C, Vesta reduces mean TTFT by 19.8% (from 2.71 to
+2.17 s) and mean queueing delay by 46.1% (from 0.91 to 0.49 s),
+while preserving an essentially identical KV cache hit rate
+(91.90% versus 91.67%). It also reduces P95 and P99 TTFT
+11
+
+===== PDF PAGE 12 =====
+Mean TTFT (s)
+3
+2
+1
+0
+91.90% 91.67% 89.58%
+2.71 2.86
+2.17
+66.4% 79.1%
+77.4%
+100
+75
+50
+25
+0
+KV cache hit rate (%)
+Vesta Vesta-C Vesta-W
+(a)
+Vesta Vesta-C Vesta-W
+TTFT (s, log scale)
+101
+100
+30
+20
+10
+0
+Queueing delay (s)
+P50 P90 P95 P99
+(b)
+Figure 15. Latency comparison among Vesta variants. (a)
+Mean TTFT decomposition and KV cache hit rate; (b) TTFT
+(solid) and queueing-delay (dashed) percentiles.
+by 29.7% and 7.5%, respectively. These improvements show
+that accounting for the queueing externality prevents an
+executor choice that appears locally attractive from imposing
+disproportionate queueing delay on subsequent requests.
+Vesta also outperforms Vesta-W, reducing mean TTFT by
+23.9% (from 2.86 to 2.17 s) and mean queueing delay by 17.8%
+(from 0.60 to 0.49 s). Vesta-W changes a session’s holder
+after a migration, causing the same session’s KV cache to be
+replicated across L2 caches. These replicas reduce effective
+cache capacity and increase cache eviction, lowering the
+KV cache hit rate by 2.32 percentage points (from 91.90% to
+89.58%). The resulting loss of reuse increases the fraction of
+TTFT spent in computation from 77.4% to 79.1% and raises
+mean computation time from 1.68 to 2.26 s. Maintaining a
+stable session holder and writing newly generated KV cache
+back to it is therefore essential for preserving cache capacity
+and long-term reuse.
+Cross-Bucket Scheduling. We evaluate Vesta’s cross-
+bucket scheduling by replaying 401 sessions (15.7K requests)
+sampled from Trace Agent on Qwen2.5-7B-Instruct-1M. We
+deploy a 6P2D cluster for the 32K bucket and an 18P6D clus-
+ter for the 256K bucket. With cross-bucket migration, when
+a session outgrows the 32K bucket, Vesta transfers its longest
+reusable prefix from the source-bucket holder to the session’s
+hashed holder in the 256K bucket. The target holder retains
+the transferred prefix and subsequently appends the new KV
+cache generated in the larger bucket. Without migration, the
+target-bucket holder has no inherited prefix and must prefill
+Zou et al.
+w/ KV migration w/o KV migration
+TTFT (s, log scale)
+101
+100
+P50 P90 P95 P99
+Figure 16. Impact of cross-bucket migration on TTFT in the
+256K bucket. Migration substantially reduces tail TTFT.
+the session context from scratch on its first request in the
+256K bucket.
+Figure 16 shows that cross-bucket migration leaves me-
+dian TTFT essentially unchanged (0.267 versus 0.270 s), but
+substantially improves tail latency. Relative to recomput-
+ing the prefix after a bucket transition, migration reduces
+P90, P95, and P99 TTFT by 12.8%, 35.6%, and 32.6%, respec-
+tively. These gains show that preserving a session’s reusable
+KV cache across bucket boundaries avoids costly cold starts
+precisely for the long-context requests that dominate tail
+latency.
+6 Related Work
+6.1 LLM Scheduling
+At the cluster level, online schedulers adapt request place-
+ment to changing load. Llumnix performs cross-instance
+rescheduling through live migration of in-memory request
+state, whereas AdaGen adapts cluster routing and compute
+layouts to workload changes [24, 25]. Recent work combines
+cache-locality and load signals in request placement [35,
+36], and SMetric adopts a session-centric policy that load-
+balances the first request of a session before favoring cache
+affinity for its follow-up requests [29]. Analytical schedulers
+further estimate candidate-instance latency or SLO compli-
+ance to guide placement [3, 23, 40]. Vesta likewise reconciles
+cache reuse with load balance, but from a queueing-theoretic
+perspective: it decouples stable session cache ownership
+from per-request execution and weighs the queueing benefit
+of migration against its cache-transfer cost under the current
+cluster load.
+6.2 LLM Inference Optimization
+Token and KV Cache Compression. Long contexts make
+attention and KV cache storage the dominant costs of infer-
+ence. Sparse-attention and token-selection methods select
+a small set of context tokens for each query, reducing the
+attention work during prefill and decode [11, 14, 15, 30]. KV
+cache quantization instead stores keys and values at lower
+precision, reducing the memory footprint and allowing a
+fixed-capacity cache tier to retain more prefixes [10, 17].
+Model Architecture. Architectural co-design changes the
+representation or computation performed by the model itself.
+12
+
+===== PDF PAGE 13 =====
+Vesta: Queueing-Aware LLM Scheduling for Real-World Workloads
+Linear-attention architectures replace the quadratic softmax-
+attention operation with a recurrent or kernelized formula-
+tion whose cost scales linearly with context length [5, 12, 33].
+Grouped-query attention reduces the number of distinct
+KV heads during decoding [1], while recent long-context
+models combine multi-head latent attention with sparse-
+attention mechanisms to reduce KV cache size and attention
+cost [16, 31]. These techniques improve the execution effi-
+ciency of an individual request and are complementary to
+Vesta, which instead operates at the cluster level.
+7 Conclusion
+We presented Vesta, a scheduler that grounds agentic LLM
+serving in queueing theory. Vesta maintains a stable holder
+for each session’s KV cache while selecting an executor per
+request, using spare capacity without scattering that cache.
+Its objective prices the queueing externality of a placement,
+migrating execution under slack and favoring the least ad-
+ditional transfer and prefill work as congestion rises. Vesta
+also migrates reusable prefixes across length buckets to avoid
+cold starts as sessions lengthen. On production agentic traces,
+Vesta reduces mean and tail TTFT in both serving architec-
+tures while achieving higher or comparable throughput.
+References
+[1] Joshua Ainslie, James Lee-Thorp, Michiel De Jong, Yury Zemlyanskiy,
+Federico Lebrón, and Sumit Sanghai. 2023. Gqa: Training general-
+ized multi-query transformer models from multi-head checkpoints.
+In Proceedings of the 2023 conference on empirical methods in natural
+language processing. 4895–4901.
+[2] Anthropic. 2025. Claude Code. https://claude.com/product/claude-
+code.
+[3] Siyuan Chen, Zhipeng Jia, Samira Khan, Arvind Krishnamurthy, and
+Phillip B Gibbons. 2025. Slos-serve: Optimized serving of multi-slo
+llms. arXiv preprint (2025).
+[4] Yihua Cheng, Yuhan Liu, Jiayi Yao, Yuwei An, Xiaokun Chen, Shaoting
+Feng, Yuyang Huang, Samuel Shen, Kuntai Du, and Junchen Jiang.
+2025. LMCache: An Efficient KV Cache Layer for Enterprise-Scale
+LLM Inference. arXiv preprint arXiv:2510.09665 (2025).
+[5] Krzysztof Choromanski, Valerii Likhosherstov, David Dohan, Xingyou
+Song, Andreea Gane, Tamas Sarlos, Peter Hawkins, Jared Davis, Afroz
+Mohiuddin, Lukasz Kaiser, et al. 2020. Rethinking attention with
+performers. arXiv preprint arXiv:2009.14794 (2020).
+[6] Bin Gao, Zhuomin He, Puru Sharma, Qingxuan Kang, Djordje Jevdjic,
+Junbo Deng, Xingkun Yang, Zhou Yu, and Pengfei Zuo. 2024. Cost-
+Efficient large language model serving for multi-turn conversations
+with CachedAttention. In Proceedings of the 2024 USENIX Conference
+on Usenix Annual Technical Conference. 111–126.
+[7] In Gim, Guojun Chen, Seung-seob Lee, Nikhil Sarda, Anurag Khan-
+delwal, and Lin Zhong. 2024. Prompt cache: Modular attention reuse
+for low-latency inference. Machine Learning and Systems (MLSys) 6
+(2024), 325–338.
+[8] Donald Gross. 2008. Fundamentals of queueing theory. John wiley &
+sons.
+[9] Mor Harchol-Balter. 2013. Performance modeling and design of com-
+puter systems: queueing theory in action. Cambridge University Press.
+[10] Coleman Hooper, Sehoon Kim, Hiva Mohammadzadeh, Michael W Ma-
+honey, Yakun S Shao, Kurt Keutzer, and Amir Gholami. 2024. Kvquant:
+Towards 10 million context length llm inference with kv cache quan-
+tization. Advances in Neural Information Processing Systems 37 (2024),
+1270–1303.
+[11] Huiqiang Jiang, Yucheng Li, Chengruidong Zhang, Qianhui Wu, Xu-
+fang Luo, Surin Ahn, Zhenhua Han, Amir H Abdi, Dongsheng Li,
+Chin-Yew Lin, et al. 2024. Minference 1.0: Accelerating pre-filling
+for long-context llms via dynamic sparse attention. Annual Confer-
+ence on Neural Information Processing Systems (NeurIPS) 37 (2024),
+52481–52515.
+[12] Angelos Katharopoulos, Apoorv Vyas, Nikolaos Pappas, and François
+Fleuret. 2020. Transformers are rnns: Fast autoregressive transformers
+with linear attention. In International conference on machine learning.
+PMLR, 5156–5165.
+[13] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin
+Zheng, Cody Hao Yu, Joseph Gonzalez, Hao Zhang, and Ion Stoica.
+2023. Efficient memory management for large language model serv-
+ing with pagedattention. In ACM Symposium on Operating Systems
+Principles (SOSP). 611–626.
+[14] Xunhao Lai, Jianqiao Lu, Yao Luo, Yiyuan Ma, and Xun Zhou. 2025.
+FlexPrefill: A Context-Aware Sparse Attention Mechanism for Efficient
+Long-Sequence Inference. In International Conference on Learning
+Representations (ICLR). 963–989.
+[15] Yuhong Li, Yingbing Huang, Bowen Yang, Bharat Venkitesh, Acyr
+Locatelli, Hanchen Ye, Tianle Cai, Patrick Lewis, and Deming Chen.
+2024. Snapkv: Llm knows what you are looking for before generation.
+Advances in Neural Information Processing Systems 37 (2024), 22947–
+22970.
+[16] Aixin Liu, Aoxue Mei, Bangcai Lin, Bing Xue, Bingxuan Wang,
+Bingzheng Xu, Bochao Wu, Bowei Zhang, Chaofan Lin, Chen Dong,
+et al. 2025. Deepseek-v3. 2: Pushing the frontier of open large language
+models. arXiv preprint (2025).
+[17] Zirui Liu, Jiayi Yuan, Hongye Jin, Shaochen Zhong, Zhaozhuo Xu,
+Vladimir Braverman, Beidi Chen, and Xia Hu. 2024. KIVI: A Tuning-
+Free Asymmetric 2bit Quantization for KV Cache. In International
+Conference on Machine Learning (ICML). 32332–32344.
+[18] Michael Mitzenmacher and Eli Upfal. 2005. Probability and computing.
+Cambridge University (2005).
+[19] NVIDIA. 2025. ai-dynamo. https://github.com/ai-dynamo/dynamo.
+[20] OpenAI. 2025. Codex. https://openai.com/codex.
+[21] OpenClaw. 2026. OpenClaw. https://openclaw.ai.
+[22] Pratyush Patel, Esha Choukse, Chaojie Zhang, Aashaka Shah, Íñigo
+Goiri, Saeed Maleki, and Ricardo Bianchini. 2024. Splitwise: Efficient
+generative llm inference using phase splitting. In IEEE/ACM Interna-
+tional Symposium on Computer Architecture (ISCA). 118–132.
+[23] Ruoyu Qin, Zheming Li, Weiran He, Jialei Cui, Feng Ren, Mingxing
+Zhang, Yongwei Wu, Weimin Zheng, and Xinran Xu. 2025. Mooncake:
+Trading more storage for less computation—a KVCache-centric archi-
+tecture for serving LLM chatbot. In 23rd USENIX Conference on File
+and Storage Technologies (FAST 25). 155–170.
+[24] Sudipta Saha Shubha, Ayush Goel, Diman Zad Tootaghaj, Khaled Diab,
+Hardik Soni, KK Ramakrishnan, Puneet Sharma, and Haiying Shen.
+2026. AdaGen: Workload-Adaptive Cluster Scheduler for Latency-
+Optimal LLM Inference Serving. In Proceedings of the 21st European
+Conference on Computer Systems. 1111–1127.
+[25] Biao Sun, Ziming Huang, Hanyu Zhao, Wencong Xiao, Xinyi Zhang,
+Yong Li, and Wei Lin. 2024. Llumnix: Dynamic scheduling for large
+language model serving. In USENIX Symposium on Operating Systems
+Design and Implementation (OSDI). 173–191.
+[26] Tencent. 2026. Hy3. https://github.com/Tencent-Hunyuan/Hy3.
+[27] Tencent. 2026. WorkBuddy. https://www.workbuddy.ai.
+[28] vLLM. 2026. vLLM v0.24.0 Release. https://github.com/vllm-project/
+vllm/releases/tag/v0.24.0.
+[29] Jiahao Wang, Kaizhan Lin, Kaixi Zhang, Jinbo Han, Xingda Wei, Sijie
+Shen, Chenguang Fang, Wenyuan Yu, Rong Chen, and Haibo Chen.
+13
+
+===== PDF PAGE 14 =====
+Zou et al.
+2026. SMetric: Rethink LLM Scheduling for Serving Agents with
+Balanced Session-centric Scheduling. arXiv preprint (2026).
+[30] Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song Han, and Mike
+Lewis. 2024. Efficient streaming language models with attention sinks.
+In International Conference on Learning Representations, Vol. 2024.
+21875–21895.
+[31] Anyi Xu, Bangcai Lin, Bing Xue, Bingxuan Wang, Bingzheng Xu,
+Bochao Wu, Bowei Zhang, Chaofan Lin, Chen Dong, Chenchen Ling,
+et al. 2026. Deepseek-v4: Towards highly efficient million-token con-
+text intelligence. arXiv preprint (2026).
+[32] An Yang, Bowen Yu, Chengyuan Li, Dayiheng Liu, Fei Huang, Haoyan
+Huang, Jiandong Jiang, Jianhong Tu, Jianwei Zhang, Jingren Zhou,
+Junyang Lin, Kai Dang, Kexin Yang, Le Yu, Mei Li, Minmin Sun, Qin
+Zhu, Rui Men, Tao He, Weijia Xu, Wenbiao Yin, Wenyuan Yu, Xi-
+afei Qiu, Xingzhang Ren, Xinlong Yang, Yong Li, Zhiying Xu, and
+Zipeng Zhang. 2025. Qwen2.5-1M Technical Report. arXiv preprint
+arXiv:2501.15383 (2025).
+[33] Songlin Yang, Bailin Wang, Yikang Shen, Rameswar Panda, and Yoon
+Kim. 2023. Gated linear attention transformers with hardware-efficient
+training. arXiv preprint arXiv:2312.06635 (2023).
+[34] Gyeong-In Yu, Joo Seong Jeong, Geon-Woo Kim, Soojeong Kim, and
+Byung-Gon Chun. 2022. Orca: A Distributed Serving System for
+Transformer-Based Generative Models. In USENIX Symposium on Op-
+erating Systems Design and Implementation (OSDI).
+[35] Ying Yuan, Pengfei Zuo, Bo Wang, Zhangyu Chen, Zhipeng Tan, and
+Zhou Yu. 2026. DualMap: Enabling Both Cache Affinity and Load
+Balancing for Distributed LLM Serving. In International Conference on
+Learning Representations (ICLR).
+[36] Dingyan Zhang, Jinbo Han, Kaixi Zhang, Xingda Wei, Sijie Shen,
+Chenguang Fang, Wenyuan Yu, Jingren Zhou, and Rong Chen. 2026.
+Simple Is Better: Multiplication May Be All You Need for LLM Request
+Scheduling. In USENIX Symposium on Operating Systems Design and
+Implementation (OSDI). 55–73.
+[37] Lianmin Zheng, Liangsheng Yin, Zhiqiang Xie, Chuyue Sun, Jeff
+Huang, Cody H Yu, Shiyi Cao, Christos Kozyrakis, Ion Stoica, Joseph E
+Gonzalez, et al. 2024. Sglang: Efficient execution of structured lan-
+guage model programs. Annual Conference on Neural Information
+Processing Systems (NeurIPS) 37 (2024), 62557–62583.
+[38] Wanyi Zheng, Minxian Xu, Shengye Song, and Kejiang Ye. 2025. Buck-
+etServe: Bucket-Based Dynamic Batching for Smart and Efficient LLM
+Inference Serving. In 2025 IEEE International Conferences on Internet of
+Things (iThings) IEEE Green Computing & Communications (GreenCom)
+IEEE Cyber, Physical & Social Computing (CPSCom) and IEEE Smart
+Data (SmartData) and IEEE Congress on Cybermatics (Cybermatics).
+IEEE, 103–111.
+[39] Yinmin Zhong, Shengyu Liu, Junda Chen, Jianbo Hu, Yibo Zhu, Xu-
+anzhe Liu, Xin Jin, and Hao Zhang. 2024. DistServe: Disaggregating
+prefill and decoding for goodput-optimized large language model
+serving. In USENIX Symposium on Operating Systems Design and Im-
+plementation (OSDI). 193–210.
+[40] Kan Zhu, Haiyang Shi, Le Xu, Jiaxin Shan, Arvind Krishnamurthy,
+Baris Kasikci, and Liguang Xie. 2025. Polyserve: Efficient multi-slo
+serving at scale. arXiv preprint (2025).
+14
+WMK{WM1|3af597b5ef6dc0891985afde882133b8cc75a26aa64e89d9a6eb9f1575c5c96d|TX|14|20261002T021526Z|8925c485f48f6f62}

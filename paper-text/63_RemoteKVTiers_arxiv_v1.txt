@@ -1,0 +1,894 @@
+Source: 63_RemoteKVTiers_arxiv_v1.pdf
+Pages: 9
+
+===== PDF PAGE 1 =====
+arXiv:2610.21500v1 [cs.DC] 15 Oct 2026
+When the KVCacheIsSlowerThantheGPU:
+ScalingRemoteKVTiersforContext-ParallelPrefill
+Muhammad Ibrahim
+Multiverse Computing
+muhammad.ibrahim@multiversecomputing.com
+Abstract
+ReusingtheattentionKV cacheacross requestsisa standard
+way to cut prefill cost in long-context LLM serving, and
+production systems increasingly back the per-engine cache
+with a remote tier shared by every engine. We study such
+a tier in a disaggregated deployment of GLM-5.3, an FP8
+mixture-of-experts model with multi-head latent attention
+(MLA), on 8×B300 nodes running prefill context parallelism
+(PCP8). Enabling the remote tier (LMCache with a Valkey
+store)leftmediantime-to-first-tokenunchangedbutraisedthe
+16k-tokenp99from3.96sto17.3s. Replayingaproduction
+request stream on an isolated engine, we find that a remote
+hit took 0.88s against 0.31s to recompute the prompt, and
+that synchronous loading turned a hit-heavy stream into an
+unstable queue: p99 83.32s with the GPUs 7% busy. A
+two-termcostmodelexplainsboth: ahitpaysoffonlyifthe
+tierdeliversmorethan 𝐵∗
+= 𝑠𝑅(2.53GB/sforthismodeland
+GPU),andafixedper-hitenginecost(𝑇0 ≈0.33 s)meansthat
+hits on prompts shorter than about 17k tokens cannot beat
+recompute at any bandwidth. Guided by the model, we (i)
+shard the MLA KV store across PCP ranks, with a proof that
+theexistingminimum-over-rankslookupreturnsthelongest
+cachedprefixandaloadprotocolthatcanneverdesynchronize
+collectives; (ii) partition the remote tier by rank, one server
+instance per rank with no coordination, which raises GET
+bandwidth6.3×to10.76GB/s;(iii)addasynchronousloading
+to the sharded store; and (iv) fix three client bugs that caused
+unbounded stalls. On the hit-heavy stream, with 98.5% of
+prompt tokens served from the remote tier, p99 falls from
+83.32sto0.67s. Theshardedstoreraisesprefillthroughput
+by14%,andby34%togetherwithanupstreamkernelfix. All
+changesaresubmitted upstreamto LMCache.
+engine reusewhat anothercomputed.
+Theimplicitassumptionbehindaremotetieristhatloading
+KV is cheaper than recomputing it. This paper reports a
+production setting in which the assumption failed, explains
+why witha simple model,and shows how torestore it.
+Setting. We serve GLM-5.3, a large mixture-of-experts
+(MoE) model with DeepSeek-style multi-head latent attention
+(MLA) [1, 2], in FP8 on nodes with eight NVIDIA B300
+GPUs. Prefillanddecoderunonseparatenodes[21,27]. Each
+prefill node runs one vLLM [16] engine with prefill context
+parallelism across its eight GPUs (PCP8): the prompt is split
+alongthesequence,theranksexchangeKVwithcollectives,
+and all eight ranks advance in lockstep. LMCache [19]
+stores KV in 256-token chunks in host memory (L1) and in a
+Valkey[24] remote store (L2).
+Problem. Turning on L2 for an enterprise SLA workload
+of 9k–200k-token prompts left median TTFT unchanged but
+inflatedthetail: p99rosefrom3.96sto17.3sat16ktokens
+andfrom6.06sto25.0sat32k. Thedeploymentwasrolled
+backto L1only.
+1 Introduction
+Forlongprompts,prefilldominatestime-to-first-token(TTFT):
+readinga200k-tokenprompttakessecondsevenonthenewest
+accelerators. Serving systems therefore keep the attention
+key/value(KV)cacheofearlierpromptsandreuseitwhena
+new prompt shares a prefix [4, 16, 19, 22, 26]. A common
+layout has two tiers: a fast tier in each engine’s host memory,
+and a larger remote tier that every engine can read and that
+survives restarts. The remote tier is attractive because it
+decouples cache capacity from engine count and lets one
+Findings. Werebuiltoneproductionengine’srequeststream
+from logs, replayed it against an isolated engine with the
+identical image and configuration, and profiled it (§3). Three
+effects explain theregression:
+1. Ahitwasslowerthanamiss. A16k-tokenprompttook
+0.31sto recomputebut0.88s toloadfromL2 (§6.1). On
+a B300 node the GPU prefills about 52.2k tokens/s; the L2
+path delivered well under the bandwidth needed to keep
+up with that.
+2. Synchronous loading is unstable under hit-heavyload.
+A load inside the engine step stalls all eight PCP ranks.
+Whenthearrivalratetimestheper-hitservicetimeexceeds
+one, the engine becomes an overloaded queue: median
+latency grew from 3.52s to 52.30s within six minutes
+whilethe GPUs were 7% busy (§6.3).
+3. Rare client bugs caused unbounded stalls. A lost-
+completion raceand a missing-key read that never returns
+eachfrozeanenginefor3–10sperrequest,orpermanently
+(§5.4).
+Contributions.
+1
+
+===== PDF PAGE 2 =====
+• A cost model for remote KV hits with two parameters,
+break-evenbandwidth 𝐵∗
+= 𝑠𝑅andafixedper-hitcost𝑇0,
+validated on configurations thatwerenotusedto fit it (§4).
+• A sharded MLA KV store for context parallelism that
+spreads store, lookup and load across ranks, with a proof
+that the scheduler’s existing minimum-over-ranks lookup
+returns the longest cached prefix and a load protocol in
+whichevery rankissuesthe same collectives(§5.1).
+• Arank-partitionedremotetier: becausetheshardedstore
+partitionschunks staticallybyrank,rank𝑟ofevery engine
+can use its own server instance without a cluster protocol
+orclient-sidehashing,whilecross-enginereusestillworks
+(§5.2).
+• Asynchronous loading for the sharded store and fixes for
+three client bugs, each witha regression test(§5.3, §5.4).
+• An evaluation by trace replay of production traffic: p99
+on a hit-heavy stream falls from 83.32s to 0.67s, a 124×
+reduction, with 98.5% of prompt tokens served from L2;
+the shardedstore raisesprefill throughputby14–34%;and
+afive-nodedisaggregateddeploymentusingthesechanges
+passes theworkload’sSLA (§6).
+The broader lesson is that on current GPUs recompute is a
+demanding baseline. A cache tier has to be judged against the
+prefill rate of the hardwareit serves, not against the latency of
+the network.
+2 Background
+MLA and its KV cache. MLA [1] projects each token’s
+keysandvaluesintoonelow-ranklatentvectorsharedbyall
+attention heads. The per-token KV state is therefore small
+and independent of the head count. For GLM-5.3 in FP8, one
+256-token LMCache chunk covering all layers is 12.4MB, so
+𝑠≈48.4 KBpertoken. SplittingattentionheadsacrossGPUs
+(tensorparallelism)doesnotshrinkthisstate,becauseevery
+head needsthefulllatent.
+Prefill context parallelism. PCP [13, 17, 25] splits the
+prompt along the sequence, so each of the𝑊 ranks processes
+about 1/𝑊 of the tokens. Ranks exchange KV with an All-
+Gathersothatcausalattentionseeseveryearliertoken;after
+theexchangeeveryrankholdsthewholeprompt’slatentKV.
+In our deployment the MoE layers additionally use expert
+parallelism (EP8). Every forward step contains NCCL collec-
+tives, so the ranks run in lockstep: anything that delays one
+rank delays all of them.
+Prefill/decode disaggregation. Prefill is compute-bound
+and decode is memory-bandwidth-bound, so separating them
+lets each use its own parallelism and batchlimits [21, 27]. A
+routersends eachrequestto aprefill engine, which computes
+(or loads) the prompt’s KV and ships it to a decode engine
+over NIXL[20]; the decode engine streamstheanswer.
+LMCache. LMCache [19] splits KV into fixed-size chunks
+keyedbyahashofthetokenprefix,soachunk’skeyidentifies
+everything before it. A lookup returns the longest prompt
+prefixwhosechunksareallpresent;agapmeanseverything
+afteritisrecomputed. ForMLA,LMCachestoresandloads
+only on worker 0 (save_only_first_rank), since every
+tensor-parallel rank holds the same latent KV. The remote
+backend speaks the RESP protocol to a Redis-compatible
+server,throughanativeclientthatkeepsapoolofconnections
+per engineworker.
+Valkey. Valkey [24], like Redis, executes every command
+on a single main thread; I/O threads only parallelize socket
+reads and writes. A singleinstance’s command throughput is
+thereforebounded byone core, whatever theclient count.
+3 Methodology
+We wanted measurements that match production without
+touchingit.
+Tracereplay. Fromrouterlogs andthebenchmarkclient’s
+database we rebuilt the exact request stream that one pro-
+duction prefill engine received in the 16k-token cell of the
+SLAworkload: 683requestswiththeiroriginalprompts and
+send times. A replayer sends each request at its original
+offsetandrecordscompletiontime,prompttokensandcached
+tokens. Unless stated otherwise, latency is the prefill leg’s
+completion time,whichthe routerlogsas“prefill completed”
+in production.
+Isolatedengine. Replaysranonafree8×B300nodewith
+theproductioncontainerimage,commandlineandenviron-
+ment(vLLM0.31.0,LMCache0.5.5withthesharded-store
+patch, FlashInfer 0.7.0, NCCL 2.30, CUDA 13.0). The differ-
+ences from production were: prefill only (no decode handoff),
+the LMCache controller off (so no production router could
+select the engine), and a private Valkey 8.1 (400GB, LRU,
+16 I/O threads) instead of the shared 1.28TB instance. A
+samplerrecordedenginemetricsevery5sandValkeyINFO
+commandstats for server-sideGET counts and time.
+Hit-heavysubset. Thefullstream’schunks(≈495GB)ex-
+ceed theprivate Valkey,andreplaying it inorder underLRU
+evictseachpromptjustbeforeitisneededagain,sohitrates
+stayat10–20%. Tomeasurethehitpathweusethefirst450
+requests (7.35M prompt tokens, median 16,390 tokens, range
+14,715–17,889),whichfit. Beforeeacharm,Valkeyisflushed,
+primed by one replay, and the engine restarted so that L1 is
+empty; 98.5% of prompt tokens are then served from L2. The
+same450requestsinthecoldrungivetherecomputebaseline.
+Profiling. Nsight Systems capturedalleightGPUworkers
+withCUDAandNVTXtracing,startedandstoppedthrough
+vLLM’s profiler hook; py-spy took stack dumps of engine
+processesduringstallswithnoGPUactivity. Profiledrunsare
+used only to attribute time,never aslatencymeasurements.
+2
+
+===== PDF PAGE 3 =====
+Prefill engine on one 8×B300 node: PCP8 + EP8, ranks in lockstep
+Router
+cache- andload-aware
+prompt rank0
+rank1
+rank2
+rank3
+rank4
+rank5
+rank6
+rank7
+KV
+NIXL
+Decode node
+DP8+EP8
+L1
+L1
+L1
+L1
+L1
+L1
+L1
+L1
+Chunk 𝑐 is owned by rank
+𝑐 mod 8: only that rank
+stores, looks up and loads it.
+𝑣0
+𝑣1
+𝑣2
+𝑣3
+𝑣4
+𝑣5
+𝑣6
+𝑣7
+L2: one Valkey instance per rank; 𝑣𝑟 is shared by rank𝑟 of every prefill engine
+Figure 1: Systemoverview, finaldesign. Theoriginaldesignstoredeverychunkfromrank 0 into asingleValkeyinstance.
+Reporting. Percentilesuselinearinterpolationoverallre-
+questsofarun. Everynumberin§6iscomputedbyonescript
+fromtherawper-requestlogs. Eachconditionwasrunonce;
+§8discusses whatthis doesanddoesnotsupport.
+4 A Cost ModelforRemoteKVHits
+Let 𝑛be thenumberofprompt tokensservedfrom the cache,
+𝑠the KV bytes per token, 𝑅the engine’s prefill rate in tokens
+persecond,and 𝐵thebandwidththecachetierdeliverstoone
+prompt. Tofirst order,
+𝑇recompute =
+𝑛
+𝑅, 𝑇load = 𝑇0 +
+𝑛𝑠
+𝐵, (1)
+where𝑇0 is everything a hit still pays that does not scale with
+bandwidth: scheduling,lookupround-trips,theforwardstep
+overthefewuncachedtailtokens,andtheper-chunkmetadata
+exchangeandbroadcast.
+Break-even bandwidth. Ignoring 𝑇0, a hit pays off iff
+𝐵 > 𝐵∗
+= 𝑠𝑅. The prompt length cancels: the threshold
+depends only on the model’s KV footprint and the hard-
+ware’s prefill speed. For GLM-5.3 FP8 on one B300 node,
+𝑠= 48.4 KB/token and 𝑅= 52.2k tokens/s (the median rate
+ofcold missesin our replay), so
+𝐵∗
+= 𝑠𝑅≈2.53 GB/s.
+A single Valkey instance serving eight PCP ranks delivered
+1.71GB/s at best (§6.2), below 𝐵∗: every L2 hit was slower
+than recomputing.
+Fixed cost. With 𝑇0 > 0, a hit pays off only if 𝑛/𝑅 >
+𝑇0 +𝑛𝑠/𝐵, which requires at least 𝑛 > 𝑅𝑇0. Below that
+prompt length, recomputingis faster at any bandwidth. We fit
+𝑇0 on a single point, the median of the fastest configuration (8
+instances, 𝐵= 10.76 GB/s,§6.3): 𝑇0 = 0.40−0.79/10.76 ≈
+0.33 s. The model then predicts𝑇0 +0.79/1.71= 0.79 s for
+a16k-tokenhitonasingleinstance,closetothe0.83–0.88s
+we measured in three runs not used for the fit (Fig. 2). The
+implied threshold is 𝑅𝑇0 ≈17k tokens: on this hardware and
+implementation, L2 cannot improve the median latency of
+a 16k-token prompt, and pays off in latency only for longer
+Latency, 16k-token prompt (s)
+100
+10−1
+* = 2.53
+B
+100 101 102
+L2 GET bandwidth available to one prompt (GB/s)
+bandwidth only: ns/
+B
+T0 + ns/
+B
+, T0 = 0.33 s
+recompute n/R
+measured, 1 instance (B3/B5/B6)
+measured, 8 instances (H3/H4/H5b)
+Figure2: Model(Eq.(1))againstmeasurementfora16k-token
+hit. 𝑇0 is fitted on the H5b median only; the single-instance
+runs were not used to fit. The dashed line is the measured
+recompute median.
+prompts. Its value at 16k is capacity: a hit consumes no GPU
+compute, which matters whenprefill engines aresaturated.
+Stability ofsynchronous loading. With synchronous load-
+ing,aloadrunsinsidetheenginestepand,underPCP,stallsall
+ranks. Theenginethenbehaveslikeasingle-serverqueue[15]
+whoseservicetimeperhitisatleast𝑛𝑠/𝐵. Witharrivalrate𝜆,
+its utilization is 𝜌= 𝜆𝑛𝑠/𝐵. In the hit-heavy replay𝜆= 1.21
+requests/sandamedianpromptis0.79GB.Underthatload
+thesingleinstancesustainedonly0.78–0.89GB/s(server-side
+measurement), so 𝜌 ≈1.13 > 1: the queue has no steady
+stateandgrowsforaslongashitskeeparriving. Witheight
+instances, 𝜌≈0.09.
+5 Design
+Themodelpointstotwolevers: delivermorebandwidthper
+prompt, and keep the engine running while loads are slow.
+3
+
+===== PDF PAGE 4 =====
+Both start from wherethe KVlives underPCP.
+5.1 ShardingtheMLAKVStoreAcrossPCP
+Ranks
+Therank-0bottleneck. Undertensorparallelism,storing
+MLA KV only from rank 0 is sound: every rank holds the
+same latent. Under PCP the latent is also replicated after
+theAllGather,butnowrank0copiestheentireprompt’sKV
+to host memory inside the step, while the other seven ranks
+wait for it at the next collective. In an Nsight trace of two
+concurrent∼200k-token prompts, rank 0 wrote 19.1GB to
+host memory and was 82% busy against 98% on the other
+ranks, which accumulated∼1.55s of AllGather wait each in a
+9.5s window.
+Ownership. Since every rank holds the whole prompt’s KV
+after the AllGather, any rank can store any chunk. Chunk
+𝑐, the chunk that starts at token 256𝑐, is owned by rank
+𝑜(𝑐)= 𝑐mod 𝑊. Eachrankstores,looksupandloadsonly
+its own chunks, and its L1 is a 1/𝑊 slice of the engine’s
+host-memory budget,so total memoryisunchanged.
+Lookup. ThevLLMscheduleralreadysendseachlookup
+toeveryrank’slookupserverandtakestheminimumofthe
+answers. In shard mode, rank 𝑟 answers with the start of
+its first owned chunk that is missing, 𝑎𝑟 = min{𝑐 : 𝑜(𝑐)=
+𝑟, 𝑐missing}, or 𝑁if it hasallof them.
+Proposition 1. Let a prompt have chunks 0,...,𝑁−1 and
+let 𝑚be the first chunk missing on its owner (𝑚= 𝑁if none).
+Then min𝑟 𝑎𝑟 = 𝑚.
+Proof. Everychunk𝑐<𝑚ispresent,sonorankhasamissing
+ownedchunkbelow𝑚,and 𝑎𝑟 ≥𝑚forall𝑟. If𝑚<𝑁,chunk
+𝑚ismissingandownedby𝑜(𝑚),andallofthatrank’sowned
+chunks below 𝑚arepresent, so 𝑎𝑜 (𝑚)= 𝑚. □
+The minimum the scheduler already computes is therefore
+exactlythelongestprefixwhosechunksareallpresent: sharded
+lookup needs no new messages. We also checked the claim
+exhaustively for up to 10 chunks and𝑊 ∈{2,3,4,8}, and on
+random promptsof up to 800 chunks.
+Load. Loadingmustneverletonerankskipacollectivethat
+the others enter, or thestep hangs. Every rankthereforeruns
+thesamesequenceregardlessofwhatitfoundlocally(Algo-
+rithm1): fetchandstageitsownedchunks,thenexchangeone
+small message per rank containing a fingerprint of the chunk
+list,itsfirstfailureanditschunkmetadata;computetheagreed
+prefixfromthe𝑊messages,whichareidenticaloneveryrank;
+and broadcast each chunk of the prefix from its owner. Local
+failures(eviction,afailedGET,anunhealthyengine,astaging
+error) are reported only through the exchange and become an
+agreed, shorter prefix; mismatched inputs produce different
+fingerprintsand anagreed prefixofzero. Multi-process tests
+withrealcacheengineschecktheseinvariantsunderrandom
+failures andafter repeatedfailed loads.
+Algorithm 1 Shardedload on rank𝑟(all ranksrunit)
+1: 𝐶 ←chunklistof (tokens, mask); 𝐹 ←fingerprint(𝐶)
+2: 𝐻, 𝑓𝑟 ←fetchownedchunksof𝐶; 𝑓𝑟 =firstownedfailure
+3: stage 𝐻on thelocal GPU(non-blocking)
+4: for 𝑞= 0,...,𝑊−1 do ⊲sameorder oneveryrank
+5: 𝑀𝑞 ←BroadcastObject((𝐹, 𝑓𝑟 ,meta(𝐻)), src =
+𝑞)
+6: 𝑃←AgreePrefix(𝑀0,...,𝑀𝑊−1) ⊲0 if fingerprints
+differ
+7: for 𝑐= 0,...,𝑃−1 do
+8: Broadcast(chunk𝑐 , src = 𝑐mod 𝑊)
+9: write chunks <𝑃to the KV cache; release owned buffers
+Remotekeys. ForMLA,LMCachenameseveryremotekey
+after worker 0 so that ranks share one copy. In shard mode
+everyrankwritesitsownchunksunderthatworker-0name,
+which keeps a chunk’s remote key independent of the rank
+that wrote it and preservesreuse acrossengines.
+5.2 ARank-PartitionedRemote Tier
+Raising 𝐵 needs more server threads, hence more Valkey
+instances. Spreading keys over instances usually requires a
+clusterprotocolorclient-sideconsistenthashing. Thesharded
+store already provides a static partition: rank 𝑟 only ever
+toucheschunkswith𝑐mod 𝑊= 𝑟,andrank𝑟ofeveryengine
+ownsthesamechunkindexes. Instance𝑟canthereforeholdex-
+actlyrank𝑟’schunks,withnoroutinglogic,notrafficbetween
+instances,andnolossofcross-enginereuse. Theclientchange
+isonesubstitution: {rank} intheremoteURLbecomesthe
+worker’s rank, e.g. resp://valkey-{rank}:6379. Each
+rank’sshareofa16k-tokenprompt(∼100MB)isthenfetched
+from its own instance in parallelwith the otherseven.
+5.3 Asynchronous Loading for the Sharded
+Store
+With enough bandwidth, 𝜌≪1 and synchronous loadskeep
+up (§4). Asynchronous loading is still valuable because it
+removes the failure mode: a slow load delays only its own
+request while the engine keeps running others. LMCache’s
+asynchronous path assumed rank 0 performs all lookups;
+we extend it to shard mode without new protocol messages.
+Each rank prefetches only its owned chunks and passes the
+storagelayeracustomcumulative-lengthvectorwhose 𝑘-th
+entryisthestarttokenofits 𝑘-thownedchunk. Thestorage
+layer’s “contiguous hits” answer is then exactly 𝑎𝑟 from the
+proposition, in tokens, and the scheduler’s minimum is the
+sameprefixasinthesynchronouspath. Apropertytestover
+3,000 random presence patterns checks this equivalence. One
+edgecasechanged: arankwithnohitsusedtoreport0tokens,
+which is wrong under sharding (if rank 1’s first owned chunk
+is missing, the correct answer is 256 tokens, since chunk 0
+belongs to rank 0). It now reports the first entry of the vector,
+which is 0 outside shard mode.
+4
+
+===== PDF PAGE 5 =====
+5.4 ThreeClientBugs
+Bandwidthexplainedthesteadycost;threebugsexplainedthe
+worst outliers,allofwhichleft an emptyGPUtimeline.
+Lostcompletions. Thenativeclient’ssynchronousmethods
+submitted a request and only then registered the future that
+wouldreceivetheresult,whilecompletionsweredrainedon
+anevent-loop thread. Acompletion drained betweenthe two
+stepswasdropped,andthecallerblockedforever. Sharding
+multiplies the exposure by𝑊, since every lookup now goes
+to every rank, and one loss is permanent: afterwards every
+scheduler lookup waits its full 3s timeout. One production
+engine logged exactly this, one timeout per routed request (16
+of16inoneminute)fromonemomenton,andpy-spyshowed
+everylookup threadblocked in fut.result() withnothing
+outstanding. Thefixholdsonelockacrosssubmit-and-register
+and across the drain. A test with a fake client that drains
+before submit returns fails without the fix; replays showed
+nomeasurable latencycost.
+AGETofamissingkeyneverreturns. RESPencodesa
+missing value as the 5-byte null bulk string $-1\r\n. The
+native connector read a fixed 11-byte header sized for a
+chunk, so on a missing key the read never completed and
+the connection was lost for good. Under LRU eviction a
+chunk can disappear between the lookup (EXISTS) and the
+load (GET); a synchronous load then stalls all ranks for the
+10s blocking timeout. The fix parses the header up to CRLF,
+treats $-1 as a per-key miss with the reply fully consumed,
+and makes the Python layer free unfilled buffers instead of
+returningthemasKV.AgainstarealValkey,a4-chunkGET
+withonekeydeletednowreturns[T,T,F,T] in69msandthe
+connection serves the next GET in 40ms; before, it produced
+nocompletionwithin12s.
+Async GETs usedthewrong key. The asynchronous GET
+did not rewrite keys to the worker-0 name used by the asyn-
+chronouslookup,soranksotherthan0foundtheirchunksand
+thenrequestedkeysthatdonotexist(whichishowwefound
+the previous bug). Upstream never exercised this, because
+only rank 0 performed asynchronouslookupsforMLA.
+6 Evaluation
+6.1 Where a 16k-Token Prompt’s KV Comes
+From
+Table 1 replays the full 683-request stream under different
+cachestates. LoadingfromL1(hostmemory)isslightlyfaster
+than recompute; loading from a single L2 instance is 2.7×
+slower,onanidleengine(atmostonerequestrunning,none
+waiting). This matches the model: at 1.71GB/s a 0.79GB
+prompt needs0.46s of transferontopof𝑇0.
+Table1: Prefilllatencyofthe683-request16k-tokenstream
+bycachestate. “Hits”arerequestswith≥12kcachedtokens.
+SingleL2 instance, synchronous loading unlessnoted.
+Run State p50 p99 hits: n,p50
+B1 cold (recompute) 0.31 1.16 4,0.74
+B2 L1 warm 0.32 0.36 60,0.29
+B3 L1 cold, L2 warm 0.32 1.11 62,0.88
+B5 as B3 (control) 0.32 1.00 62,0.83
+B6 as B3,racefix 0.32 0.95 60,0.83
+A1 as B3,async, rank-0 0.38 1.34 57,0.89
+1 client
+1 instance
+8 clients
+1 instance
+8 clients
+8 instances
+1.51 GB/s
+1.71 GB/s
+10.76 GB/s
+0 2 4 6 8 10 12
+Aggregate GET bandwidth, 12.4 MB chunks (GB/s)
+Figure 3: Aggregate GET bandwidth, LMCache native RESP
+client, 12.4MB chunks.
+6.2 Remote-Tier Bandwidth
+Figure 3 measures aggregate GET bandwidth for 12.4MB
+chunks with LMCache’s native client against Valkey, with
+eachclientfetching8-chunkbatches(99MB,onerank’sshare
+of a 16k prompt). Going from one client to eight on one
+instance adds only 13%, because the clients queue on the
+same server thread, and one rank’s batch takes 440ms at p50
+instead of 65ms. With one instance per rank, bandwidth
+scalesto10.76GB/s(6.3×)andabatchtakes70ms. During
+the hit-heavyruns ona singleinstance, Valkey’s main thread
+spent73–74%ofwall-clocktimeexecutingGETs(89–91%in
+thebusiestminute).
+6.3 Hit-Heavy Traffic
+Table 2and Figs.4 and5 comparefive configurationsonthe
+450-request hit-heavy subset with 98.5% of tokens served
+from L2(except H2b; seebelow).
+One instance, synchronous (H1b). The run behaves as the
+modelpredictsfor 𝜌>1: medianlatencygrowsfrom3.52sin
+thefirstthirdoftherunto52.30sinthelast,upto59requests
+arein theengine atonce (Fig. 6),and the GPUs are 7% busy.
+Every request completes, but the engine spends most of its
+timewaitingforValkey.
+Oneinstance,asynchronous(H2b). Asynchronousloading
+withthedefaultrank-0storeboundslatencyat3.2–3.8s,but
+5
+
+===== PDF PAGE 6 =====
+Table 2: Hit-heavy subset (450 requests, 16k tokens, L2 primed, L1 empty). Latencies in seconds. All runs completed 450/450
+requests without errors.
+Run L2 Loading p50 p90 p99 max p50by thirdofrun fromL2 GPUutil
+H1b 1 instance sync 9.70 61.17 83.32 86.72 3.52 →9.02 →52.30 98.5% 7%
+H2b 1 instance async (rank-0 store) 3.20 3.70 3.82 4.04 1.20 →3.24 →3.56 50.6% 28%
+H3 8 instances sync, sharded 0.41 0.50 0.80 1.25 0.41 →0.41 →0.41 98.5% 21%
+H4 8 instances async, sharded 0.41 0.48 0.73 1.07 0.42 →0.41 →0.41 98.5% 20%
+H5b 8 instances async, sharded,allfixes 0.40 0.46 0.67 0.86 0.41 →0.40 →0.40 98.5% 22%
+Recompute, same requests (B1) 0.31 0.32 1.28 2.76 0.8%
+Production engine, same requests 0.35 0.41 1.14 4.86
+102
+Prefill latency (s)
+101
+CDF
+100
+1.0
+0.8
+0.6
+0.4
+0.2
+0.0
+0 100 200 300
+Request send time (s)
+H1b: 1 instance, sync
+H2b: 1 instance, async (rank-0)
+H3: 8 instances, sync
+H5b: 8 instances, async, all fixes
+recompute (B1, same requests)
+100 101 102
+Prefill latency (s)
+recompute (B1)
+production, same requests
+H1b: 1 instance, sync
+H2b: 1 instance, async (rank-0)
+H3: 8 instances, sync
+H4: 8 instances, async
+H5b: 8 instances, async, all fixes
+Figure4: Per-requestprefilllatencyoverthehit-heavyreplay
+(logscale). Withoneinstanceandsynchronousloading(H1b)
+theenginenevercatchesup;withoneinstanceperrank(H3,
+H5b) latencyis flat from thefirstrequesttothelast.
+Figure5: LatencyCDFsonthehit-heavysubset(logscale),
+with the recompute baseline and the production engine on the
+same requests.
+onlybygivingup: 49%ofrequestshitthe3sasynchronous-
+lookuptimeoutandrecomputedwhiletheirprefetchcontinued
+inthebackground,whichiswhyonly50.6%oftokenscame
+from L2 despite thesamenumberofGETsasH1b.
+the engine (scheduling, the forward step over the uncached
+tail, and the per-chunk exchange and broadcast) rather than in
+Valkey. Even at infinite bandwidth a 16k-token hit would take
+about0.33s,slightlymorethan recompute,soon afastGPU
+itcannotwinonmedianlatencyuntil𝑇0 shrinks(§7). Thetail
+isbetterthanrecompute’s(p990.67sagainst1.28s),andahit
+uses no GPU compute.
+Eight instances (H3–H5b). With one instance per rank,
+median latency is 0.41s from start to finish, p99 drops to
+0.80s, and the engine never holds more than one request.
+Asynchronous loading(H4) matches the synchronousmedian,
+asexpectedat𝜌≈0.09,andtrimsthetail. Withallfixes(H5b),
+p99 is 0.67s, 124×below H1b, and the latency distribution
+sits close to the production engine’s on the same requests,
+whichservedonly1–35%oftokensfromanycache(Fig.5).
+TheValkeyshardsaveraged8.9msofservertimeper12.4MB
+GET.
+Remaininggaptorecompute. Atthemedian,H5bis0.09s
+slowerthanrecomputingthesameprompts. Transferaccounts
+foronly0.074sofahitat10.76GB/s;therestis𝑇0,spentin
+6.4 PrefillThroughput
+Figure7measurescomputedprompttokenspersecondonone
+nodewith8concurrent∼200k-tokenpromptsfor3rounds,with
+LMCachestoringeverychunk. Theshardedstorealoneraises
+throughputfrom43.2kto49.4ktokens/s(+14%). Thesame
+traces exposed a second, unrelated bottleneck: FlashInfer’s
+fused SwiGLU + FP8 re-quantization kernel took 1.57ms
+per call and 17% of prefill GPU time, because under EP8
+mostofitsthreadblocksprocessslotsroutedtootherGPUs.
+An upstream kernel rewrite [3], which we built for SM103
+and validated, reduces it to 0.23ms. Each fix alone gives
+6
+
+===== PDF PAGE 7 =====
+Requests in engine
+60
+40
+20
+0
+H1b
+H3
+H5b
+0 100 200 300 400
+Time since first request (s)
+Figure 6: Requests running or waiting in the engine (5s
+samples).
+Rank-0 store (baseline)
+Sharded store
+Rank-0 store + kernel fix
+Sharded store + kernel fix
+LMCache off
+LMCache off + kernel fix
+43.2k
+49.4k
+49.8k
+57.3-58.0k
+51.4k
+60.6k
+0 10 20 30 40 50 60 70
+Prefill throughput, one 8-GPU node (k tokens/s)
+Figure7: Prefillthroughputonone8×B300node,8concurrent
+∼200k-tokenprompts. “Kernelfix”isFlashInferPR#3969[3].
++14–15%; together they give 57.3–58.0k tokens/s (+34%),
+within 4–5% of running with LMCache turned off. In the
+two-prompt Nsight window, total AllGather time fell from
+15.8sto5.8sandrank0’sdevice-to-hosttrafficfrom19.1GB
+to 2.4GB. With a remote backend attached, puts equal stored
+chunks and throughput is unchanged (57.3k against 57.7k
+tokens/s).
+6.5 Correctness
+Bit-exactcomparisonisnotusable: theengineisnotdetermin-
+istic,andtwocoldrunsofthesamepromptalreadyproduce
+differenttext. Wetestsemanticswithsixneedle-in-a-haystack
+promptsof12.8k–166.7ktokens,eachhidingarandomcode
+at a random depth, answered with greedy decoding four ways:
+cold;fromL1viaasynchronousprefetch;fromL2viaasyn-
+chronous prefetch after an engine restart (12,800–166,656
+tokens loaded); and cold again as a control. The code was
+found in 24 of 24 answers, and cache-served answers differ
+from cold ones no more than the two cold runs differ from
+eachother. Allrunsloggedzerolookuptimeouts,zeroasyn-
+chronous timeouts and zero errors. The synchronous sharded
+storepassed3/3needlesafterGPU-cacheeviction(174k–204k
+Table3: 200k-tokenSLAbenchmark. TPM:inputplusoutput
+tokens per minute.
+Aggr. 6P+1D 5P+1D 4P+1D
+B300 nodes 11 7 6 5
+Success 100% 99.9% 99.88% 100%
+TTFT P90 (s) 34.0 25.3 44.5 30.5
+TTFT P50 (s) 13.1 15.1 28.4 18.0
+TTFT mean (s) 19.9 17.0 29.6 20.1
+TPM (M) 7.74 14.1 12.6 12.7
+TPM per node(M) 0.70 2.01 2.10 2.55
+Aggregated, 11 nodes
+6P+1D, 7 nodes
+5P+1D, 6 nodes
+4P+1D, 5 nodes
+0.70M
+2.01M
+2.10M
+2.55M
+0.0 0.5 1.0 1.5 2.0 2.5 3.0
+Tokens per minute per node (millions)
+Figure 8: Tokens per minute per B300 node on the SLA
+benchmark.
+tokens loaded), 36/36 answers in a concurrent burst, and a
+30-minute soak of 1,549requestswithout errors.
+6.6 End-to-End Deployment
+Finally, we ran the full configuration (sharded store, eight L2
+instances, asynchronous loading, all fixes) as a disaggregated
+deploymentwithfourPCP8prefillnodesandonedecodenode
+(DP8, EP8) on the workload’s 200k-token SLA benchmark,
+which sends a sustained closed-loop mix of long prompts and
+checks TTFT against P90 < 70s, P50 < 30s and mean <
+30s. Table3andFig.8compareitwithearlierdeployments
+that passed the same benchmark. This comparison changes
+morethan thecache tier: theaggregatedbaselinealsodiffers
+in parallelism and in prefill/decode placement. We report it
+as deployment context, not as an ablation of the techniques
+above.
+7 Discussion
+Judge a cache tier against the prefill rate. 𝐵∗
+= 𝑠𝑅grows
+withacceleratorspeed: everyfasterGPUgenerationraisesthe
+bandwidthacachetiermustdelivertobeworthreading. At
+2.53GB/s per prompt for one B300 node, a cache tier built
+fromgeneral-purposekey-valueserversneedstoscaleoutwith
+the engine’s parallelism, as the rank partitioning does here,
+or move to RDMA transports [22]. Compression [18] lowers
+𝑠, and loading and computing different parts of a prompt
+concurrently [14] avoidstreating the choice asall-or-nothing.
+7
+
+===== PDF PAGE 8 =====
+Shrink the fixed cost. Our 𝑇0 ≈0.33 s means that, on
+this implementation, remote hits on prompts below∼17k
+tokens are slower than recompute at any bandwidth. The load
+path broadcasts each chunk from its owner, one collective
+per chunk; for a 16k prompt that is 64 broadcasts plus 𝑊
+metadata exchanges. Batching chunks per owner into a single
+AllGather-style collective, and overlapping the exchange with
+thefetch,arenaturalnextsteps. Aload-or-recomputepolicy
+thatcomparesthemodel’spredictedloadtimewith 𝑛/𝑅per
+request would alsostopshortprompts frompaying𝑇0.
+Staticpartitionsmakescale-outfree. Therankpartitioning
+works because the sharded store fixes ownership by chunk
+index, a property any deterministic, rank-local placement
+shares. Scaling to more instances than ranks (for capacity
+rather than bandwidth) needs a second-level hash within each
+rank’spartition;scalingtheinstancecountwith𝑊 keepsthe
+propertythatone rank talkstoone server.
+Lockstepamplifieseverything. UnderPCP,anyper-rank
+stall(arankdoingallthestores,aslowGET,alostcompletion)
+stalls all ranks. Designs for context-parallel engines should
+keep per-rank work symmetric and keep any operation that
+can block for an unboundedtime out ofthe step.
+8 Limitations
+• Singleruns. Eachconditionwasrunonce. Thelargeeffects
+(124×atp99,6.3×bandwidth,theunstablequeue)arefar
+outside run-to-run variation, but differences under about
+10% (for example H3 againstH4)are notestablished.
+• Prefillonly,oneengine. Thereplaysomit the KVhandoff
+to decode and use one engine as the only Valkey client;
+contention from several engines on shared instances is
+estimated,notmeasured. Attheworkload’s∼0.45requests/s
+perengineand0.79GBperprompt,sixengineswoulddraw
+about2GB/s,well below 10.76GB/s.
+• One prompt-length bucket. Latency results are for 14.7k–
+17.9k-token prompts. 𝑇0 is fitted on one point, and the
+prompt-length threshold it implies is a prediction that we
+havenotyet measureddirectly.
+• Cachestate. Thehit-heavysubsetwaschosento fitinthe
+privateinstance;production’sfull,evictinginstancewould
+produce more missesand moreEXISTS-to-GET races.
+• End-to-end comparison. §6.6 compares deployments that
+differ inmore than thecache tier.
+9 Related Work
+KV-cache reuse and tiering. vLLM’s PagedAttention [16]
+andSGLang’sRadixAttention[26]reuseprefixeswithinan
+engine. CachedAttention[4]keepsconversationKVinhost
+memory and disk and overlaps loading with computation;
+Mooncake [22] builds a disaggregated KV storeover RDMA
+for a production chatbot; MemServe [6] adds an elastic mem-
+orypoolfordisaggregatedserving;LMCache[19]provides
+themulti-tiercachelayerwebuildon. Thesesystemsmotivate
+remotetiers;wecharacterizewhensuchatierisslowerthan
+recompute on fast GPUs and show how context parallelism
+enables a coordination-free scale-out ofthe tier.
+Loadversusrecompute. CacheGen[18]compressesKVto
+cuttransfertimeovernetworks. Cake[14]computesandloads
+different parts of the prompt concurrently, and HCache [5]
+restoresstatefromcachedhiddenstates,tradingtransferfor
+partial recomputation. Ourcostmodel makesthe underlying
+trade-offexplicitforaremotetier,includingafixedcostthat
+bandwidth cannot remove; these techniques act on its 𝑠and 𝐵
+terms.
+Disaggregation and context parallelism. DistServe [27]
+andSplitwise [21] separate prefill fromdecode;DéjàVu[23]
+streams KV between stages. Ring Attention [17], DeepSpeed-
+Ulysses [13] and context-parallel inference [25] split long
+sequences across devices. We show that combining MLA,
+contextparallelismanda KVcachelayerdesigned for tensor
+parallelism concentrates cache I/O on one rank, and give a
+sharded store whose correctness follows from the existing
+lookup protocol.
+10 Conclusion
+A remote KV tier is only useful if it beats recomputation, and
+oncurrentGPUsthatisahighbar: forGLM-5.3onaB300
+node, a cache hit must arrive at more than 2.53GB/s, and a
+fixedenginecostputsshortpromptsoutofreachaltogether. A
+singlekey-valueservercouldnotmeetthebar,andsynchronous
+loading turned the shortfall into an unstable queue. Sharding
+theMLAKVstoreacrosscontext-parallelranksspreadscache
+I/Oevenly,anditsstaticownershipletstheremotetierscale
+outbyrankwithnocoordination. Togetherwithasynchronous
+loading and three client fixes, thisbrings hit-heavy p99from
+83.32s to 0.67s.
+Availability
+ThechangesaresubmittedupstreamtoLMCache: thesharded
+store [7], the per-rank remote URL [9], asynchronous loading
+fortheshardedstore[12],andthethreeclientfixes[8,10,11].
+References
+[1] DeepSeek-AI. DeepSeek-V2: Astrong,economical,andeffi-
+cientmixture-of-expertslanguagemodel. arXiv:2405.04434,
+2024.
+[2] DeepSeek-AI. DeepSeek-V3 technical report.
+arXiv:2412.19437, 2024.
+8
+
+===== PDF PAGE 9 =====
+[3] FlashInfercontributors. OptimizedDeepSeekFP8activation
+kernel (FlashInfer pull request #3969). https://github.
+com/flashinfer-ai/flashinfer/pull/3969, 2026.
+[4] Bin Gao, Zhuomin He, Puru Sharma, Qingxuan Kang, Djordje
+Jevdjic, Junbo Deng, Xingkun Yang, Zhou Yu, and Pengfei
+Zuo. Cost-efficientlargelanguagemodelservingformulti-turn
+conversations with CachedAttention. In 2024 USENIX Annual
+Technical Conference (USENIXATC), 2024.
+[5] ShiweiGao,YouminChen,andJiwuShu. Faststaterestoration
+in LLM serving with HCache. In Proceedings of the Twentieth
+European Conferenceon ComputerSystems (EuroSys), 2025.
+[6] CunchenHu,HeyangHuang,JunhaoHu,JiangXu,Xusheng
+Chen, Tao Xie, Chenxi Wang, Sa Wang, Yungang Bao,
+Ninghui Sun, andYizhouShan. MemServe: Context caching
+for disaggregated LLM serving with elastic memory pool.
+arXiv:2406.17565, 2024.
+[7] MuhammadIbrahim. ShardtheMLAKVstoreacrossprefill-
+context-parallelranks (LMCachepull request#5545). https:
+//github.com/LMCache/LMCache/pull/5545,2026.
+[8] MuhammadIbrahim. Nativeclients: donotlosecompletions
+drainedbeforethefutureisregistered(LMCachepullrequest
+#5547). https://github.com/LMCache/LMCache/pull/
+5547,2026.
+[9] MuhammadIbrahim. Remotebackend: “{rank}”inremote_url
+selects a per-worker remote instance (LMCache pull request
+#5548). https://github.com/LMCache/LMCache/pull/
+5548,2026.
+[10] Muhammad Ibrahim. Remote backend: async get must read
+the worker-0 keys (LMCache pull request #5550). https:
+//github.com/LMCache/LMCache/pull/5550,2026.
+[11] MuhammadIbrahim. RESPconnector: aGETofamissingkey
+is a miss, not a hang (LMCache pull request #5551). https:
+//github.com/LMCache/LMCache/pull/5551,2026.
+[12] Muhammad Ibrahim. pcp_shard_store: support async load-
+ing (LMCache pull request #5553). https://github.com/
+LMCache/LMCache/pull/5553, 2026.
+[13] SamAdeJacobs,MasahiroTanaka,ChengmingZhang,Min-
+jia Zhang, Shuaiwen Leon Song, Samyam Rajbhandari, and
+Yuxiong He. DeepSpeed Ulysses: System optimizations for
+enablingtrainingofextremelongsequencetransformermodels.
+arXiv:2309.14509, 2023.
+[14] Shuowei Jin, Xueshen Liu, Qingzhao Zhang, and Z. Mor-
+ley Mao. Compute or load KV cache? why not both?
+arXiv:2410.03065, 2024.
+[15] Leonard Kleinrock. Queueing Systems, Volume 1: Theory.
+Wiley, 1975.
+[16] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng,
+Lianmin Zheng, Cody Hao Yu, Joseph E. Gonzalez, Hao
+Zhang,andIonStoica. Efficientmemorymanagementforlarge
+languagemodelservingwithPagedAttention.InProceedingsof
+the29th Symposium onOperatingSystemsPrinciples (SOSP),
+2023.
+[17] Hao Liu, Matei Zaharia, and Pieter Abbeel. Ring atten-
+tion with blockwise transformers for near-infinite context.
+arXiv:2310.01889, 2023.
+[18] YuhanLiu,HanchenLi,YihuaCheng,SiddhantRay,Yuyang
+Huang,QizhengZhang,KuntaiDu,JiayiYao,ShanLu,Ganesh
+Ananthanarayanan,MichaelMaire,HenryHoffmann,AriHoltz-
+man,andJunchenJiang. CacheGen: KVcachecompression
+and streaming for fast large language model serving. In Pro-
+ceedings of the ACMSIGCOMM2024Conference, 2024.
+[19] Yuhan Liu, Yihua Cheng, Jiayi Yao, Yuwei An, Xiaokun Chen,
+Shaoting Feng, Yuyang Huang, Samuel Shen, Rui Zhang, Kun-
+taiDu,andJunchenJiang. LMCache: AnefficientKVcache
+layerforenterprise-scaleLLMinference. arXiv:2510.09665,
+2025.
+[20] NVIDIA. NIXL: NVIDIA inference xfer library. https:
+//github.com/ai-dynamo/nixl, 2025.
+[21] PratyushPatel,EshaChoukse,ChaojieZhang,AashakaShah,
+ÍñigoGoiri,SaeedMaleki,andRicardoBianchini. Splitwise:
+Efficient generative LLM inference using phase splitting. In
+ACM/IEEE51stAnnualInternationalSymposiumonComputer
+Architecture (ISCA), 2024.
+[22] Ruoyu Qin, Zheming Li, Weiran He, Jialei Cui, Feng Ren,
+Mingxing Zhang, Yongwei Wu, Weimin Zheng, and Xinran
+Xu. Mooncake: Tradingmorestorageforlesscomputation—
+a KVCache-centric architecture for serving LLM chatbot. In
+23rd USENIX Conference on File and Storage Technologies
+(FAST), 2025.
+[23] FoteiniStrati,SaraMcAllister,AmarPhanishayee,JakubTar-
+nawski,andAnaKlimovic. DéjàVu: KV-cachestreamingfor
+fast, fault-tolerant generative LLM serving. In Proceedings
+of the 41st International Conference on Machine Learning
+(ICML), 2024.
+[24] Valkey contributors. Valkey: an open source,in-memory data
+store. https://valkey.io, 2024.
+[25] AmyYang,JingyiYang,AyaIbrahim,XinfengXie,Bangsheng
+Tang, Grigory Sizov, Jeremy Reizenstein, Jongsoo Park, and
+JianyuHuang. Contextparallelismforscalablemillion-token
+inference. In Proceedings of Machine Learning and Systems
+(MLSys), 2025.
+[26] LianminZheng,LiangshengYin,ZhiqiangXie,ChuyueSun,
+JeffHuang, CodyHao Yu, ShiyiCao,ChristosKozyrakis,Ion
+Stoica, Joseph E. Gonzalez, Clark Barrett, and Ying Sheng.
+SGLang: Efficient execution of structured language model
+programs. In Advances in Neural Information Processing
+Systems (NeurIPS), 2024.
+[27] YinminZhong,ShengyuLiu,JundaChen,JianboHu,YiboZhu,
+XuanzheLiu,XinJin,andHaoZhang. DistServe: Disaggregat-
+ing prefill and decoding for goodput-optimized large language
+model serving. In 18th USENIX Symposium on Operating
+Systems Design and Implementation (OSDI), 2024.
+9

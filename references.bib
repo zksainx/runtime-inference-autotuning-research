@@ -437,13 +437,13 @@
   note = {Pinned author arXiv v1; no independently verified conference publication claimed in this addition.},
 }
 
-@misc{routing49,
+@inproceedings{routing49,
   title = {{Not All Prefills Are Equal: PPD Disaggregation for Multi-turn LLM Serving}},
   author = {Zongze Li and Jingyu Liu and Zach Xu and Yineng Zhang and Tahseen Rabbani and Ce Zhang},
   year = {2026},
-  url = {https://arxiv.org/abs/2603.13358v1},
-  howpublished = {arXiv preprint},
-  note = {Pinned author arXiv v1; no independently verified conference publication claimed in this addition.},
+  url = {https://proceedings.mlr.press/v306/li26dq.html},
+  booktitle = {ICML 2026},
+  note = {Official PMLR identity. Archived mechanism-reading artifact is author arXiv v1. Software: https://github.com/freelulul/vllm-ppd.},
 }
 
 @inproceedings{routing50,
@@ -509,13 +509,13 @@
   note = {Pinned arXiv v2. Shared-expert cross-phase traffic interference; not P-to-D KV transfer. No independently verified conference publication claimed.},
 }
 
-@misc{coschd57,
-  title = {{DualPath: Breaking the Storage Bandwidth Bottleneck in Agentic LLM Inference}},
+@inproceedings{coschd57,
+  title = {{DualPath: Accelerating Agentic LLM Inference by Harvesting Disaggregated KV-Cache Storage I/O}},
   author = {Yongtong Wu and Shaoyuan Chen and Yinmin Zhong and Rilin Huang and Yixuan Tan and Wentao Zhang and Liyue Zhang and Shangyan Zhou and Yuxuan Liu and Shunfeng Zhou and Mingxing Zhang and Xin Jin and Panpan Huang},
   year = {2026},
-  url = {https://arxiv.org/abs/2602.21548v2},
-  howpublished = {arXiv preprint},
-  note = {Pinned arXiv v2. KV-vs-EP AllToAll interference with static VL/TC priority isolation; evaluated on InfiniBand.},
+  url = {https://doi.org/10.1145/3789240.3829159},
+  booktitle = {SIGCOMM 2026},
+  note = {Archived mechanism-reading artifact is author arXiv v2 under the earlier title DualPath: Breaking the Storage Bandwidth Bottleneck in Agentic LLM Inference.},
 }
 
 @misc{coschd58,
@@ -534,4 +534,52 @@
   url = {https://arxiv.org/abs/2607.28633v2},
   howpublished = {arXiv preprint},
   note = {Pinned arXiv v2; analytical projections, not measured.},
+}
+
+@inproceedings{softpd60,
+  title = {{Efficient Multi-round LLM Inference over Disaggregated Serving}},
+  author = {Wenhao He and Youhe Jiang and Penghao Zhao and Quanqing Xu and Eiko Yoneki and Bin Cui and Fangcheng Fu},
+  year = {2026},
+  url = {https://proceedings.mlr.press/v306/he26r.html},
+  booktitle = {ICML 2026},
+  note = {System name AMPD; official PMLR proceedings PDF. Cited in proposal 07.},
+}
+
+@misc{softpd61,
+  title = {{Vesta: Queueing-Aware LLM Scheduling for Real-World Workloads}},
+  author = {Bowen Li and Wei Mao and Lancheng Zou and Wenbin Ye and Chao Deng and Lecheng Li and Jianchen Zhu and Kai Liu and Bei Yu},
+  year = {2026},
+  url = {https://arxiv.org/abs/2610.14686v1},
+  howpublished = {arXiv preprint},
+  note = {Pinned arXiv v1. Stable session KV holders, per-request executors and queueing-aware placement.},
+}
+
+@misc{softpd62,
+  title = {{Bursts That Outlast Themselves: Persistent Degradation in Prefix-Cached Agent Serving}},
+  author = {Wen Huang and Jack Liu},
+  year = {2026},
+  url = {https://arxiv.org/abs/2611.13412v1},
+  howpublished = {arXiv preprint},
+  note = {Pinned arXiv v1. Closed-loop metastability and session working-set control.},
+}
+
+@misc{softpd63,
+  title = {{When the KV Cache Is Slower Than the GPU: Scaling Remote KV Tiers for Context-Parallel Prefill}},
+  author = {Muhammad Ibrahim},
+  year = {2026},
+  url = {https://arxiv.org/abs/2610.21500v1},
+  howpublished = {arXiv preprint},
+  note = {Pinned arXiv v1. Load-versus-recompute costs and queue growth under synchronous remote loading.},
+}
+
+@article{softpd64,
+  title = {{KVCompass: A Discovery Plane for Internet-Scale Prefix Cache Sharing in LLM Serving}},
+  author = {Shiyi Ling and Fei Fang and Chen Qian},
+  year = {2026},
+  journal = {Proceedings of the ACM on Measurement and Analysis of Computing Systems},
+  volume = {10},
+  number = {3},
+  articleno = {68},
+  url = {https://doi.org/10.1145/3857371},
+  note = {Archived author arXiv v1 contains the complete POMACS citation.},
 }
