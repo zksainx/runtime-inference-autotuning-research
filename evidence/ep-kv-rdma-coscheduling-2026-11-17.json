@@ -1,0 +1,89 @@
+{
+  "record": "ep-kv-rdma-coscheduling-2026-11-17",
+  "created_utc": "2026-11-17",
+  "scope": "Literature survey and focused local-HEAD source audit for a new research direction (proposal 06): co-scheduling of cross-node MoE expert-parallel (EP) all-to-all and PD KV-cache transfer on a shared RoCE fabric, on the AMD ROCm stack, under MLA MoE models. This record does NOT establish novelty, framework support, or PD/network performance; it pins what was verified in this session. Literature venue identities are from subagent primary-source checks (arXiv abstract pages, official conference program pages, project READMEs) and are labeled verified vs arXiv-only; formal archival into papers.json/references.bib (download, text extraction, independent re-verification, sha256) is a pending next step.",
+  "source_audit": {
+    "note": "AMD ROCm paths at current local HEADs. Distinct scope from the historical NVIDIA-path audits (source-audit-2026-11-03.json at /Users/zkx HEADs 45d0ac9/f77064f, and parameterized-scheduler-research-2026-11-13.json at /Users/kxzhang HEADs 3897f95/4b83f21). These local HEADs are not labeled upstream-latest; historical audits are unchanged.",
+    "sglang": {
+      "head": "074aeaf67499d06cc61300971fae90bcf4297670",
+      "head_commit_date": "2026-11-16",
+      "repo_path": "/Users/zkx/sglang",
+      "blobs": [
+        {"path": "python/sglang/srt/arg_groups/fields/exec_.py", "blob_sha1": "4456eafbfb3179440bfb8a8ceae2750b5ac57a86", "anchor": "moe_a2a_backend Literal/choices includes 'mori' (AMD EP all-to-all backend) alongside deepep/mooncake/nixl/pplx/flashinfer/etc.", "lines_around": "904-940"},
+        {"path": "python/sglang/srt/layers/moe/token_dispatcher/moriep.py", "blob_sha1": "e8cc1a4775153344fbd5caa501a4807d23032a5e", "anchor": "AMD mori EP dispatcher. InterNodeV1LL (inter-node low-latency, decode) vs InterNodeV1 (inter-node) vs IntraNode kernel selection; MORI_ENABLE_SDMA env; EpDispatchCombineConfig/Op; rdma_block_num in launch config.", "lines": "285-294, 999, 490-491"},
+        {"path": "python/sglang/srt/arg_groups/fields/disagg.py", "blob_sha1": "1bcd4449e82b70ee972ae4eb4195f51029572750", "anchor": "disaggregation_transfer_backend default 'mooncake'; disaggregation_ib_device selects HCA for KV transfer, consumed only by Mooncake and NIXL UCX (not by EP all-to-all).", "lines": "65-110"},
+        {"path": "python/sglang/srt/disaggregation/mori/conn.py", "blob_sha1": "5c3f78683c92c6f41d2ed4b61df4744d4c22704f", "anchor": "MoriKVManager PD transfer. Sets os.environ['MORI_RDMA_DEVICES']=ib_device (line 455); SGLANG_MORI_QP_PER_TRANSFER / RdmaBackendConfig (line 474-485). Independent RDMA device/QP config path from the EP dispatcher.", "lines": "386-493"},
+        {"path": "python/sglang/srt/arg_groups/fields/memory.py", "blob_sha1": "f8139a894a21147bbc7ea00abeef268825198564", "anchor": "HiCache: hicache_ratio/size/host_memory_fraction host pool; hicache_write_policy (write_back/write_through/write_through_selective); hicache_io_backend; hicache_mem_layout (7 layouts); hicache_storage_backend (includes 'mori'); hicache_storage_prefetch_policy (best_effort/wait_complete/timeout).", "lines": "120-200"}
+      ]
+    },
+    "vllm": {
+      "head": "60bd6dd2edd175a1c55fd3488f871e4c3d2ef27d",
+      "head_commit_date": "2026-11-16",
+      "repo_path": "/Users/zkx/vllm",
+      "blobs": [
+        {"path": "vllm/config/parallel.py", "blob_sha1": "decec0313420e2233fc836863cb59d29088af3c3", "anchor": "all2all_backend choices include 'mori' (MoRI EP, EPv2 where supported) and 'nixl_ep'; default allgather_reducescatter.", "lines": "61-62, 256-263, 898-921"},
+        {"path": "vllm/platforms/rocm.py", "blob_sha1": "7879bf8e66489d348fdb33cc6f6675f4e51fd822", "anchor": "ROCm platform branch for all2all_backend == 'mori'.", "lines": "1191"},
+        {"path": "vllm/config/kernel.py", "blob_sha1": "ee653bbeb53028827018b01059db9946e829cf54", "anchor": "MoEBackend Literal; PASSTHROUGH_ALL2ALL_BACKEND; bind_passthrough_all2all_backend.", "lines": "122-200"}
+      ]
+    },
+    "gap_findings": [
+      "EP all-to-all (mori dispatcher) and PD KV transfer (mori/mooncake conn) are two independent configuration paths; each selects RDMA NIC and QP resources independently; no shared arbiter in-framework.",
+      "A focused grep for traffic_class / qos / service_level / rate_limit / throttle across the EP token_dispatcher and disaggregation transfer paths found no RDMA priority/QoS/pacing negotiation between the two traffic classes. The only traffic_class hit in the tree is a storage daemon config under mem_cache/storage/tensorcast_store (traffic_class: 186), unrelated to EP-vs-KV arbitration.",
+      "disaggregation_ib_device governs only KV-transfer HCA selection; the EP all-to-all does not read it.",
+      "This was a focused grep, not an exhaustive audit. Whether the frameworks can expose an all-to-all cadence hook or separate RoCE traffic classes for the two flows requires a full AMD-stack source audit."
+    ]
+  },
+  "literature": {
+    "crucial_question": "Explicit co-scheduling / QoS / priority arbitration of PD KV-transfer RDMA flows against concurrent MoE EP all-to-all on a shared RoCE/IB fabric, driven by serving-scheduler timing knowledge, measured on hardware, under MLA.",
+    "verdict": "Addressed for TRAINING (collective-vs-competing-flow coordination via application iteration timing). Appears OPEN for INFERENCE (serving-scheduler-driven arbitration of EP all-to-all vs PD KV transfer on shared RoCE). Subagent keyword searches were targeted, not exhaustive; one more domain-specific pass advised before asserting pure novelty.",
+    "training_method_precedents_verified_venue": [
+      {"name": "CASSINI", "venue": "NSDI 2024", "mechanism": "Geometric affinity-graph time-shift so jobs sharing a link interleave communication phases.", "status": "venue verified via conference program page"},
+      {"name": "MLTCP / MLCC", "arxiv": "2402.09589", "venue": "HotNets 2024", "mechanism": "~60-LoC CC augmentation; ML flows scale rate to shift other jobs' comm into their own compute windows.", "note": "extended arXiv version retitled MLCC; do not merge titles silently", "status": "HotNets'24 verified"},
+      {"name": "Crux", "venue": "SIGCOMM 2024", "mechanism": "GPU-efficient communication scheduling to reduce inter-job contention, prioritizing GPU-intensive jobs.", "status": "venue verified"},
+      {"name": "Lina", "arxiv": "2210.17223", "venue": "USENIX ATC 2023", "mechanism": "Prioritizes all-to-all over concurrent allreduce in MoE training; inference-side expert-popularity scheduling.", "status": "venue verified"},
+      {"name": "Janus", "venue": "SIGCOMM 2023", "mechanism": "Data-centric: move experts to tokens instead of all-to-all. Training-focused.", "status": "venue verified"},
+      {"name": "Centauri", "venue": "ASPLOS 2024 (Best Paper)", "mechanism": "Comm/comp overlap via communication partitioning for large-model training.", "status": "venue verified"},
+      {"name": "COMET", "arxiv": "2502.19811", "venue": "MLSys 2025", "mechanism": "Fine-grained MoE comm/comp overlap via data-dependency analysis + task rescheduling.", "status": "venue verified"},
+      {"name": "Tutel", "arxiv": "2206.03382", "venue": "MLSys 2023", "mechanism": "Adaptive MoE parallelism/pipelining; runtime strategy switch without tensor migration.", "status": "venue verified"}
+    ],
+    "roce_building_blocks_verified_venue": [
+      {"name": "DCQCN", "venue": "SIGCOMM 2015", "mechanism": "ECN-based rate control for RoCEv2 to reduce PFC reliance."},
+      {"name": "TIMELY", "venue": "SIGCOMM 2015", "mechanism": "RTT-based datacenter congestion control."},
+      {"name": "HPCC", "venue": "SIGCOMM 2019", "mechanism": "In-network telemetry for precise rate setting."},
+      {"name": "RDMA over Commodity Ethernet (RoCE at scale)", "venue": "SIGCOMM 2016", "mechanism": "DSCP-based PFC, PFC-induced deadlock, pause-frame storms — canonical RoCE PFC hazards."},
+      {"name": "Gentle Flow Control", "venue": "SIGCOMM 2019", "mechanism": "Hop-by-hop flow control to avoid deadlock in lossless fabrics."},
+      {"name": "Varys", "venue": "SIGCOMM 2014", "mechanism": "Coflow scheduling (SEBF/MADD) for coflow completion time and deadlines."},
+      {"name": "RDMA over Ethernet for Distributed Training at Meta Scale", "venue": "SIGCOMM 2024", "mechanism": "Moves from DCQCN toward collective-library-driven congestion management."}
+    ],
+    "inference_adjacent_arxiv_only": [
+      {"name": "ExpertPlex", "arxiv": "2607.18002", "note": "Closest: identifies prefill/decode traffic interference on shared network; uses attention-initiated MoE communication in an AFD design. Dominant inter-node flow is activation dispatch, not P->D KV transfer; does not frame KV-transfer-vs-EP-all-to-all."},
+      {"name": "MegaScale-Infer", "arxiv": "2504.02263", "note": "Disaggregated expert parallelism (attention vs FFN), ping-pong pipeline, M2N comm library. No KV-vs-all-to-all coexistence analysis."},
+      {"name": "Step-3 / StepMesh", "arxiv": "2507.19427", "note": "Attention-FFN Disaggregation; uses MFA (NOT MLA); RDMA comms library StepMesh. No KV-transfer-over-RDMA quantification in abstract."},
+      {"name": "DualPath", "arxiv": "2602.21548", "note": "Isolates KV load path from model-execution comm by route/NIC choice (architectural), NOT timing-driven co-scheduling or traffic classes. Direct contrast baseline: isolation vs staggering."},
+      {"name": "NetKV", "arxiv": "2606.03910", "papers_json_id": "43", "note": "Network-cost oracle (topology distance + congestion) for O(|D|) decode selection. Simulation only (64-GPU fat-tree, Mooncake traces); no real RDMA testbed; no MLA; no collective coexistence."},
+      {"name": "TraCT", "arxiv": "2512.18194", "note": "States KV transfer stays highly sensitive to network contention even with high prefix reuse; sidesteps it via CXL rack-scale shared memory instead of RDMA."},
+      {"name": "Topology-Aware Data Movement for Disaggregated GPU Inference", "arxiv": "2607.28633", "note": "Jointly considers MoE expert dispatch + KV locality via NVLink-domain placement; models bandwidth not congestion; analytical projections, not measured."},
+      {"name": "P/D-Serve", "arxiv": "2408.08147", "note": "Ascend/MindSpore; names block-fixed D2D KVCache transfer over cluster RDMA as a bottleneck, maps onto RoCE; 46% lower D2D transfer time. No collective-contention discussion."},
+      {"name": "NVFP4-MLA", "arxiv": "2611.18972", "note": "Unified FP4 KV-cache storage + attention for MLA in disaggregated DeepSeek-R1; supports 'compressed MLA KV lowers transfer volume' but is a compression study, not transfer scheduling."}
+    ],
+    "kv_transfer_engines_code_only": [
+      {"name": "Mooncake Transfer Engine", "repo": "github.com/kvcache-ai/Mooncake", "note": "RDMA/RoCE KV movement, multi-NIC aggregation, topology/NUMA-aware NIC selection. Has separate Mooncake EP and PG backends but does not schedule KV transfer against those collectives."},
+      {"name": "NVIDIA NIXL", "repo": "github.com/ai-dynamo/nixl", "note": "Point-to-point inference transfer over UCX (verbs/mlx5 RDMA); no MoE/all-to-all/collective coordination."},
+      {"name": "DeepEP", "repo": "github.com/deepseek-ai/DeepEP", "note": "Low-latency EP all-to-all kernels; recommends separate IB virtual lanes / sl_idx from other workloads; explicitly does NOT configure fabric congestion control; no KV-transfer coordination. Community ROCm fork 'mori' mentions KV-cache transfer (= SGLang mori backend)."}
+    ],
+    "verified_venue_papers_already_in_manifest": [
+      {"name": "DistServe", "venue": "OSDI 2024", "papers_json_id": "10"},
+      {"name": "Splitwise", "venue": "ISCA 2024", "papers_json_id": "21", "note": "InfiniBand / layer-wise overlap detail is in full paper, not abstract; bind claims to full text."},
+      {"name": "Mooncake", "venue": "FAST 2025", "papers_json_id": "22"},
+      {"name": "TetriInfer", "arxiv": "2401.11181", "papers_json_id": "51", "status": "arXiv-only"},
+      {"name": "DOPD", "arxiv": "2511.20982", "venue": "IEEE TSC 2026", "papers_json_id": "29", "note": "distinct from NetKV; does not model network state for KV routing."}
+    ],
+    "candidate_additions_to_manifest": ["2406.17565 MemServe", "2408.08147 P/D-Serve", "2504.02263 MegaScale-Infer", "2607.18002 ExpertPlex", "2607.28633 Topology-Aware", "2512.18194 TraCT", "2611.18972 NVFP4-MLA", "2507.19427 Step-3", "2602.21548 DualPath", "2402.09589 MLTCP/MLCC"]
+  },
+  "caveats": [
+    "Venue identities and arXiv IDs are from subagent primary-source checks, not yet independently re-verified by download; treat as pending until archived per papers.json pipeline.",
+    "arxiv dates in this environment run into 2026; IDs are as returned by the search.",
+    "No sha256 of any paper PDF is recorded here because none were downloaded in this session.",
+    "Novelty claim ('open for inference') is well-supported but not exhaustive; one more domain-specific search pass advised before asserting it in a submission."
+  ]
+}
