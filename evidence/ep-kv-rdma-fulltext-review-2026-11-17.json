@@ -1,0 +1,43 @@
+{
+  "record": "ep-kv-rdma-fulltext-review-2026-11-17",
+  "created_utc": "2026-11-17",
+  "supersedes_in_part": "evidence/ep-kv-rdma-coscheduling-2026-11-17.json (that record is unchanged; this record corrects its abstract-level DualPath characterization and its 'open for inference' verdict, based on the downloaded full texts)",
+  "scope": "Full-text reread of the papers archived as ids 52-59 for proposal 06, done after download. Line numbers refer to the PDFKit-extracted text in paper-text/; page numbers are the extractor's '===== PDF PAGE N =====' markers. This record does not establish framework support or network performance.",
+  "artifacts": [
+    {"id": "52", "pdf": "papers/52_Lina_ATC2023.pdf", "pdf_sha256": "6275fa741b6960b6004ee8500217a2282c71cddb8769d4850a215060c0862103", "text": "paper-text/52_Lina_ATC2023.txt", "text_sha256": "b0913e7bb5431fa6da0548d95add428934655a4e36509991c77ec4a32e888501"},
+    {"id": "53", "pdf": "papers/53_CASSINI_NSDI2024.pdf", "pdf_sha256": "035574439b3d71231a9f482826da800a6a1fd8872d96c943d8f4d210340e1c3b", "text": "paper-text/53_CASSINI_NSDI2024.txt", "text_sha256": "a95f8942a8af83aff1b8b67f1a4618f0ed18db9f4b6592ea23353ffd07eb3e10"},
+    {"id": "54", "pdf": "papers/54_MLCC_arxiv_v2.pdf", "pdf_sha256": "44b9b9585bcadcbc874deaf9baf1e7015ebd9be1d97ab7685c8dcefd5d6987e9", "text": "paper-text/54_MLCC_arxiv_v2.txt", "text_sha256": "cf2004360d6777490a9fb7bdeee7bb1d006582916f876e81ae16a030022a61c8"},
+    {"id": "55", "pdf": "papers/55_MegaScaleInfer_arxiv_v4.pdf", "pdf_sha256": "77ddd00732edb5728059243282cd2d80fe916fe28dca45818513ff08865a0f26", "text": "paper-text/55_MegaScaleInfer_arxiv_v4.txt", "text_sha256": "6cf367f675c121bf156bfeba48b4287f3c5f84b5c4e4abf3b560b2cfa21becf2"},
+    {"id": "56", "pdf": "papers/56_ExpertPlex_arxiv_v2.pdf", "pdf_sha256": "8321f7095ccdde149178e16fa3cdbfa60a7a87fd42920483acb21e0cac2a363a", "text": "paper-text/56_ExpertPlex_arxiv_v2.txt", "text_sha256": "6af4f9f075c9bed6b1d905b11da208dcbf2174a17dfc36129aa03d9dc5339ec5"},
+    {"id": "57", "pdf": "papers/57_DualPath_arxiv_v2.pdf", "pdf_sha256": "6d135c6563a7b6db1c5f2b27de50dee65f1bbdb4507bc6ddf871b88e3e0d6aa2", "text": "paper-text/57_DualPath_arxiv_v2.txt", "text_sha256": "d5f0741fabcfd554413917d902bafa4fb8ace7e7842f9751e1e7ea976718d706"},
+    {"id": "58", "pdf": "papers/58_TraCT_arxiv_v1.pdf", "pdf_sha256": "f94bd7ea33f975339f1ccc20b179da2a60ae7b6b880d109f993511ca2dcdf1e2", "text": "paper-text/58_TraCT_arxiv_v1.txt", "text_sha256": "4322924361b272a12e716998228d375a8174b1ecd57a2aafcf3265f671a05aa9"},
+    {"id": "59", "pdf": "papers/59_TopologyAware_arxiv_v2.pdf", "pdf_sha256": "3f0b4f999ea8e17e5cb51b7b6c69e396731355834aebde0c2569471b13766122", "text": "paper-text/59_TopologyAware_arxiv_v2.txt", "text_sha256": "a056144e5bae20378edfcbb16a0394eede234d2e83174dcabe724be63830d124"}
+  ],
+  "dualpath_correction": {
+    "previous_characterization": "Abstract-level subagent reading (recorded in ep-kv-rdma-coscheduling-2026-11-17.json): DualPath isolates the KV load path by route/NIC choice, without traffic classes, QoS or virtual lanes.",
+    "full_text_findings": [
+      {"claim": "Identifies that additional KV-Cache transfer traffic on the compute network may interfere with latency-sensitive collectives including AllToAll in expert parallel and ReduceScatter/AllGather in TP/CP.", "location": "§4 'Traffic isolation', text lines 619-628, PDF page 6; also §1 lines 137-147, PDF page 2"},
+      {"claim": "States that because collectives occur in rapid sub-millisecond bursts, a software-based traffic shaper interleaving lower-priority I/O between high-priority windows is impractical; consolidates all GPU traffic through the paired compute NIC to use native network QoS.", "location": "§5, text lines 640-662, PDF pages 6-7"},
+      {"claim": "On InfiniBand, maps model inference traffic to a dedicated high-priority VL and all other traffic including KV-Cache transfer to a low-priority VL; VL arbiters on switches and NICs use weighted round-robin reserving about 99% of bandwidth for the high-priority VL.", "location": "§5.1, text lines 664-678, PDF page 7; configuration values in Appendix A.1 lines 1721-1732, PDF page 16"},
+      {"claim": "Describes a RoCE realization using DSCP-to-TC mapping with hardware queues, four lossless RDMA TCs with PFC enabled, and proportional TC scheduling weights.", "location": "§5.1 lines 679-688, PDF page 7; Appendix A.1 lines 1733-1742, PDF page 16"},
+      {"claim": "Experiments are conducted on an InfiniBand-interconnected cluster with eight 400Gbps RDMA NICs per node; the RoCE design is described, not evaluated.", "location": "§5.1 line 679 ('Although our experiments are conducted on an InfiniBand-based network'), PDF page 7; §7 Testbed lines 931-938, PDF page 9"},
+      {"claim": "The §7.5 ablation separates layerwise prefill, dual-path loading and the scheduling algorithm; no with/without traffic-isolation comparison or interference magnitude measurement was found in this reread.", "location": "§7.5 lines 1181-1190, PDF page 11"},
+      {"claim": "Allocates a small amount of DRAM as buffers on each prefill and decode engine (PE buffer, DE buffer).", "location": "§4, text lines 478-480, PDF page 5"},
+      {"claim": "Authors include DeepSeek-AI affiliation; evaluated models include DeepSeek-V3/V3.2 660B (MLA).", "location": "line 24 (affiliations); lines 335-348"}
+    ],
+    "consequence_for_proposal_06": "Interference between KV transfer and EP AllToAll, static hardware priority isolation, and DRAM buffering are covered by DualPath. Proposal 06 is narrowed to: measured residual coupling of DSCP/TC isolation on the AMD RoCE stack; scheduler-level coordination of the low-priority class's residual capacity with prefill release, KV handoff and TTFT after isolation; static vs load-aware TC weights; MLA small-message and cross-node decode EP applicability. Sub-millisecond software interleaving is retained only as a feasibility comparator."
+  },
+  "other_rereads": [
+    {"id": "56", "name": "ExpertPlex", "finding": "Interference arises because shared experts couple the phases: traffic flows from prefill and decode to the same MoE module interfere; uses attention-initiated one-sided MoE communication over mostly disjoint network paths. Not about P->D KV transfer.", "location": "abstract lines 20-37, PDF page 1; intro lines 112-137, PDF page 2"},
+    {"id": "55", "name": "MegaScale-Infer", "finding": "Ping-pong pipeline over micro-batches and an M2N communication library compared against NCCL and perftest; no KV-vs-EP coexistence analysis found.", "location": "lines 45-49, 163-196, 780-921"},
+    {"id": "58", "name": "TraCT", "finding": "States every KV hit traverses NIC and DRAM on both sides even with high prefix reuse, making the RDMA path sensitive to network congestion; replaces the RDMA hop with CXL shared memory.", "location": "lines 255-266, 94"},
+    {"id": "59", "name": "Topology-Aware Data Movement", "finding": "Presents analytical bandwidth models, component implementations and projected analysis; full evaluation stated to require hardware beyond academic resources.", "location": "abstract lines 34-44"},
+    {"id": "52", "name": "Lina", "finding": "Prioritizes all-to-all over concurrent allreduce in training.", "location": "lines 46, 105, 120-127"},
+    {"id": "53", "name": "CASSINI", "finding": "Computes time-shift values so jobs sharing a link interleave communication phases.", "location": "lines 30-32, 57-58, 77-78"},
+    {"id": "54", "name": "MLCC", "finding": "Augments congestion control to interleave DNN training jobs' communication.", "location": "lines 6-19"}
+  ],
+  "crux": {
+    "identity": "Crux: GPU-Efficient Communication Scheduling for Deep Learning Training — listed on the official SIGCOMM 2024 program page https://conferences.sigcomm.org/sigcomm/2024/program/ (fetched 2026-11-17).",
+    "archival": "Not archived. ACM DL PDF request returned HTTP 403; an arXiv API title search returned no matching entry. Cited in proposal 06 by venue only."
+  }
+}
