@@ -1,0 +1,4255 @@
+Source: 54_MLCC_arxiv_v2.pdf
+Pages: 30
+
+===== PDF PAGE 1 =====
+arXiv:2402.09589v2 [cs.NI] 13 Aug 2026
+MLCC: A Congestion Control Technique to Accelerate ML Training
+Anton A. Zabreyko∗ Sanjoli Narang∗ Sudarsanan Rajasekaran Manya Ghobadi
+MIT CSAIL
+Abstract
+We present MLCC, a novel technique to augment today’s
+congestion control algorithms to accelerate DNN training
+jobs in shared GPU clusters in a fully distributed manner. At
+the heart of MLCC lies a straightforward principle: DNN
+training flows should scale their sending rate to shift other
+flows’ communication into their compute periods, achieving
+interleaving. We show that integrating this principle into
+today’s congestion control protocols is simple (requiring less
+than 60 lines of code for a given protocol) and enables DNN
+jobs to interleave within a few training iterations, thereby
+reducing network contention and improving job completion
+times. Our testbed demonstrates that MLCC accelerates the
+average and 99th percentile training iteration times by up to
+1.9×and 2.7×, respectively. Through extensive packet-level
+simulations, we observe a 1.35×improvement in training
+throughput on a 36-node, 288 GPU fat-tree topology.
+1 Introduction
+The relentless growth of artificial intelligence (AI) and ma-
+chine learning (ML) workloads on multi-tenant shared GPU
+clusters is increasingly straining network resources. Prior pa-
+pers demonstrate that DNN training clusters often experience
+network congestion, leading to longer training times and GPU
+underutilization [19, 22, 71, 95]. A recent study of Alibaba’s
+multi-tenant production clusters reports that 36.3% of DNN
+training jobs suffer from network contention, leaving expen-
+sive accelerators idle [19].
+Prior work employed two main strategies to reduce the like-
+lihood of network congestion in DNN clusters: (i) reducing
+the size of data to transmit over the network through quantiza-
+tion or compression techniques [8,49,60,96]; (ii) reducing the
+exposed communication time by overlapping the communica-
+tion period of the same job with its computation phase [45,
+51,59,69,72,76]. Despite these defenses, network contention
+remains inevitable at scale due to failures, bandwidth over-
+subscription, and sub-optimal routing (such as ECMP hash
+collisions) [19,39,64,95]. Whenever congestion builds, good
+old congestion control protocols stand as the last resort.
+However, the vast majority of congestion control ap-
+proaches are designed to enforce fair-sharing, ensuring that
+all jobs receive an equal portion of available bandwidth.
+While effective in traditional networking contexts, this strat-
+egy is ill-suited for DNN workloads because it results in al-
+ternating periods of network under-utilization and congestion,
+elongating the iteration time of all competing jobs [82–84].
+This is because DNN jobs exhibit distinctive periodic traffic
+patterns, with each iteration involving repeated phases of
+computation and communication. They also have strict tem-
+poral dependencies between flows, where flows in a given
+iteration cannot start until all flows from the preceding iter-
+ation have completed.
+To address this challenge, prior work proposed using cen-
+tralized schedulers to control the placement and timing of
+flows on network links for minimizing congestion. In par-
+ticular, Muri [103] and Cassini [82] demonstrated that inter-
+leaving the communication phases of one DNN job with the
+compute phases of other jobs sharing the link results in better
+network utilization and accelerates training for all competing
+jobs. However, these approaches are not practical because
+they incur substantial computational overhead due to the need
+to implement complex algorithms, which significantly limits
+their scalability. Moreover, we show that their scope is lim-
+ited to a small set of compatible job scenarios where the com-
+pute and communication phases of competing jobs perfectly
+fit inside each other (§2, §5).
+In this paper, we demonstrate that it is possible to omit cen-
+tralized schedulers and achieve communication interleaving
+of DNN jobs by relying only on congestion control proto-
+cols. To do so, we propose MLCC, a novel technique that
+augments today’s congestion control mechanisms for acceler-
+ating DNN jobs. We show that with a straightforward change
+to the flows’ congestion control algorithm, DNN training jobs
+automatically converge to an interleaved state in a distributed
+manner without the need for any hardware changes, priority
+queues, switch support, or centralized control.
+To achieve the above goals, MLCC uses a two-pronged ap-
+proach. First, flows using a MLCC-augmented congestion
+control scheme adjust their congestion window sizes (or send-
+ing rates) according to the ratio of bytes successfully sent dur-
+ing the current training iteration, normalized by the maximum
+number of bytes in any communication period of the job
+(§3). At any point in time, a job j that is closer to the end of
+its communication phase is allowed to send data into the net-
+work more aggressively, thereby reducing the available band-
+width for competing jobs. We find that this creates a positive
+cascading effect, shifting the competing jobs’ communication
+into j’s compute phase. Over iterations, such shifts accumu-
+late, eventually pushing all the jobs into an interleaved state.
+Rate adaptation alone can still get stuck in suboptimal com-
+munication interleavings. To close this gap, our second tech-
+nique adds a simulated annealing phase to congestion control.
+∗Equal contribution
+1
+
+===== PDF PAGE 2 =====
+Job1 Job2
+Comm.
+Comm.
+Comm.
+Comm.
+Comm.
+Comm.
+Job1 Job2
+Comm.
+Comm.
+Comm.
+Comm.
+Comm.
+Comm.
+Comm.
+Comm.
+Job1 Job2
+Comm.
+Comm.
+Comm.
+Comm.
+Comm.
+Comm.
+Comm.
+Comm.
+time
+time
+time
+(a) Overlapped schedule (compatible jobs)
+(b) Interleaved schedule (compatible jobs)
+(c) Partially Interleaved schedule
+Figure 1: The concept of interleaving.
+When a job’s observed iteration time exceeds its ideal, MLCC
+injects randomized delays with probability proportional to
+this gap, perturbing the current schedule so jobs can escape
+poor local optima and re-converge to a better interleaving.
+To implement MLCC, we augment six state-of-the-art con-
+gestion control protocols, including Reno [46], Cubic [38],
+DCTCP [9], DCQCN [105], Swift [55], and Homa [70] with
+just 30–60 lines of code to implement their corresponding
+MLCC variants; e.g. ML-Reno, ML-Cubic etc. We evalu-
+ate these MLCC variants using extensive packet-level sim-
+ulations and testbed experiments. Our testbed consists of
+12 servers, each equipped with one NVIDIA A100 GPU [4]
+and one 50 Gbps RDMA NIC. Our experiments with real-
+world DNN models (VGG16 [28], VGG19 [54], WideRes-
+Net101 [100], BERT [31, 92], RoBERTa [62], Camem-
+BERT [66], GPT-1 [80], GPT-2 [81], GPT-3 [17], DeepSpeed-
+MoE [85] and Llama2 [58, 93]) show that MLCC flows con-
+verge to an interleaved state after ≈30 training iterations while
+improving the mean and 99th percentile tail iteration times
+of jobs by up to 1.9×and 2.7×, respectively. We also show
+that MLCC reduces the average number of dropped or ECN-
+marked packets by up to 28.87×(§5). Our extensive packet-
+level simulations in a fat-tree topology show MLCC improves
+the throughput of training jobs by up to 1.35×(§6.1) over
+varying load and arbitrary DNN traffic patterns. We evalu-
+ate MLCC across a range of network topologies, including
+fat-tree architectures and Alibaba’s HPN [78], under differ-
+ent load-balancing schemes like Crux [19] and HPN [78].
+In oversubscribed topologies, MLCC rivals packet spraying,
+outperforming it when paired with Crux and delivering a tail
+1.35×improvement over ECMP (§6.3).
+An earlier version of this paper appeared in a work-
+shop [84]. However, it lacked several key features. First, it
+only considered TCP Reno, which is not commonly used in
+GPU clusters. Second, its proposed approach could only in-
+terleave simple on-off communication patterns, making it im-
+practical for complex workloads. Third, its algorithm fails for
+sets of jobs that are not fully compatible. Finally, it did not
+provide any details about its fairness or convergence proper-
+ties. In short, impractical, narrow in scope, and leaves many
+questions about its characteristics open. We will open-source
+our entire codebase, including Linux kernel modules, testbed
+scripts, and packet-level simulator.
+2 Background and Motivation
+This section motivates the need for MLCC by demonstrating
+the limitations of traditional congestion control algorithms
+and existing centralized schemes using a combination of
+testbed experiments and packet-level simulations.
+DNN Traffic Pattern. Prior work has shown that dis-
+tributed DNN training jobs exhibit a periodic traffic pattern
+that repeats iteration after iteration [74, 82–84, 95, 103]. Dur-
+ing the communication phase of each iteration, a distributed
+DNN job creates several flows, where the arrival of each flow
+depends on the completion of the previous one [95]. This
+property distinguishes DNN flows from traditional datacen-
+ter flows [15], where flow arrivals tend to be independent. In
+addition, DNN flow sizes range several orders of magnitude,
+from a few MB to tens of GB, unlike typical datacenter traf-
+fic, which is dominated by short flows with a heavy tail. We
+use the following terminology throughout the paper: a DNN
+training iteration is forward and backward pass required to
+fully process a batch of data; iteration time is the duration of
+one such iteration; training time is the total duration of train-
+ing across thousands of iterations; and slowdown is the ratio
+of a job’s iteration time to its iteration time in isolation.
+Compatibility and Interleaving. Prior work [82–84, 103]
+introduced the idea of interleaving as placing one job’s com-
+munication during others’ compute to avoid colliding their
+communications and hence avoid network contention, as
+shown in Figure 1(a). Figure 1(b) illustrates two jobs in a per-
+fectly interleaved schedule. This perfect interleaving is fea-
+sible only for compatible jobs whose communication phases
+fit entirely within others’ compute every iteration. Prior
+approaches largely operate only when jobs are compatible,
+which is rare in practice. We generalize this concept by in-
+troducing partial interleaving where certain bandwidth allo-
+cations enable jobs to fit as much of their communication as
+possible within the compute of the others with minimal net-
+work contention (Figure 1(c)). This broadens the benefit of
+periodicity of DNN jobs beyond the narrow class of compati-
+ble jobs. Note that an interleaved schedule is stable when it
+has a repetitive pattern with a finite period that does not drift
+over time – possibly spanning multiple iterations of each job.
+Experiment Setup. To demonstrate the need for DNN-
+specific congestion control protocols, we train three DNN
+models on a 12-server testbed and use the traffic patterns
+to feed into our packet-level simulator. Job-1 trains a
+Llama2 [93] (2 billion parameters) hybrid parallel model from
+the ColossalAI framework [58] using 2-way data, 2-way ten-
+sor, and 2-way pipeline parallelism, requiring a total of 8
+GPUs to run. Job-2 trains a GPT-2 [81] (350 million parame-
+ters) model with 2-way data parallelism, and Job-3 trains a
+BERT [30] (250 million parameters) model with 2-way data
+parallelism. We perform five categories of experiments: (i)
+each job runs separately with complete isolation from the oth-
+ers; (ii) all three jobs compete on a single 50 Gbps link using
+traditional congestion control schemes such as DCTCP, Swift,
+2
+
+===== PDF PAGE 3 =====
+Job-1 (Llama2, Hybrid parallel) Job-2 (GPT2, Data parallel) Job-3 (BERT, Data parallel)
+MLCC interleaved Schedule
+Utilization (Gbps)
+50
+25
+0
+Iteration-1 Iteration-2
+Utilization (Gbps)
+50
+25
+0
+Forward path
+(Comp. phase)
+Comm.
+phase
+Forward path
+(Comp. phase)
+Utilization (Gbps)
+50
+25
+0
+Forward path
+(Comp. phase)
+Comm.
+phase
+Forward path
+(Comp. phase)
+Utilization (Gbps)
+50
+25
+0
+0 1 2 3
+Time (sec)
+0 1 2 3
+Time (sec)
+Figure 2: The periodic traffic pattern of jobs in isolation.
+0 1 2 3
+Time (sec)
+0 1 2 3
+Time (sec)
+Figure 3: MLCC’s schedule.
+Iteration time (ms)
+DCTCP Swift Homa 2300
+2100
+1900
+1700
+1500
+ML-Homa
+Isolation
+Iteration time (ms)
+Cassini Static 2300
+ML-Swift
+ML-DCTCP
+2300
+2100
+1900
+1700
+Iteration time (ms)
+2100
+1900
+1700
+1500
+1500
+0 10 20 30 40 50
+0 10 20 30 40 50
+0 10 20 30 40 50
+Iteration number
+Iteration number
+Iteration number
+(a) Job-1 (Llama2) (b) Job-2 (GPT2) (c) Job-3 (BERT)
+Figure 4: Evolution of iteration time of competing jobs for different protocols, their MLCC variants, and scheduling approaches.
+and Homa; (iii) we use the approach proposed in [83] to en-
+force static unfair bandwidth allocation to jobs; (iv) we use
+Cassini [82] centralized scheduler to force the communication
+patterns of the jobs to interleave as much as possible; (v) we
+augment the congestion control schemes in (ii) with MLCC.
+Isolation Experiments. Figure 2 shows the traffic pattern
+of the three DNN jobs in isolation. The iteration time of Job-
+1 varies between 1.5-1.65 seconds, while that of Job-2 and
+Job-3 is nearly 1.55 seconds. Importantly, we note that the
+communication patterns of these jobs are not compatible and
+cannot be perfectly interleaved.
+Traditional Congestion Control Experiments. Figure 4
+shows the time series graph of iteration times of the three jobs
+when they compete for network bandwidth using different
+schemes. As shown, traditional congestion control schemes
+struggle to interleave the communication patterns of these
+jobs, resulting in delayed iteration times for all three jobs.
+Static Unfairness. Prior work [83] proposes a decentral-
+ized method for temporarily interleaving the communication
+demands of DNN jobs using static unfairness. By assigning
+fixed, albeit unfair, bandwidths to the jobs, it enables their
+communication patterns to slide past each other, helping them
+interleave. The “Static” line in Figure 4 shows that the inter-
+leaving is unstable, causing oscillations between interleaved
+and overlapped states and fluctuations in iteration times.
+Centralized Scheduler. Cassini [82] computes per-flow
+interleaved schedules via a compute-intensive ILP. Although
+Cassini captures the periodic nature of DNN jobs, its ILP pro-
+vides good performance for fully compatible cases, where
+each job’s communication phase fits exactly within others’
+compute phases, enabling perfect interleaving. The same is
+not true for partially compatible jobs. Cassini’s ILP is built
+on the a priori assumption of a pre-computed time period
+(perimeter of unified circle) over which the jobs will have an
+interleaved schedule. Cassini obtains this time period by tak-
+ing the LCM of the jobs’ iteration times profiled in isolation
+and computes start-times of jobs assuming those traces remain
+fixed [82]. This maintains interleaving when jobs remain sta-
+tionary with respect to each other. In practice, communication
+overlap is asymmetric, so jobs contend with different subsets
+of others and incur unequal iteration time changes. These dif-
+ferential changes cause jobs’ subsequent iteration start times
+to deviate from Cassini’s planned schedule over time. While
+Cassini’s runtime corrections may try to fix small drift, it is
+still chasing a moving target with its assumed schedule, lead-
+ing to further churn and limited gains. Cassini focuses only
+on interleaving and not on the stability of its schedule. We
+observed the same in our motivation example in Figure 4(b):
+Cassini fails to sustain interleaving beyond the first two itera-
+tions, causing massive fluctuations in iteration times of jobs
+and poor performance like the fair sharing baselines. We pro-
+vide a detailed explanation of this limitation of Cassini with
+simpler examples in Appendix §A.
+Our Proposal. In contrast, MLCC-augmented congestion
+control protocols discover and maintain a partially interleaved
+state for all three DNN jobs. All 3 variants of MLCC stabilize
+to a ~1.7 seconds iteration time, within 10% of their ideal
+iteration time in isolation. MLCC speeds up iteration times
+by up to 15% compared to traditional congestion control.
+MLCC guides the jobs to explore all possible bandwidth
+allocations on their own by sliding them relative to each other,
+until they converge to an interleaved schedule (Figure 3).
+Unlike static unfairness schemes, MLCC does not arbitrarily
+bias bandwidth sharing. It gradually nudges flows to the
+nearest interleaved schedule and stabilizes them there. Rather
+than assuming a fixed unified circle as Cassini does, MLCC
+converges to a stable interleaved schedule allowing the correct
+period, and thus the right circle, to emerge.
+3 MLCC Design
+MLCC creates an unfair bandwidth allocation that favors jobs
+closer to completing their communication by adjusting the
+3
+
+===== PDF PAGE 4 =====
+Overlapped
+Job1 Job2
+Comm.
+Slide left Slide right
+Interleaved Interleaved
+Comm.
+Comm.
+Comm.
+Comm. Comm.
+Comm.
+Comm.
+Comm.
+Comm.
+Comm.
+Comm. Comm.
+Comm.
+Comm.
+Comm.
+Slide right
+Slide left
+Time
+Figure 5: MLCC slides jobs to stable interleaved state.
+congestion window or rate of competing flows based on the
+percentage of bytes sent in the current iteration. This induces
+a controlled sliding effect, shifting the start times of the com-
+peting jobs to minimize the overlap between their communi-
+cation phases. The sliding naturally disappears in fully inter-
+leaved states (no congestion). In partially interleaved states,
+successive shifts cancel across iterations, leading to a stable
+schedule unlike Cassini. Figure 5 illustrates MLCC’s sliding
+effect for two jobs. Unlike static unfairness schemes, MLCC
+dynamically adjusts bandwidth allocations to immediately re-
+store interleaving when perturbed, making it stable. To avoid
+convergence to suboptimal interleaved states, MLCC intro-
+duces a simulated annealing perturbation that promotes explo-
+ration and helps escape from local optima. Our evaluations
+show that most competing DNN jobs converge to an inter-
+leaved schedule (optimal or not) within ~30 iterations using
+MLCC’s sliding effect (§5.3).
+Next, we provide simple modifications to augment a suite
+of congestion control algorithms to generate their MLCC
+variants. Finally, we discuss the full algorithmic implementa-
+tion of MLCC with more details on the annealing heuristic.
+We discuss more realistic settings of jobs with complex com-
+munication patterns in Section §4.
+3.1 Adjusting the Sending Rate
+MLCC achieves its iteration-by-iteration sliding by dynam-
+ically adjusting the congestion window (cwnd) or sending
+rate of flows based on a linearly increasing bandwidth aggres-
+siveness function, F (bytes_
+ratio), where bytes_
+ratio is the
+amount of bytes successfully sent during the current commu-
+nication phase, normalized by the maximum total bytes in
+any communication phase. The normalization is essential to
+switch the unfairness at fixed points to reach the interleaved
+state faster and to accommodate the huge diversity of DNN
+model sizes. The slope of this function determines the aggres-
+siveness of congestion control and hence MLCC’s sliding ef-
+fect, while the intercept is a lower bound on rate control to
+avoid throughput loss (Details in Appendix §C).
+ML-Reno. Consider the conventional TCP Reno [46] al-
+gorithm. Reno uses a cumulative ack mechanism to acknowl-
+edge multiple in-flight packets with a single ack. Upon the
+receipt of an ack, Reno increases its congestion window as:
+cwnd ←cwnd + #num
+_
+acks/cwnd (1)
+To implement MLCC, we update Equation 1 to:
+cwnd ←cwnd + F (bytes_
+ratio) ×#num
+_
+acks/cwnd (2)
+where bytes_
+ratio= bytes_
+sent/max
+_bytes in the current
+training iteration and F is linear in bytes_
+ratio:
+F (bytes_
+ratio) = Slope ×bytes_
+ratio + Intercept (3)
+Example. Figure 6(a) shows the bandwidth allocation of
+two competing DNN jobs using the conventional TCP Reno
+protocol. Our results hold for the general case but for clarity
+of illustration, assume both jobs are identical and start at the
+same time. As shown, during the communication phases of
+each iteration, the cwnd sawtooth profiles of both jobs are
+identical (area marked by 1 ). This is because Reno adjusts
+the cwnds of competing flows based on the same additive
+increase equation (Equation 1). Thus, each job receives half
+of the link bandwidth in every iteration and leaves the network
+underutilized during their compute phases.
+Figure 6(b) shows the bandwidth allocation of the two
+jobs using our proposed ML-Reno under the same scenario.
+MLCC’s sliding mechanism gets triggered under conges-
+tion. Due to dynamically changing additive increase coeffi-
+cients, the cwnd sawtooth profile of each job changes as their
+bytes_
+ratio increases over time. Even during the very first it-
+eration, Job1 happens to send a few packets earlier than Job2
+making their cwnd profiles diverge towards the end of their
+communication phase (area marked by 1 ). As a result, Job1
+finishes its first iteration slightly earlier and starts its next iter-
+ation before Job2. Again since Job1 gets to send more data be-
+fore Job2 starts, Job1’s cwnd becomes even larger than Job2’s
+cwnd, grabbing a larger bandwidth share. This domino effect
+causes their cwnd profiles to diverge in subsequent iterations
+(areas marked by 2 and 3 ). This sliding effect causes the
+two jobs to interleave after a few iterations ( 4 ). In the in-
+terleaved state, both jobs have large cwnds because there is
+almost no congestion. ML-Reno maintains this interleaved
+state of jobs for all subsequent iterations, speeding up the
+iteration time of both jobs by 1.5×compared to Reno. If
+any externality, e.g. noise, job arrival/departure disturbs the
+interleaved state, MLCC’s sliding effect and dynamic job
+favouritism goes into action again, moving the jobs back to
+the interleaved state in a few iterations. Appendix §B pro-
+vides the full theoretical analysis of MLCC’s sliding mecha-
+nism for two competing DNN jobs.
+3.2 Augmenting existing CCAs with MLCC
+We implement ML-Reno in Linux kernel as a kernel mod-
+ule with ≈50 lines of code. Similarly, we augment other
+window-based congestion control (CUBIC [38], DCTCP [9])
+and delay-based congestion control Swift [55]. We also aug-
+ment DCQCN [105], RDMA’s rate-based congestion control
+protocol, by modifying the NIC’s hardware registers.
+ML-DCTCP. DCTCP’s additive increase algorithm is sim-
+ilar to Reno. Hence, our changes to DCTCP’s additive in-
+crease phase are similar to ML-Reno’s Equation 2.
+ML-CUBIC. CUBIC’s window growth algorithm com-
+putes the target cwnd using a cubic function based on the time
+gap from the last multiplicative decrease event:
+cwnd ←CUBIC(time) (4)
+4
+
+===== PDF PAGE 5 =====
+1
+Job1
+Job2
+Job1
+Job2
+Bandwidth (Gbps)
+50
+40
+30
+20
+10
+0
+Bandwidth (Gbps)
+50
+40
+30
+20
+10
+0
+1
+1600
+1200
+CWND
+800
+400
+0 2 4 6 8
+Time (sec)
+(a) TCP-Reno
+CWND
+1600
+1200
+800
+400
+0 2 4 6 8
+Time (sec)
+(b) ML-Reno
+1600
+CWND
+1200
+800
+400
+1600
+1200
+CWND
+800
+400
+2500
+CWND
+1800
+1100
+400
+1.2 1.5
+Time (sec)
+4.90 5.60
+Time (sec)
+0.3 0.7
+Time (sec)
+2.3 2.4
+Time(sec)
+3.7 3.8
+Time (sec)
+Figure 6: Comparison between Reno and ML-Reno.
+To implement ML-CUBIC, we scale the calculated time gap
+by F before applying the cubic function:
+cwnd ←CUBIC(F (bytes_
+ratio) ×time) (5)
+When different flows compete for bandwidth, a smaller value
+of F dilates the time calculation, making less favored flows
+with smaller F , increase their cwnd slower than those with
+higher values. We scale the time gap with F instead of the
+additive increase factor to avoid distorting the characteristic
+cubic growth function of cwnd.
+ML-Swift. Swift is a delay-based congestion control
+whose window increase phase is similar to Reno’s additive
+increase unless a specific target delay is exceeded. We only
+augment Swift’s window increase equation to implement ML-
+Swift, without changing its mechanism of target delay control.
+ML-DCQCN. DCQCN is a rate-based congestion control
+algorithm commonly used in lossless RoCE networks [105].
+It periodically increases the target rate by fixed steps RAI
+during the additive increase stage:
+target_
+rate ←target_
+rate + RAI (6)
+We update the above equation to:
+target_
+rate ←target_
+rate + F (bytes_
+ratio) ×RAI (7)
+ML-Homa. Homa is a receiver-driven protocol that uses
+switch priority queues to provide low latency by ordering in-
+coming flows. It assumes that all congestion occurs on the re-
+ceiver’s link, which is rarely true for ML training workloads.
+Consequently, it assigns priorities based only on the traffic
+each receiver sees, blind to competing jobs on different ma-
+chines. Given this, we change how it orders flows to emulate
+the MLCC policy by changing the assigned priority:
+priority_
+level ←round(max
+_priority ∗F (bytes_
+ratio)) (8)
+where round means round to the nearest integer.
+We experiment with different bandwidth aggressiveness
+functions, F and observed that any function satisfying the
+following three requirements achieves MLCC’s interleaving
+goals: (i) the range is large enough to absorb the noise (e.g.,
+slight variations in round-trip time (RTT) or iteration times) in
+the network; (ii) the derivative of the function is non-negative;
+(iii) all flows employ the same bandwidth aggressiveness
+function (details in Appendix §C).
+3.3 MLCC Algorithm
+Algorithm 1 describes the congestion control and state vari-
+ables of ML-Reno. Its key steps apply to all TCP-based con-
+gestion control algorithms. We use Linux’s pluggable con-
+gestion module [2, 42] to hook UPDAT E
+_
+PARAMS proce-
+dure, shown in Algorithm 1, into TCP stack. TCP stack in-
+vokes CONGESTION_AVOIDANCE upon every ACK and
+UPDATE_PARAMS every 50 ACKs to minimize repeated
+computations. The computations in UPDATE_PARAMS are
+also optimized further to reduce kernel overhead.
+Updating bytes_sent and max_bytes. We update
+bytes_
+sent, the number of bytes successfully sent in the on-
+going communication phase with the number of packets
+acked so far (line 16). We measure the start of a new com-
+munication phase by checking whether the time gaps in the
+consecutive ack arrivals exceed a threshold value (lines 13
+and 19). We use COMP
+T IME= 50 ms as a fixed threshold
+_
+for detecting the start of the communication phase; this de-
+fault works well across our workloads and does not require
+tuning. We then reset bytes_
+sent and bytes_
+ratio upon de-
+tecting the start of a new communication phase (line 21). The
+total number of bytes to be sent in each communication phase
+in an iteration and the intermediate compute times are nearly
+constant for each job and depend on the size of the DNN
+model, the parallelization strategy, and the communication
+collective. In our implementation, the algorithm automati-
+cally learns these values by measuring the total amount of
+data sent in every communication phase followed by taking a
+running maximum to compute max
+_bytes (line 22).
+Measuring iteration time using max_gap. We set the
+IDEAL
+_
+T IME parameter by profiling the job’s iteration time
+in isolation. The algorithm regularly measures the maximum
+compute gap between two consecutive communication phases
+and stores it as a state variable, max
+_gap (line 23). We com-
+pute the job’s current iteration time as the difference between
+the time instants at which we observe the largest compute gap
+(max
+_gap). We then compute a running average of the mea-
+sured iteration time over ANL
+_FREQ iterations (line 27).
+Random-Restart annealing. For DNN jobs having mul-
+tiple communication phases in the same iteration instead of
+a simple on-off pattern [82], we deploy a simulated anneal-
+5
+
+===== PDF PAGE 6 =====
+Algorithm 1 ML-RENO UPDATE_PARAMS ALGORITHM
+▷ Global Parameter COMP
+_
+T IME: Min gap between communication phases
+▷ Global Parameter IDEAL
+T IME: Ideal iteration time
+_
+▷ Global Parameter ANL
+_
+RAT E: Decay rate of annealing heuristic
+▷ Global Parameter ANL
+_FREQ: Frequency of random-restart annealing
+▷ Global Parameter MTU: Maximum packet size used by the system
+▷ Constant γ= 0.9: Noise absorbing factor
+▷ Initialize state parameters:
+1: cwnd= 10 ▷ Congestion window
+2: max
+_bytes= 100 ▷ Total segment data in an iteration
+3: max
+_gap= 100 ▷ Max compute time between communication phases
+4: mean
+_
+iter= 0 ▷ Current iteration time measured by algorithm
+5: bytes_
+ratio= 0 ▷ Fraction of bytes sent
+6: bytes_
+sent = 0 ▷ Number of successfully sent bytes
+7: prev_
+ack
+_tstamp= 0 ▷ Timestamp of the previous ack
+8: prev_
+iter
+_tstamp= 0 ▷ Timestamp of the previous iteration
+9: anneal
+_
+counter = 0 ▷ Iteration count from the last annealing
+10: procedure UPDATE_PARAMS(num
+_
+acks)
+▷ Input Parameter num
+acks
+_
+11: curr
+_tstamp= GET
+REAL
+_
+_
+TIME()
+12: ▷ Time Gap between current and the previous ACK
+13: curr
+_gap= curr
+_tstamp−prev_
+ack
+_tstamp
+14: prev_
+ack
+_tstamp= curr
+_tstamp
+15: ▷ Increment the bytes_
+sent and bytes_
+ratio
+16: bytes_
+sent += num
+acks ×MTU
+_
+17: bytes_
+ratio= MIN(1, bytes_
+sent/max
+_bytes)
+18: ▷ Check for the start of new communication phase
+19: if curr
+_gap > COMP
+T IME then
+_
+20: ▷ New phase, update bytes parameters
+21: bytes_
+ratio= 0; bytes_
+sent = 0;
+22: max
+_bytes= MAX(max
+_bytes, bytes_
+sent)
+23: max
+_gap= MAX(max
+_gap, curr
+_gap)
+24: ▷ Check for the iteration boundary
+25: if curr
+_gap > γ ×max
+_gap then
+26: ▷ Update the mean iteration time
+27: mean
+_
+iter + = (curr
+_tstamp−prev_
+iter
+_tstamp)/ANL
+_FREQ
+28: prev_
+iter
+_tstamp= curr
+_tstamp
+29: ▷ Random-Restart applied after every ANL_FREQ iterations
+30: anneal
+_
+counter ++;
+31: if anneal
+counter > ANL
+_
+_FREQ then
+32: ▷ Compute jump probability to apply random delay
+33: anl
+_prob= 1−
+IDEAL
+T IME
+_
+mean
+_
+iter ×e(−ANL
+RAT E×curr
+_
+_tstamp)
+34: mean
+iter= 0
+_
+35: anneal
+_
+counter = 0;
+36: With probability anl
+_prob do
+37: RANDOM
+_
+WAIT(0, IDEAL
+_
+T IME)
+38: return
+39: procedure CONGESTION_AVOIDANCE(num
+_
+▷ Input Parameter num
+acks
+_
+40: ▷ Finally update the congestion window
+41: cwnd= cwnd + F (bytes_
+ratio) ×(num
+acks
+_
+cwnd )
+42: return
+acks)
+Link Utilization
+(Gbps)
+50
+25
+0
+50
+25
+0
+0 1 2 3
+Time (sec)
+(a) Sub-optimal
+0 1 2 3
+Time (sec)
+(b) Optimal
+ing heuristic (lines 26 to 38) in addition to MLCC’s sliding
+mechanism to avoid partially interleaved states. The heuris-
+tic probabilistically adds random delay to the job (line 37)
+with some anneal probability to restart MLCC’s sliding ef-
+fect every ANL
+_FREQ iterations. The anneal probability
+(line 33) is a function of the average iteration of the job in
+the last ANL
+_FREQ iterations compared to the ideal value
+(IDEAL
+_
+T IME). The anneal probability decreases exponen-
+tially with time at ANL
+_
+RAT E (line 33) so that the heuristic
+terminates at an interleaved state after running enough number
+of times. Both ANL
+_FREQ and ANL
+_
+RAT E are configurable
+parameters depending on the characteristics of the DNN jobs.
+We show the effectiveness of this heuristic by running the
+three jobs shown in Figure 2 (Section §2) using ML-Reno.
+Figure 7 compares their interleaved schedules after 150 train-
+ing iterations with and without Random-Restart annealing,
+showing that annealing helps ML-Reno achieve better inter-
+Figure 7: ML-Reno’s final interleaved state (a) without and (b)
+with Random-Restart Annealing.
+leaving. We provide further evaluation of annealing in Ap-
+pendix §D, showing that it improves MLCC ’s performance
+by over 1.2×, and also prove that it enables MLCC to con-
+verge to the best interleaved state with probability one.
+Hyperparameter Selection. MLCC uses four parameters:
+the slope and intercept of F (bytes_
+ratio), and two annealing
+parameters, ANL_FREQ and ANL_RATE. The slope and in-
+tercept depend on the augmented CCA, since different CCAs
+expose different control knobs through which F (bytes_
+ratio)
+sets aggressiveness. A larger slope drives faster interleaving
+but can increase oscillation around the stable point. We ob-
+serve that a range of Slope and Intercept values provides inter-
+leaving benefits in our evaluations (Figure 34 in Appendix C).
+We chose values large enough to absorb noise in our testbed
+that disrupts the stability of interleaved schedule. In practice,
+similar CCAs such as TCP Reno and DCTCP work well with
+the same slope and intercept. We select these values once per
+CCA and use them unchanged across experiments; the cho-
+sen values are reported in Section §5.1.
+The annealing parameters are not particularly sensitive.
+We observe that MLCC reaches the nearest interleaved state
+in less than 40 iterations even under high contention, so we
+fix ANL
+_FREQ= 40 throughout all experiments, indepen-
+dent of DNN model size. ANL
+_
+RAT E determines how long
+annealing remains active; in practice, five annealing rounds
+are sufficient, corresponding to about 200 training iterations.
+Since our jobs run for thousands of iterations over hours, we
+set ANL
+_
+RAT E to be a few minutes of training. Any new job,
+therefore, anneals only briefly to explore interleaved states
+with already existing jobs before stabilizing. These settings
+work well across all workloads we evaluate, and do not re-
+quire rigorous tuning.
+4 Practical Considerations
+In this section, we describe MLCC’s behaviour for jobs with
+complex communication patterns, different model sizes or
+iteration times and multiple bottleneck scenarios.
+Partial Compatibility.
+We define compatibility score in the same manner as
+Cassini [82] using its unified circle geometric abstraction as
+(1−average(Excess(demand))). It ranges from 1 when a
+fully interleaved schedule exists to 0 when all jobs require
+full link bandwidth at all times. Note that jobs with different
+iteration times may still be compatible with each other as long
+as their communication patterns can be fully interleaved with
+no network contention. In practical settings, the communica-
+tion patterns of DNN jobs are not fully compatible with each
+6
+
+===== PDF PAGE 7 =====
+Job1
+Job2
+Job1
+Job2
+Bandwidth (Gbps)
+50
+40
+30
+20
+10
+0
+Bandwidth (Gbps)
+50
+40
+30
+20
+10
+0
+0 2
+Time (sec)
+J1
+J2
+0 2
+Time (sec)
+J1
+J2
+230∘
+230∘
+Jobs in isolation
+MLCC’s cyclic schedule
+(a) Partial compatibility, same iteration times 190∘
+170∘
+Jobs in isolation
+MLCC’s cyclic schedule
+(b) Different iteration times
+Figure 8: Illustration of MLCC’s partially interleaved states
+l1
+Job2
+S1 S2 S3 S4 Job1
+l2
+Job3
+S5 S6
+S7 S8
+Bandwidth (Gbps)
+50
+25
+0
+Job1 Job2 Job3
+0 2
+Time (sec)
+Figure 9: Interleaved state for jobs with multiple bottlenecks
+other due to parallelization strategy, hyper-parameter settings,
+and model sizes.
+Computing a partially interleaved schedule for such jobs
+is intractable because overlap changes job iteration times,
+causing the schedule to depend on quantities that are them-
+selves determined by the schedule. Nevertheless, MLCC’s
+dynamic favouritism converges to a partially interleaved state
+with only brief congestion episodes. Figure 8(a) shows two
+GPT-2 data parallel jobs with similar iteration times (~530ms)
+and 0.75 compatibility converging to a partially interleaved
+schedule that maintains full network utilization. The period of
+MLCC’s schedule (~600ms) slightly exceeds each job’s iso-
+lation time (same as the perimeter of Cassini’s unified circle)
+due to the unavoidable overlapped communication phases.
+Delta in Iteration Times. Small differences in job iter-
+ation time serve as an additional constant drift in addition
+to MLCC’s sliding mechanism. In such a case, a fully in-
+terleaved state is unstable. Instead, the jobs converge to a
+partially interleaved schedule in which MLCC ’s induced
+shift balances this drift (Appendix B). Figure 8(b) shows
+two GPT-2 jobs with different batch sizes and hence differ-
+ent iteration times (~600ms and 680ms respectively) converg-
+ing to a partially interleaved schedule with period 700ms.
+As the iteration-time difference increases, MLCC no longer
+maintains per-iteration interleaving and instead yields multi-
+iteration interleavings similar to Cassini. For highly incom-
+patible jobs, no stable interleaved schedule may exist at any
+time scale. In such cases, there is no meaningful notion of
+convergence. MLCC exhibits ergodic behavior: the jobs con-
+tinue sliding past each other, and MLCC’s long-term behav-
+ior approaches that of fair sharing, thereby preserving base-
+line performance at the least.
+Persistent Network Traffic. Pure tensor parallel jobs (with
+no other parallelism degrees) are incompatible as they actively
+use the network throughout the training iteration, thereby
+limiting the opportunity of temporal interleaving. MLCC’s
+behavior for these jobs is close to fair sharing with no added
+gains. Hybrid parallel jobs with at least one more non-tensor
+Unused Llama2 MoE
+Job1 (Llama2 – FSDP) Job2 (MoE)
+S1 S2 S3 S4 S5 S6 S7 S8 S9 S10 S11 S12
+Bandwidth (Gbps)
+50
+25
+0
+AllReduce (green)
+All-to-All traffic (green) FSDP traffic (blue)
+0 2 4 6
+Time (sec)
+Figure 10: Interleaving MoE with FSDP Llama2
+parallelism degree (e.g., Llama2 in Figure 2(a)), on the other
+hand, do have phases of high and low network demands [82]
+and hence benefit from interleaving.
+Multiple Bottlenecks.
+MLCC explores all possible bandwidth sharing states on
+the links by sliding the jobs to yield an interleaved sched-
+ule stable across all bottlenecks. Figure 9 illustrates an inter-
+leaved schedule for three GPT-2 jobs (iteration time 530ms,
+600ms and 680ms) that contend on different links. The re-
+sulting interleaved schedule maintains full network utilization
+throughout.
+Expert Parallelism. Expert parallelism (EP) introduces
+all-to-all communication with potentially variable volume.
+In principle, such variability could destabilize MLCC’s in-
+terleaving. In practice, however, training stacks such as
+Megatron-DeepSpeed [5] suppress it through padding, fixed
+expert capacity, load balancing, and constrained token rout-
+ing. A second challenge is that all-to-all traffic may contend
+with itself. In this regime, MLCC interleaves EP traffic with
+other jobs’ traffic when they compete, but reverts to fair shar-
+ing for intra-job flows, which carry the same aggressiveness
+(F (bytes_
+ratio)); thereby preserving the best of both worlds.
+Figure 10 shows a partially interleaved schedule when a
+DeepSpeed-MoE job (250 million parameters, Data + Expert
+parallel) [85] with an iteration time of 1.9 seconds competes
+with Llama2 (2 billion parameters, Fully Sharded Data Paral-
+lel) [93] with an iteration time of 1.6 seconds under ML-Reno
+on our 12-server 50G link testbed. Despite frequent all-to-
+all traffic in MoE, ML-Reno interleaves the communication-
+heavy All-Reduce phases of both jobs and overlaps Llama2’s
+communication with MoE’s light all-to-all traffic, minimizing
+the slowdown of both.
+Packet Spraying. Packet spraying is a well-known tech-
+nique that distributes packets evenly across available outgoing
+links at each hop, thereby reducing congestion in the network.
+Since MLCC generates a time-domain interleaving of jobs, it
+works well with ECMP. On the other hand, packet spraying
+causes many more jobs to compete, limiting the effectiveness
+of a time-based approach like MLCC. Although effective
+with full-bisection, the merits of packet spraying reduce com-
+pared to MLCC in oversubscribed topologies. We evaluate
+these scenarios in our large-scale simulations in Section §6.3.
+5 Testbed Experiments
+In this section, we evaluate MLCC’s performance, conver-
+gence, and robustness using testbed experiments.
+7
+
+===== PDF PAGE 8 =====
+S1
+S3
+S5
+S2
+S4
+S6
+S7
+S9
+S8
+S10 S5 S6 S7 S8 S9 S11
+S1 S2 S3 S4
+S10 S12
+S11 S12
+(a) (b)
+DNN B.Sz./GPU Parallelization strategy Type
+VGG16 [28] WideResNet101 [100] RoBERTa [62] CamemBERT [66] LLAMA2 [93] BERT [30] GPT-1 [80] GPT-2 [81] DeepSpeed-MoE [85] 1400 800 28 28 4-16 10-64 31 5-44 Data Parallel Data Parallel Data Parallel Data Parallel Hybrid 3D Parallelism Data Parallel Data Parallel Hybrid Parallel 3 Data/Tensor/Expert Vision
+Vision
+Language
+Language
+Language
+Language
+Language
+Language
+MoE
+Figure 11: Our testbed topologies.
+5.1 Evaluation Methodology
+Setup. We augment four congestion control schemes (Reno,
+CUBIC, DCTCP, and DCQCN) with MLCC using kernel
+modules, driver scripts, and NCCL libraries. Our prototype
+includes 12 ASUS ESC4000A-E10 servers connected via a
+64-port Tofino switch. Each server has one A100 Nvidia
+GPU [4] 40 GB of HBM2 memory and one 50 Gbps Mel-
+lanox ConnectX5 NIC. We experiment with both TCP and
+RoCEv2. For RoCE experiments, we enable DCB [3] and
+PFC to support a lossless fabric for RDMA. The servers run
+Ubuntu 20.04 LTS. Our experiments use PyTorch versions
+1.13 and 1.8, CUDA version 11.7, and NCCL version 2.14.3.
+Topologies. We use two topologies in our experiments. For
+benchmarking, we use a single-bottleneck dumbbell topol-
+ogy, shown in Figure 11(a), where servers are grouped into
+six pairs: {S1, S2}, {S3, S4}, {S5, S6}, {S7, S8}, {S9, S10},
+{S11, S12}. Each pair of servers trains a different DNN job
+and communicates gradient updates via the bottleneck link.
+We change the number of active server pairs throughout the
+experiments. For performance measurements, we use a hi-
+erarchical oversubscribed topology, shown in Figure 11(b),
+to capture the impact of multiple bottlenecks in the network.
+Each link has a capacity of 50 Gbps.
+DNN workloads. We use nine real-world DNN mod-
+els: VGG16 [28], WideResNet101 [100], RoBERTa [62],
+CamemBERT [66], GPT-1 [80], GPT-2 [81], GPT-3 [17],
+BERT [31, 92], Llama [58, 93]. Table 1 summarizes the mod-
+els and batch sizes used in our experiments.
+The default TCP-based protocols cannot saturate 50 Gbps
+bandwidth due to kernel overheads [14,18]. To overcome this,
+we create multiple sockets per job on each server to parallelize
+the transmissions using Google’s NCCL fastsocket library [1].
+In our experiments, we aggregate statistics across all sockets
+that belong to the same job. Following prior work [21] we
+set the RTO minimum to 1 ms. For CUBIC, we scale the
+bic_scale parameter by 1010 to enable it to work on smaller
+RTT scales. We implement the following schemes:
+• MLCC variants. We create pluggable kernel modules to
+implement MLCC’s variants of Reno, CUBIC and DCTCP
+following Algorithm 1. Since the DCQCN algorithm is im-
+plemented inside Mellanox NICs, we do not directly change
+the NIC implementation. The NICs API exposes a parameter
+called r p_
+ai
+_
+rate corresponding to DCQCN’s RAI rate. We
+use a C++ program that continuously monitors the amount
+of data sent by reading the NIC’s hardware counter regis-
+ters and updates r p_
+ai
+_
+rate based on ML-DCQCN’s algo-
+Table 1: DNN models used in our experiments.
+rithm. Finally, we adjust the function F ’s aggressiveness
+by setting its parameters as follows: ML-Reno and ML-
+DCTCP use Slope= 1.75 and Intercept= 0.25; ML-CUBIC
+uses Slope= 1.0 and Intercept= 0.5; ML-DCQCN uses
+Intercept= 0.267 and Slope= 1.067.
+• Ideal. For benchmarking the performance of an MLCC
+variant (e.g. ML-Reno), we compare it against the best case
+performance when a job is run in isolation using the base
+congestion control scheme (e.g. Reno).
+• Cassini. We use the Cassini [82] scheduler as another base-
+line. Cassini employs a centralized scheduler to determine a
+series of time-shift values, adjusting job start times to achieve
+interleaving. It takes each job’s optimal iteration time and uses
+an end-host agent to enforce the time shifts on each server.
+• Static. We use the approach proposed in [83] as another
+baseline by manually setting the congestion window parame-
+ters so that the bandwidth share between the competing jobs
+is statically configured to be unfair.
+5.2 Overall Performance
+We begin our evaluations by comparing the training iteration
+times when six GPT-2 training jobs share our dumbbell topol-
+ogy (Figure 11). Each job uses data-parallelism on the Book
+Corpus dataset [106]. We train each job for 1000 iterations
+(≈30 minutes). Figure 12(a) illustrates the bottleneck link’s
+utilization of each job under the default TCP Reno protocol.
+As shown, each job takes only one-sixth of the available band-
+width. In contrast, Figure 12(b) shows ML-Reno achieves
+an interleaved schedule, enabling each job to fully utilize the
+bottleneck link one at a time. Figure 12(c) plots the CDF of
+iteration times between the two congestion control variants,
+demonstrating that ML-Reno accelerates the average and 99th
+percentile iteration time by 1.4×and 1.59×, respectively.
+We then follow prior work’s snapshot trace [82] and gener-
+ate different combinations of several DNN training jobs (such
+as GPT-2, GPT-3, VGG16, RoBERTa, and WideResNet) shar-
+ing our hierarchical testbed topology, i.e. the Clos topology in
+Figure 11(b). Table 2 lists the DNN model names and details
+of each snapshot in this experiment. Figure 13 plots the CDF
+of the iteration times of all our snapshot configurations. We
+train each job for 500 iterations for each snapshot and collect
+the training iteration times with ML-DCQCN and DCQCN
+as the congestion control algorithm. Compared to DCQCN,
+ML-DCQCN improves the average and 99th percentile train-
+ing iteration times by 1.33×and 1.57×, respectively. ML-
+8
+
+===== PDF PAGE 9 =====
+Job1 Job2 Job3 Job4 Job5 Job6
+Job1 Job2 Job3 Job4 Job5 Job6
+Link Utilization (Gbps)
+50
+25
+0
+1.59x
+CDF
+1
+0.8
+0.6
+0.4
+0.2
+0
+Link Utilization (Gbps)
+50
+25
+0
+0 0.5 1 1.5 2
+0 0.5 1 1.5 2
+Time (sec)
+Time (sec)
+(a) Reno (b) ML-Reno
+Figure 12: Bandwidth allocation when six jobs share the bottleneck link.
+ML-Reno
+Reno
+1400 1800 2200 2600
+Time (ms)
+(c) CDF of iteration times
+Competing jobs
+(batch size)
+Num.
+servers
+Parallel-
+ism
+Comp-
+atibility
+WideResNet101 (800) VGG16 (1400) 5 data 5 data
+0.88
+CamemBERT (28) RoBERTa (28) 5 data 5 data
+0.9
+CDF
+GPT-1 (31) GPT-1 (31) GPT-2 (15) 4 data 1
+4 data
+4 data
+1
+0.8
+0.6
+0.4
+0.2
+0
+ML-DCQCN
+DCQCN
+Ideal
+1.57x Speedup
+Iteration time (ms)
+7500
+6500
+5500
+4500
+3500
+2500
+1500
+500
+DCQCN 99th %tile
+DCQCN average
+ML-DCQCN average
+ML-DCQCN 99th %tile
+2.7⨉ speedup
+1.9⨉ speedup
+GPT-3 (3) GPT-3 (3) 4 hybrid 1
+4 hybrid
+2 3 4 5 6
+Number of jobs
+Table 2: Snapshots of competing jobs.
+250 500 750 1000 1250 1500
+Iteration time (ms)
+Figure 13: Performance of ML-DCQCN
+for jobs in Table 2.
+Figure 14: Comparison of iteration
+times as the number of jobs increases.
+DCQCN’s average and tail iteration times are within 5% and
+4% of that of ideal interleaved schedule.
+Figures 14 and 15 compare the average and 99th per-
+centile training iteration times of DCQCN and Reno with
+ML-DCQCN and ML-Reno as we increase the number of
+compatible GPT-2/BERT/Llama2 jobs competing on the bot-
+tleneck link. As the number of jobs increases, ML-DCQCN
+and ML-Reno’s performance benefits also increase. When
+six jobs compete for bandwidth, ML-DCQCN accelerates
+average and 99th percentile tail iteration time by up to 1.9×
+and 2.7×, respectively. Similarly, ML-Reno accelerates aver-
+age (and tail) iteration times by up to 1.23×(1.46×), 1.4×
+(1.59×), and 1.23×(1.47×), for Llama, GPT-2, and BERT
+models, respectively.
+5.3 Convergence Benchmarks
+Time to convergence. We now evaluate the convergence of
+MLCC-enabled congestion control algorithms when multiple
+compatible GPT-2 training jobs share our dumbbell topology
+(Figure 11(a)). We run this experiment with different con-
+gestion control algorithms and count the number of iterations
+until the iteration time gets within 10% of that of the Ideal
+scheme. As shown in Figure 15(b), the number of iterations
+that a MLCC-enabled congestion control takes to converge
+increases with the number of competing jobs. When there are
+six jobs competing, both ML-Reno and ML-DCQCN con-
+verge within the first ≈30 iterations. This is reasonable, given
+that DNN training jobs last for thousands of iterations. Be-
+sides, in a typical DNN training setting with ECMP load bal-
+ancing, it is unlikely that a large number of DNN jobs would
+contend for bandwidth on a single link.
+Performance Benchmarks. To dive deeper into the perfor-
+mance of different congestion control protocols, we repeat
+the previous experiment with two GPT-2 jobs and measure
+the training iteration time and packet loss/ECN marks of vari-
+ous congestion control schemes.
+ML-DCTCP. ML-DCTCP obtains a 1.29× iteration
+speedup compared to normal DCTCP, within 3.3% of the
+ideal scheme. Compared to DCTCP, ML-DCTCP reduces
+the number of ECN marks by 28.87×, accelerating the aver-
+age and 99th percentile training iteration times by 1.2×and
+1.29×, respectively.
+ML-DCQCN. The previous experiments show the perfor-
+mance of the traditional TCP/IP stack augmented with MLCC.
+With RoCE, we achieve even better results, as shown in Fig-
+ures 16(c) and (d): ML-DCQCN jobs experience 14.59×less
+ECN marks, and improve the average and 99th percentile iter-
+ation times by 1.34×and 1.47×, respectively.
+Appendix §G provides similar benchmarking results for
+ML-Reno and ML-CUBIC.
+5.4 Robustness Experiments
+Stragglers. To demonstrate MLCC’s robustness to noise in
+practical settings, we train two GPT-2 jobs sharing a bottle-
+neck link and synthetically insert sleep commands in each
+server’s training code based on a uniform straggling probabil-
+ity. If a server chooses to lag at a particular iteration, it sleeps
+for a period uniformly randomly chosen between 5% and 10%
+of the ideal iteration time of the job in isolation. Frequent
+straggling events break the flow schedules for a few itera-
+tions, forcing the jobs to compete for bandwidth. Figure 17(a)
+shows the training iteration speedups of ML-DCQCN and
+Cassini compared to default DCQCN as the straggler prob-
+ability increases. Cassini’s tail iteration time speedup drops
+sharply as the straggler probability goes beyond 10%. This is
+because Cassini’s end-host agent forces the straggling server
+to skip an iteration, hoping that the noise in the system will
+be resolved in the next iteration and the jobs will return to
+an interleaved state. In contrast, ML-DCQCN’s bandwidth
+aggressiveness function dynamically reacts to the straggling
+server to re-converge to the interleaved state quickly. As a re-
+sult, ML-DCQCN’s speedup remains more or less constant
+even if straggler probability increases.
+Partial Compatibility. To study the robustness of MLCC
+when partially compatible jobs compete for bandwidth, we
+train three GPT-2 jobs with different batch sizes (hence, dif-
+9
+
+===== PDF PAGE 10 =====
+Iteration time (ms)
+4800
+3800
+2800
+1800
+800
+1.46x gain
+1.59x gain
+1.47x gain
+Reno avg Reno 99th %tile ML-Reno 99th %tile
+ML-Reno avg
+Iteration time (ms)
+2 3 4 5 6
+2500
+2000
+1500
+1000
+500
+Iteration time (ms)
+2 3 4 5 6
+2500
+2000
+1500
+1000
+500
+2 3 4 5 6
+Number of jobs
+Number of jobs
+Number of jobs
+(a) Comparison of Reno and ML-Reno for LLama2, GPT-2 and BERT respectively
+ML-Reno ML-DCQCN
+Iterations to converge
+30
+20
+10
+0
+Ideal
+2 3 4 5 6
+Number of jobs
+(b) Time to convergence
+Figure 15: Comparison of iteration times achieved by Reno and ML-Reno for different DNN models.
+Job1 ML-DCTCP Job2 ML-DCTCP Job1 DCTCP Job2 DCTCP Ideal
+Job1 ML-DCQCN Job2 ML-DCQCN Job1 DCQCN Job2 DCQCN Ideal
+1200
+# ECN marks (Pkt/s)
+800
+400
+0
+28.87x reduction
+1
+0.8
+0.6
+CDF
+0.4
+0.2
+0
+1.29x Speedup
+# ECN marks
+(1000 Pkts/s)
+600
+450
+300
+150
+0
+14.59x reduction
+1
+0.8
+0.6
+CDF
+0.4
+0.2
+0
+1.42x Speedup
+4.03% diff
+0 40 80 120 160 200
+Time (sec)
+600 660 720 780 840 900
+Iteration time (ms)
+(b) ML-DCTCP iteration times 0 40 80 120 160 200
+Time (sec)
+600 660 720 780 840 900 960 1020
+Iteration time (ms)
+(a) ML-DCTCP ECN marks (c) ML-DCQCN ECN marks
+(d) ML-DCQCN iteration times
+Cassini average
+Cassini 99th %tile
+ML-DCQCN average
+ML-DCQCN 99th %tile
+Static average
+Static 99th percentile
+Iteration Time Speedup
+1.8
+1.6
+1.4
+1.2
+1
+0.8
+Iteration Time Speedup
+2
+1.8
+1.6
+1.4
+1.2
+1
+0.8
+0 0.2 0.4 0.6 0.8 1
+Straggler probability
+0.3 0.4 0.5 0.6 0.7 0.8 0.9 1
+Compatibility score
+(a) (b)
+Figure 17: Robustness to stragglers and partial compatibility.
+ferent iteration times) in accordance with their compatibility
+score. Figure 17(b) compares the average and 99th percentile
+training iteration time speedups of ML-DCQCN and Static
+approaches over default DCQCN. Increasing the compatibil-
+ity score naturally increases the speedup of both approaches
+as their communication patterns interleave better. Still, ML-
+DCQCN outperforms 99th percentile iteration times of Static,
+at all compatibility scores. ML-DCQCN uses its aggressive-
+ness function to dynamically adjust the sending rate, making
+it tolerant to small noise in the system. In contrast, the Static
+unfairness approach is unaware of the network’s conditions.
+When the compatibility score is below 0.7, the Static approach
+performs extremely poorly, where the 99th percentile training
+iteration times are lower than the default DCQCN approach.
+6 Packet Level Simulations
+In this section, we evaluate MLCC’s performance and fair-
+ness properties using packet-level simulation. We built on top
+of the YAPS simulator [34], adding ~8k lines of code. We
+also evaluate additional congestion control protocols unavail-
+able in our testbed, namely Swift [55] and Homa [70].
+6.1 Large-Scale Evaluation
+We study MLCC’s performance on a 36-node (288 GPUs)
+Fat-Tree with full-bisection bandwidth. We sample hundreds
+of job placements at varying loads from a scheduler running
+Figure 16: Benchmarking performance of ML-DCTCP and ML-DCQCN for two competing jobs.
+on randomized job traces/snapshots generated by a Poisson
+process. The workload includes BERT, Llama2, and GPT
+models, whose iteration times and compatibility scores de-
+pend on job placement, thereby replicating a real-world setup.
+Figure 18 reports the speedup in the training throughput–
+measuring the number of jobs completed per unit time–for the
+mean, 95th and 5th percentile job scenarios across hundreds
+of snapshots, capturing average, best, and worst-case perfor-
+mance. Note that the speedup of a MLCC variant is measured
+relative to the non-ML version of the congestion control.
+As load rises, contention between concurrent jobs increases,
+reducing the throughput of conventional congestion control,
+which cannot interleave traffic. A higher load causes more
+congested links per job, making interleaving itself more chal-
+lenging. Hence, the performance speedup does not change
+monotonically with load. ML-Homa achieves up to 1.35×
+performance improvement at the 95th percentile while de-
+grading throughput by at most 6% at the 5th percentile. Both
+ML-DCTCP and ML-Swift achieve a performance speedup
+of 1.2×at the 95th percentile.
+ML-Homa uses packet priorities to interleave; this makes
+ML-Homa an extremely aggressive form of MLCC that accel-
+erates interleaving. However, this aggressiveness can backfire
+by pausing many flows in the network to clear out one path.
+For ML-Swift and ML-Homa, gains taper beyond 70% load.
+ML-Swift maintains a delay target by trading off throughput,
+so under heavy contention, its ability to interleave degrades.
+ML-DCTCP, which supports partial bandwidth sharing un-
+like ML-Homa and increases its window aggressively unlike
+ML-Swift, delivers consistent gains at all loads.
+6.2 Compatibility and Starvation Analysis
+Arbitrary Communication Patterns. We evaluate MLCC
+’s single-bottleneck performance on randomly sampled jobs
+with arbitrary periodic traffic as a function of their compat-
+10
+
+===== PDF PAGE 11 =====
+Throughput Speedup
+1.3
+1.1
+0.9
+ML-DCTCP
+ML-Swift
+ML-Homa
+Iteration Speedup
+1.5
+1.3
+1.1
+0.9
+ML-DCTCP
+ML-Swift
+ML-Homa
+0.3 0.5 0.7 0.9
+Load
+0.3 0.5 0.7 0.9
+Load
+0.3 0.5 0.7 0.9
+Load
+0.4 0.6 0.8 1
+Compatibility score
+(b) 5th percentile
+0.4 0.6 0.8 1
+Compatibility score
+(c) 95th percentile
+(a) Mean (b) 95th percentile (c) 5th percentile
+Figure 18: MLCC’s performance under varying load
+Slowdown
+3.5
+3
+2.5
+2
+1.5
+1
+ML-DCTCP
+ML-Swift
+DCTCP
+ML-Homa
+Homa
+Swift
+Slowdown
+3.5
+3
+2.5
+2
+1.5
+1
+ML-DCTCP
+ML-Swift
+DCTCP
+ML-Homa
+Homa
+Swift
+1 2 3 4 5 6 7 8 9 10
+# ResNet jobs
+1 2 3 4 5 6 7 8 9 10
+# ResNet jobs
+(a) GPT slowdown (b) ResNet-50 average slowdown
+Figure 20: Analysis of MLCC variants and baseline congestion
+control when elephant competes with mice.
+ibility scores using hundreds of simulations. Figure 19 re-
+ports mean, 95th and 5th percentile iteration speedups relative
+to each protocol’s non-ML baseline, capturing average, best-
+case, and worst-case behavior. Each simulation samples a new
+set of competing jobs to capture workload variability. At full
+compatibility, MLCC achieves up to 1.35×iteration speedup
+across all variants. As compatibility decreases, performance
+degrades smoothly towards the baseline congestion control.
+Starvation among ML jobs. To observe the unfairness and
+starvation behavior of MLCC, we run a single GPT-2 (ele-
+phant, 1.6 GB per iteration) job competing with an increasing
+number of ResNet-50(mice, 98 MB per iteration) jobs. Fig-
+ure 20 reports the average iteration slowdowns of GPT-2 and
+ResNet under MLCC compared to their isolation iteration
+times. Because MLCC prioritizes jobs by bytes_
+ratio, it natu-
+rally favors smaller jobs, but only until the large job has trans-
+mitted ~30% of its data (Appendix B.6) after which it gets
+more bandwidth share. ML-Swift hurts GPT-2 by 6% while
+boosting the ResNet-50 jobs by 6% when number of compet-
+ing jobs is less than 4. Beyond this point, ML-Swift and ML-
+DCTCP speed up ResNet-50 by up to 1.2×and 1.1×respec-
+tively, while slowing GPT-2 by at most 1.6×. ML-Homa re-
+duces GPT-2’s slowdown by up to 8% without hurting ResNet-
+50 by interleaving via priority queues—alternating communi-
+cation between jobs. Unlike SRPT, ML-Homa’s bytes_ratio-
+based ordering lets large jobs gain bandwidth over time, pre-
+venting starvation. Accordingly, although MLCC is less fair
+than baseline CC, even with 10 competing mice jobs, GPT-2
+continues to make progress. Note that in realistic training clus-
+ters, it is unlikely for so many jobs to compete on a single link.
+6.3 Load Balancing & Topology Ablation
+In this section, we pair MLCC with existing schedulers and
+load balancing schemes on different topologies to study the
+benefits of interleaving. We use normalized training through-
+put defined in Section §6.1 as our comparison metric. For
+both experiments, we sample job placement configurations
+from varying loads, with an average cluster occupancy of
+0.4 0.6 0.8 1
+Compatibility score
+(a) Mean
+Figure 19: MLCC’s performance under varying job-compatibility
+80%. We use the same language models as in §6.1.
+MLCC with Load Balancing on Fat-tree. We evaluate
+the performance of ECMP, Crux (with DCTCP), and com-
+pare them against their combinations with MLCC. We also
+compare them against per-packet spraying without MLCC,
+since the two are incompatible. Figure 21 shows mean and
+tail throughput speedups (normalized by the DCTCP+ECMP
+baseline) across many runs and job placements as a function
+of network oversubscription in a 72-host (576-GPU) Clos
+topology. Overall, MLCC consistently improves the paired
+load-balancing schemes over the fair-sharing ECMP baseline
+(DCTCP+ECMP) across all contention levels. We observe
+similar trends in the average and tail performance plots.
+At high contention (4:1 oversubscription), Crux and packet
+spraying improve tail throughput over DCTCP+ECMP by
+1.21×and 1.25×respectively. MLCC further improves
+both as load balancing has a limited effect on the ToR–
+aggregation bottleneck: once path diversity is exhausted, in-
+terleaving becomes necessary to further reduce congestion.
+MLCC +ECMP already outperforms Crux alone at this con-
+gestion level, achieving a 1.25×tail improvement over the
+DCTCP+ECMP baseline, while MLCC +Crux outperforms
+packet spraying and emerges as the best overall design. A
+similar trend holds at 2:1 oversubscription, though the gains
+from MLCC are reduced because path load balancing is more
+effective in this regime.
+At full bisection, MLCC improves ECMP’s tail throughput
+by 1.18×. However, Crux and packet spraying alone already
+deliver about 1.13×mean speedup and 1.45×tail speedup
+through effective path isolation and low congestion, leaving
+little additional room for improvement by MLCC.
+HPN dual-TOR Topology. Beyond traditional FatTree/-
+Clos topologies, we also evaluate MLCC on Alibaba’s new
+HPN topology [78] designed for LLM training. We study both
+ECMP and HPN’s proposed load balancing scheme on this
+topology with and without MLCC. Figure 22 plots the mean
+and tail throughput speedups of MLCC relative to DCTCP
+on the HPN topology [78]. While MLCC continues to pro-
+vide 1.23×gains over ECMP, its gains over HPN’s load bal-
+ancer are limited because interleaving is fundamentally less
+compatible with HPN’s unpredictable multi-path spreading
+of flows. In contrast, Crux selects single, stable paths, mak-
+ing it more amenable to MLCC’s interleaving.
+6.4 Coexistence with other Traffic
+To analyze the impact of ML jobs using MLCC on legacy dat-
+acenter traffic, we run non-periodic flows in the background
+along with ML jobs on a 72-host(568 GPU) Clos topology
+11
+
+===== PDF PAGE 12 =====
+Mean Throughput
+1.20
+1.16
+1.12
+1.08
+1.04
+1.00
+ML-DCTCP + ECMP DCTCP + Crux ML-DCTCP + Crux Packet Spraying
+Tail (p99) Throughput
+1.44
+1.36
+1.28
+1.20
+Mean Tail (99th %tile)
+Throughput
+1.3
+1.2
+1.1
+1.0
+0.9
+1:1 2:1 Oversubscription Ratio
+4:1
+1:1 2:1 Oversubscription Ratio
+4:1
+ECMP HPN LB
+Configuration
+Figure 21: balancing ML+BG DCTCP ML ML-DCTCP / BG DCTCP ML+BG ML-DCTCP
+Worst FCT Slowdown
+25
+20
+15
+10
+5
+0
+<50KB
+50-200KB
+200-500KB
+>=500KB
+Figure 23: Impact of ML Jobs on Background Flow Slowdown.
+with full bisection bandwidth. We use the same job config-
+uration placements as in §6.3. The flows are generated in
+a closed loop manner and their sizes sampled uniformly be-
+tween 10 KB and 1 MB along with their source-destination
+pairs. Figure 23 plots the tail slowdowns experienced by the
+background traffic under different flow size buckets for the fol-
+lowing three cases: (1) Both ML and background traffic using
+DCTCP; (2) ML traffic using ML-DCTCP, while background
+traffic using DCTCP; (3) Both ML and background traffic us-
+ing ML-DCTCP. Since ML-DCTCP’s aggressiveness varies
+with bytes_
+ratio, the bandwidth available to competing flows
+depends on when they arrive relative to the lifecycle of a ML
+flow. Flows that arrive near the completion of an ongoing
+ML transfer can experience reduced bandwidth, as the ML
+flow may momentarily dominate the link. As a result, when
+MLCC is deployed only for ML training jobs, the tail comple-
+tion time of coexisting classic flows increases by up to 1.12×.
+In contrast, when both ML and classic traffic use MLCC,
+flows larger than 200 KB outperform DCTCP, with tail latency
+reductions of up to 26%. Smaller flows (< 200 KB), however,
+experience up to 1.21×performance degradation because the
+increased aggressiveness of MLCC-enabled flows sometimes
+leads to higher queuing delays, to which short flows are partic-
+ularly sensitive. When ML jobs run MLCC, overall behavior
+remains consistent with §6.3 with speedup as high as 1.2×,
+as the larger training flows are primarily throughput-bound.
+7 Related Work
+Congestion control. There is a vast literature on congestion
+control. Many rely on feedback signals indicating congestion
+in the network and reduce their sending rate [9, 13, 16, 35, 38,
+47, 55, 57, 61, 68, 99, 105]. Others are deadline-aware [94, 97],
+router-assisted [10, 32, 53], and receiver-based [34, 40]. We
+augment DCTCP, DCQCN, and Swift because they are com-
+monly used today. We believe that our MLCC is applicable
+MLCC’s performance schemes (results on fat-tree with and without various load
+Figure 22: MLCC’s performance on HPN
+normalized by DCTCP+ECMP baseline).
+topology (results normalized by DCTCP).
+to any feedback-based protocol without significant change.
+Flow scheduling. There have been many workload-specific
+flow scheduling techniques focusing on efficient utilization of
+network resources, achieving high bisection bandwidths [7,
+24, 26, 48, 77] and minimizing flow completion times [10,
+12, 44]. Many proposals require centralized schedulers with
+extensive knowledge about active flows [7, 24, 26, 48, 77].
+Others implement heuristics like SRPT [86, 87], SJF, LAS,
+and EDF, requiring switch suppor [10, 12, 44, 70] to schedule
+flows. In contrast, our approach creates an interleaved flow
+schedule with no scheduler or switch support.
+CoFlows. CoFlow schedulers [6,23,25,27,89,90,102] pri-
+oritize the completion of an entire related set of flows rather
+than optimizing individual flow completion times. However,
+most of the flows generated by a DNN application are inter-
+dependent, meaning that one flow cannot begin until the pre-
+vious flow has finished, making them different from coflows.
+Periodic resource scheduling. Real-time and embedded
+systems have periodic task scheduling problems, but these
+have explicit deadlines and independent inter-arrival times [36,
+56]. Cyclic scheduling is a well-studied problem in mathe-
+matics [29, 88]. The most general form of this problem [88]
+expresses our scenario but is shown to be NP-hard. Our ap-
+proach tackles this by iteratively improving its current state
+to minimize congestion.
+Accelerating DNN Training. Prior work demonstrated
+that generic flow schedulers are not optimal for DNN training
+jobs [65, 74]. DNN-specific flow schedulers have been devel-
+oped to meet this demand [41, 52, 64, 76, 91]. Alternatively,
+intra-job pipelining overlaps the compute and communica-
+tion phases of the same training job [45, 51, 59, 59, 69, 72, 76].
+These approaches only optimize a single job’s performance,
+while we target multi-tenant cluster performance. Job place-
+ment schedulers try to minimize multi-job contention. Many
+only consider the network so far as to try and schedule work-
+ers for a job close together [37, 50, 63, 75, 79, 98, 104]. Our
+work complements these schedulers.
+Resource Interleaving and Optimization. Muri [103] in-
+troduced the idea of multi-resource interleaving for DNN
+training, but required all jobs to share the same GPUs.
+Cassini [82] exploited the opportunity to overlap the com-
+putation and communication of different jobs using an ILP.
+Both are centralized schedulers that would struggle to scale
+12
+
+===== PDF PAGE 13 =====
+in a real system. In contrast, our implementation of MLCC
+performs a robust distributed live optimization. Crux [19] im-
+proves GPU utilization in DNN training clusters by routing
+flows to balance load and avoid contention, whereas MLCC
+performs no routing and is complementary to Crux.
+8 Conclusion
+This paper introduces a technique to augment a family of
+congestion control algorithms to interleave DNN training jobs.
+The key idea is to dynamically adjust the flow congestion
+window (or sending rate) of the congestion control algorithms
+to induce a sliding effect between the jobs. Through extensive
+simulations and testbed experiments, we evaluate MLCC’s
+performance, convergence, and fairness and demonstrate that
+MLCC accelerates the average and 99th percentile training
+iteration times by up to 1.9×and 2.7×, respectively.
+References
+[1] NCCL Fast Socket. https://github.com/google/
+nccl-fastsocket.
+[2] Pluggable congestion avoidance modules, 2005.
+[3] Data Center Bridging eXchange (DCBX), 2021. https://
+man7.org/linux/man-pages/man8/dcb-dcbx.8.html.
+[4] NVIDIA A100 Tensor Core GPU, 2021. https://www.
+nvidia.com/en-us/data-center/a100/.
+[5] Megatron-lm. https://github.com/NVIDIA/Megatron-LM,
+2025.
+[6] S. Agarwal, S. Rajakrishnan, A. Narayan, R. Agarwal,
+D. Shmoys, and A. Vahdat. Sincronia: near-optimal network
+design for coflows. In Proceedings of the 2018 Conference
+of the ACM Special Interest Group on Data Communication,
+SIGCOMM ’18, page 16–29, New York, NY, USA, 2018. As-
+sociation for Computing Machinery.
+[7] M. Al-Fares, S. Radhakrishnan, B. Raghavan, N. Huang, and
+A. Vahdat. Hedera: dynamic flow scheduling for data center
+networks. In Proceedings of the 7th USENIX Conference on
+Networked Systems Design and Implementation, NSDI’10,
+page 19, USA, 2010. USENIX Association.
+[8] D. Alistarh, D. Grubic, J. Li, R. Tomioka, and M. Vojnovic.
+Qsgd: Communication-efficient sgd via gradient quantization
+and encoding. In I. Guyon, U. V. Luxburg, S. Bengio,
+H. Wallach, R. Fergus, S. Vishwanathan, and R. Garnett,
+editors, Advances in Neural Information Processing Systems,
+volume 30, pages 1709–1720. Curran Associates, Inc., 2017.
+[9] M. Alizadeh, A. Greenberg, D. A. Maltz, J. Padhye, P. Patel,
+B. Prabhakar, S. Sengupta, and M. Sridharan. Data center
+tcp (dctcp). In Proceedings of the ACM SIGCOMM 2010
+Conference, SIGCOMM ’10, page 63–74, New York, NY,
+USA, 2010. Association for Computing Machinery.
+[10] M. Alizadeh, S. Yang, M. Sharif, S. Katti, N. McKeown,
+B. Prabhakar, and S. Shenker. pfabric: minimal near-optimal
+datacenter transport. In Proceedings of the ACM SIG-
+COMM 2013 Conference on SIGCOMM, SIGCOMM ’13,
+page 435–446, New York, NY, USA, 2013. Association for
+Computing Machinery.
+[11] S. Arslan, S. Reneganathan, and B. Spang. Green With Envy:
+Unfair Congestion Control Algorithms Can Be More Energy
+Efficient. In Proceedings of the 22nd ACM Workshop on Hot
+Topics in Networks, HotNets ’23, 2023.
+[12] W. Bai, L. Chen, K. Chen, D. Han, C. Tian, and H. Wang.
+Pias: Practical information-agnostic flow scheduling for
+commodity data centers. IEEE/ACM Trans. Netw.,
+25(4):1954–1967, aug 2017.
+[13] A. Baiocchi, A. Castellani, and F. Vacirca. Yeah-tcp: Yet
+another highspeed tcp.
+[14] A. Belay, G. Prekas, A. Klimovic, S. Grossman, C. Kozyrakis,
+and E. Bugnion. IX: A protected dataplane operating sys-
+tem for high throughput and low latency. In 11th USENIX
+Symposium on Operating Systems Design and Implementa-
+tion (OSDI 14), pages 49–65, Broomfield, CO, Oct. 2014.
+USENIX Association.
+[15] T. Benson, A. Akella, and D. A. Maltz. Network traffic char-
+acteristics of data centers in the wild. In Proceedings of the
+10th ACM SIGCOMM Conference on Internet Measurement,
+IMC ’10, page 267–280, New York, NY, USA, 2010. Associ-
+ation for Computing Machinery.
+[16] L. Brakmo and L. Peterson. Tcp vegas: end to end congestion
+avoidance on a global internet. IEEE Journal on Selected
+Areas in Communications, 13(8):1465–1480, 1995.
+[17] T. B. Brown, B. Mann, N. Ryder, M. Subbiah, J. Kaplan,
+P. Dhariwal, A. Neelakantan, P. Shyam, G. Sastry, A. Askell,
+S. Agarwal, A. Herbert-Voss, G. Krueger, T. Henighan,
+R. Child, A. Ramesh, D. M. Ziegler, J. Wu, C. Winter,
+C. Hesse, M. Chen, E. Sigler, M. Litwin, S. Gray, B. Chess,
+J. Clark, C. Berner, S. McCandlish, A. Radford, I. Sutskever,
+and D. Amodei. Language models are few-shot learners.
+CoRR, abs/2005.14165, 2020.
+[18] Q. Cai, S. Chaudhary, M. Vuppalapati, J. Hwang, and R. Agar-
+wal. Understanding host network stack overheads. In Pro-
+ceedings of the 2021 ACM SIGCOMM 2021 Conference, SIG-
+COMM ’21, page 65–77, New York, NY, USA, 2021. Asso-
+ciation for Computing Machinery.
+[19] J. Cao, Y. Guan, K. Qian, J. Gao, W. Xiao, J. Dong, B. Fu,
+D. Cai, and E. Zhai. Crux: Gpu-efficient communication
+scheduling for deep learning training. In Proceedings of
+the ACM SIGCOMM 2024 Conference, ACM SIGCOMM
+’24, page 1–15, New York, NY, USA, 2024. Association for
+Computing Machinery.
+[20] N. Cardwell, Y. Cheng, C. S. Gunn, S. H. Yeganeh, and
+V. Jacobson. Bbr: congestion-based congestion control.
+Commun. ACM, 60(2):58–66, jan 2017.
+[21] Y. Chen, R. Griffith, J. Liu, R. H. Katz, and A. D. Joseph.
+Understanding tcp incast throughput collapse in datacenter
+networks. In Proceedings of the 1st ACM Workshop on
+Research on Enterprise Networking, WREN ’09, page 73–82,
+New York, NY, USA, 2009. Association for Computing
+Machinery.
+[22] M. Cho, U. Finkler, M. Serrano, D. Kung, and H. Hunter.
+Blueconnect: Decomposing all-reduce for deep learning on
+heterogeneous network hierarchy. IBM Journal of Research
+and Development, 63(6):1:1–1:11, 2019.
+13
+
+===== PDF PAGE 14 =====
+[23] M. Chowdhury and I. Stoica. Coflow: A networking ab-
+straction for cluster applications. In Proceedings of the 11th
+ACM Workshop on Hot Topics in Networks, HotNets-XI, page
+31–36, New York, NY, USA, 2012. Association for Comput-
+ing Machinery.
+[24] M. Chowdhury and I. Stoica. Efficient coflow scheduling
+without prior knowledge. SIGCOMM Comput. Commun.
+Rev., 45(4):393–406, aug 2015.
+[25] M. Chowdhury and I. Stoica. Efficient coflow scheduling
+without prior knowledge. In Proceedings of the 2015 ACM
+Conference on Special Interest Group on Data Communica-
+tion, SIGCOMM ’15, page 393–406, New York, NY, USA,
+2015. Association for Computing Machinery.
+[26] M. Chowdhury, Y. Zhong, and I. Stoica. Efficient coflow
+scheduling with varys. SIGCOMM Comput. Commun. Rev.,
+44(4):443–454, aug 2014.
+[27] M. Chowdhury, Y. Zhong, and I. Stoica. Efficient coflow
+scheduling with varys. In Proceedings of the 2014 ACM
+Conference on SIGCOMM, SIGCOMM ’14, page 443–454,
+New York, NY, USA, 2014. Association for Computing
+Machinery.
+[28] A. K. Dash. VGG-16 Architecture. https://iq.
+opengenus.org/vgg16/.
+[29] W. Dauscha, H. D. Modrow, and A. Neumann. On cyclic
+sequence types for constructing cyclic schedules. Zeitschrift
+für Operations Research, 29:1–30, 1985.
+[30] J. Devlin, M. Chang, K. Lee, and K. Toutanova. BERT:
+pre-training of deep bidirectional transformers for language
+understanding. CoRR, abs/1810.04805, 2018.
+[31] J. Devlin, M.-W. Chang, K. Lee, and K. Toutanova. Bert:
+Pre-training of deep bidirectional transformers for language
+understanding, 2019.
+[32] N. Dukkipati, M. Kobayashi, R. Zhang-Shen, and N. McKe-
+own. Processor sharing flows in the internet. In H. de Meer
+and N. Bhatti, editors, Quality of Service – IWQoS 2005,
+pages 271–285, Berlin, Heidelberg, 2005. Springer Berlin
+Heidelberg.
+[33] S. Floyd and K. Fall. Promoting the use of end-to-end con-
+gestion control in the internet. IEEE/ACM Transactions on
+Networking, 7(4):458–472, 1999.
+[34] P. X. Gao, A. Narayan, G. Kumar, R. Agarwal, S. Ratnasamy,
+and S. Shenker. phost: distributed near-optimal datacenter
+transport over commodity network fabric. In Proceedings of
+the 11th ACM Conference on Emerging Networking Experi-
+ments and Technologies, CoNEXT ’15, New York, NY, USA,
+2015. Association for Computing Machinery.
+[35] M. Gerla, M. Sanadidi, R. Wang, A. Zanella, C. Casetti, and
+S. Mascolo. Tcp westwood: congestion window control us-
+ing bandwidth estimation. In GLOBECOM’01. IEEE Global
+Telecommunications Conference (Cat. No.01CH37270), vol-
+ume 3, pages 1698–1702 vol.3, 2001.
+[36] J. Goossens. Scheduling of offset free systems. Real-Time
+Systems, 24:239–258, 03 2003.
+[37] J. Gu, M. Chowdhury, K. G. Shin, Y. Zhu, M. Jeon, J. Qian,
+H. Liu, and C. Guo. Tiresias: A GPU cluster manager
+for distributed deep learning. In 16th USENIX Symposium
+on Networked Systems Design and Implementation (NSDI
+19), pages 485–500, Boston, MA, Feb. 2019. USENIX
+Association.
+[38] S. Ha, I. Rhee, and L. Xu. Cubic: a new tcp-friendly high-
+speed tcp variant. SIGOPS Oper. Syst. Rev., 42(5):64–74, jul
+2008.
+[39] X. Han, W. Jiang, P. Cao, Q. Yang, Y. Liu, S. Qi, S. Lin, and
+S. Zhao. Isolated scheduling for distributed training tasks in
+gpu clusters, 2023.
+[40] M. Handley, C. Raiciu, A. Agache, A. Voinescu, A. W.
+Moore, G. Antichi, and M. Wójcik. Re-architecting datacen-
+ter networks and stacks for low latency and high performance.
+In Proceedings of the Conference of the ACM Special Inter-
+est Group on Data Communication, SIGCOMM ’17, page
+29–42, New York, NY, USA, 2017. Association for Comput-
+ing Machinery.
+[41] S. H. Hashemi, S. Abdu Jyothi, and R. Campbell. Tictac:
+Accelerating distributed deep learning with communication
+scheduling. In A. Talwalkar, V. Smith, and M. Zaharia, ed-
+itors, Proceedings of Machine Learning and Systems, vol-
+ume 1, pages 418–430, 2019.
+[42] S. Hemminger. Tcp infrastructure split out, 2005.
+[43] C. Hollot, V. Misra, D. Towsley, and W.-B. Gong. On design-
+ing improved controllers for aqm routers supporting tcp flows.
+In Proceedings IEEE INFOCOM 2001. Conference on Com-
+puter Communications. Twentieth Annual Joint Conference
+of the IEEE Computer and Communications Society (Cat.
+No.01CH37213), volume 3, pages 1726–1734 vol.3, 2001.
+[44] C.-Y. Hong, M. Caesar, and P. B. Godfrey. Finishing flows
+quickly with preemptive scheduling. SIGCOMM Comput.
+Commun. Rev., 42(4):127–138, aug 2012.
+[45] Y. Huang, Y. Cheng, A. Bapna, O. Firat, D. Chen, M. Chen,
+H. Lee, J. Ngiam, Q. V. Le, Y. Wu, and z. Chen. Gpipe: Ef-
+ficient training of giant neural networks using pipeline par-
+allelism. In H. Wallach, H. Larochelle, A. Beygelzimer,
+F. d'Alché-Buc, E. Fox, and R. Garnett, editors, Advances in
+Neural Information Processing Systems, volume 32. Curran
+Associates, Inc., 2019.
+[46] V. Jacobson. Congestion avoidance and control. In Sympo-
+sium Proceedings on Communications Architectures and Pro-
+tocols, SIGCOMM ’88, page 314–329, New York, NY, USA,
+1988. Association for Computing Machinery.
+[47] V. Jacobson. Congestion avoidance and control. SIGCOMM
+Comput. Commun. Rev., 18(4):314–329, aug 1988.
+[48] A. Jajoo, Y. C. Hu, and X. Lin. Your coflow has many
+flows: Sampling them for fun and speed. In 2019 USENIX
+Annual Technical Conference (USENIX ATC 19), pages 833–
+848, Renton, WA, July 2019. USENIX Association.
+[49] A. Jayarajan, J. Wei, G. Gibson, A. Fedorova, and G. Pekhi-
+menko. Priority-based parameter propagation for distributed
+DNN training. CoRR, abs/1905.03960, 2019.
+14
+
+===== PDF PAGE 15 =====
+[50] S. Jayaram Subramanya, D. Arfeen, S. Lin, A. Qiao, Z. Jia,
+and G. R. Ganger. Sia: Heterogeneity-aware, goodput-
+optimized ml-cluster scheduling. In Proceedings of the 29th
+Symposium on Operating Systems Principles, SOSP ’23, page
+642–657, New York, NY, USA, 2023. Association for Com-
+puting Machinery.
+[51] Y. Jiang, Y. Zhu, C. Lan, B. Yi, Y. Cui, and C. Guo. A uni-
+fied architecture for accelerating distributed dnn training in
+heterogeneous gpu/cpu clusters. In Proceedings of the 14th
+USENIX Conference on Operating Systems Design and Im-
+plementation, OSDI’20, USA, 2020. USENIX Association.
+[52] Y. Jiang, Y. Zhu, C. Lan, B. Yi, Y. Cui, and C. Guo. A uni-
+fied architecture for accelerating distributed DNN training in
+heterogeneous gpu/cpu clusters. In 14th USENIX Symposium
+on Operating Systems Design and Implementation (OSDI 20),
+pages 463–479. USENIX Association, Nov. 2020.
+[53] D. Katabi, M. Handley, and C. Rohrs. Congestion control for
+high bandwidth-delay product networks. SIGCOMM Comput.
+Commun. Rev., 32(4):89–102, aug 2002.
+[54] A. Kaushik. VGG-19 Architecture. https : / / iq .
+opengenus.org/vgg19-architecture/.
+[55] G. Kumar, N. Dukkipati, K. Jang, H. M. G. Wassel, X. Wu,
+B. Montazeri, Y. Wang, K. Springborn, C. Alfeld, M. Ryan,
+D. Wetherall, and A. Vahdat. Swift: Delay is simple and ef-
+fective for congestion control in the datacenter. In Proceed-
+ings of the Annual Conference of the ACM Special Interest
+Group on Data Communication on the Applications, Tech-
+nologies, Architectures, and Protocols for Computer Com-
+munication, SIGCOMM ’20, page 514–528, New York, NY,
+USA, 2020. Association for Computing Machinery.
+[56] M. Ladeira, E. Grolleau, F. Bonneval, G. Hattenberger,
+Y. Ouhammou, and Y. Hérouard. Scheduling Offset-Free Sys-
+tems Under FIFO Priority Protocol. In 34th Euromicro Con-
+ference on Real-Time Systems (ECRTS 2022), volume 231 of
+Dagstuhl Artifacts Series, Modena, Italy, July 2022.
+[57] C. Lee, C. Park, K. Jang, S. Moon, and D. Han. Dx: Latency-
+based congestion control for datacenters. IEEE/ACM Trans-
+actions on Networking, 25(1):335–348, 2017.
+[58] S. Li, H. Liu, Z. Bian, J. Fang, H. Huang, Y. Liu, B. Wang,
+and Y. You. Colossal-ai: A unified deep learning system
+for large-scale parallel training. In Proceedings of the 52nd
+International Conference on Parallel Processing, ICPP ’23,
+page 766–775, New York, NY, USA, 2023. Association for
+Computing Machinery.
+[59] Z. Li, S. Zhuang, S. Guo, D. Zhuo, H. Zhang, D. Song, and
+I. Stoica. Terapipe: Token-level pipeline parallelism for
+training large-scale language models, 2021.
+[60] Y. Lin, S. Han, H. Mao, Y. Wang, and W. J. Dally. Deep gradi-
+ent compression: Reducing the communication bandwidth for
+distributed training. arXiv preprint arXiv:1712.01887, 2017.
+[61] S. Liu, T. Ba¸sar, and R. Srikant. Tcp-illinois: A loss- and
+delay-based congestion control algorithm for high-speed net-
+works. Performance Evaluation, 65(6):417–440, 2008. In-
+novative Performance Evaluation Methodologies and Tools:
+Selected Papers from ValueTools 2006.
+[62] Y. Liu, M. Ott, N. Goyal, J. Du, M. Joshi, D. Chen, O. Levy,
+M. Lewis, L. Zettlemoyer, and V. Stoyanov. Roberta: A
+robustly optimized bert pretraining approach, 2019.
+[63] K. Mahajan, A. Balasubramanian, A. Singhvi, S. Venkatara-
+man, A. Akella, A. Phanishayee, and S. Chawla. Themis:
+Fair and efficient GPU cluster scheduling. In 17th USENIX
+Symposium on Networked Systems Design and Implementa-
+tion (NSDI 20), pages 289–304, Santa Clara, CA, Feb. 2020.
+USENIX Association.
+[64] K. Mahajan, C.-H. Chu, S. Sridharan, and A. Akella. Better
+together: Jointly optimizing ML collective scheduling and
+execution planning using SYNDICATE. In 20th USENIX
+Symposium on Networked Systems Design and Implementa-
+tion (NSDI 23), pages 809–824, Boston, MA, Apr. 2023.
+USENIX Association.
+[65] L. Mai, C. Hong, and P. Costa. Optimizing network per-
+formance in distributed machine learning. In 7th USENIX
+Workshop on Hot Topics in Cloud Computing (HotCloud 15),
+Santa Clara, CA, July 2015. USENIX Association.
+[66] L. Martin, B. Müller, P. J. O. Suárez, Y. Dupont, L. Romary,
+É. V. de la Clergerie, D. Seddah, and B. Sagot. Camembert:
+a tasty french language model. CoRR, abs/1911.03894, 2019.
+[67] M. Mathis, J. Semke, J. Mahdavi, and T. Ott. The macro-
+scopic behavior of the tcp congestion avoidance algorithm.
+SIGCOMM Comput. Commun. Rev., 27(3):67–82, jul 1997.
+[68] R. Mittal, V. T. Lam, N. Dukkipati, E. Blem, H. Wassel,
+M. Ghobadi, A. Vahdat, Y. Wang, D. Wetherall, and D. Zats.
+Timely: Rtt-based congestion control for the datacenter. SIG-
+COMM Comput. Commun. Rev., 45(4):537–550, Aug. 2015.
+[69] J. Mohan, A. Phanishayee, J. Kulkarni, and V. Chidambaram.
+Looking beyond GPUs for DNN scheduling on Multi-Tenant
+clusters. In 16th USENIX Symposium on Operating Sys-
+tems Design and Implementation (OSDI 22), pages 579–596,
+Carlsbad, CA, July 2022. USENIX Association.
+[70] B. Montazeri, Y. Li, M. Alizadeh, and J. Ousterhout. Homa: a
+receiver-driven low-latency transport protocol using network
+priorities. In Proceedings of the 2018 Conference of the ACM
+Special Interest Group on Data Communication, SIGCOMM
+’18, page 221–235, New York, NY, USA, 2018. Association
+for Computing Machinery.
+[71] D. Mudigere, Y. Hao, J. Huang, Z. Jia, A. Tulloch, S. Srid-
+haran, X. Liu, M. Ozdal, J. Nie, J. Park, L. Luo, J. A. Yang,
+L. Gao, D. Ivchenko, A. Basant, Y. Hu, J. Yang, E. K.
+Ardestani, X. Wang, R. Komuravelli, C.-H. Chu, S. Yilmaz,
+H. Li, J. Qian, Z. Feng, Y. Ma, J. Yang, E. Wen, H. Li, L. Yang,
+C. Sun, W. Zhao, D. Melts, K. Dhulipala, K. Kishore, T. Graf,
+A. Eisenman, K. K. Matam, A. Gangidi, G. J. Chen, M. Krish-
+nan, A. Nayak, K. Nair, B. Muthiah, M. khorashadi, P. Bhat-
+tacharya, P. Lapukhov, M. Naumov, A. Mathews, L. Qiao,
+M. Smelyanskiy, B. Jia, and V. Rao. Software-hardware co-
+design for fast and scalable training of deep learning recom-
+mendation models. In Proceedings of the 49th Annual In-
+ternational Symposium on Computer Architecture, ISCA ’22,
+page 993–1011, New York, NY, USA, 2022. Association for
+Computing Machinery.
+15
+
+===== PDF PAGE 16 =====
+[72] D. Narayanan, A. Harlap, A. Phanishayee, V. Seshadri, N. R.
+Devanur, G. R. Ganger, P. B. Gibbons, and M. Zaharia.
+Pipedream: Generalized pipeline parallelism for dnn training.
+In Proceedings of the 27th ACM Symposium on Operating
+Systems Principles, SOSP’19, pages 1–15, New York, NY,
+USA, 2019. Association for Computing Machinery.
+[73] J. Padhye, V. Firoiu, D. Towsley, and J. Kurose. Modeling
+tcp throughput: a simple model and its empirical validation.
+SIGCOMM Comput. Commun. Rev., 28(4):303–314, oct
+1998.
+[74] R. Pan, Y. Lei, J. Li, Z. Xie, B. Yuan, and Y. Xia. Efficient
+flow scheduling in distributed deep learning training with ech-
+elon formation. In Proceedings of the 21st ACM Workshop
+on Hot Topics in Networks, HotNets ’22, page 93–100, New
+York, NY, USA, 2022. Association for Computing Machin-
+ery.
+[75] Y. Peng, Y. Bao, Y. Chen, C. Wu, and C. Guo. Optimus: An
+efficient dynamic resource scheduler for deep learning clus-
+ters. In Proceedings of the Thirteenth EuroSys Conference,
+EuroSys ’18, New York, NY, USA, 2018. Association for
+Computing Machinery.
+[76] Y. Peng, Y. Zhu, Y. Chen, Y. Bao, B. Yi, C. Lan, C. Wu, and
+C. Guo. A generic communication scheduler for distributed
+dnn training acceleration. In Proceedings of the 27th ACM
+Symposium on Operating Systems Principles, SOSP ’19, page
+16–29, New York, NY, USA, 2019. Association for Comput-
+ing Machinery.
+[77] J. Perry, A. Ousterhout, H. Balakrishnan, D. Shah, and H. Fu-
+gal. Fastpass: a centralized "zero-queue" datacenter network.
+In Proceedings of the 2014 ACM Conference on SIGCOMM,
+SIGCOMM ’14, page 307–318, New York, NY, USA, 2014.
+Association for Computing Machinery.
+[78] K. Qian, Y. Xi, J. Cao, J. Gao, Y. Xu, Y. Guan, B. Fu, X. Shi,
+F. Zhu, R. Miao, C. Wang, P. Wang, P. Zhang, X. Zeng,
+E. Ruan, Z. Yao, E. Zhai, and D. Cai. Alibaba hpn: A
+data center network for large language model training. In
+Proceedings of the ACM SIGCOMM 2024 Conference, ACM
+SIGCOMM ’24, page 691–706, New York, NY, USA, 2024.
+Association for Computing Machinery.
+[79] A. Qiao, S. K. Choe, S. J. Subramanya, W. Neiswanger,
+Q. Ho, H. Zhang, G. R. Ganger, and E. P. Xing. Pollux:
+Co-adaptive cluster scheduling for goodput-optimized deep
+learning. In 15th USENIX Symposium on Operating Systems
+Design and Implementation (OSDI 21), pages 1–18. USENIX
+Association, July 2021.
+[80] A. Radford, K. Narasimhan, T. Salimans, and
+I. Sutskever. Improving language understanding by
+generative pre-training. https : / / s3-us-west-2 .
+amazonaws . com / openai-assets / research-covers /
+language-unsupervised / language _ understanding _
+paper.pdf.
+[81] A. Radford, J. Wu, R. Child, D. Luan, D. Amodei, and
+I. Sutskever. Language models are unsupervised multitask
+learners. 2018. https://d4mucfpksywv.cloudfront.
+net/better-language-models/language-models.pdf.
+[82] S. Rajasekaran, M. Ghobadi, and A. Akella. CASSINI:
+Network-Aware job scheduling in machine learning clusters.
+In 21st USENIX Symposium on Networked Systems Design
+and Implementation (NSDI 24), pages 1403–1420, Santa
+Clara, CA, Apr. 2024. USENIX Association.
+[83] S. Rajasekaran, M. Ghobadi, G. Kumar, and A. Akella. Con-
+gestion Control in Machine Learning Clusters. In Proceed-
+ings of the 21st ACM Workshop on Hot Topics in Networks,
+HotNets ’22, page 235–242, 2022.
+[84] S. Rajasekaran, S. Narang, A. A. Zabreyko, and M. Ghobadi.
+Mltcp: A distributed technique to approximate centralized
+flow scheduling for machine learning. In Proceedings of the
+23rd ACM Workshop on Hot Topics in Networks, HotNets
+’24, page 167–176, New York, NY, USA, 2024. Association
+for Computing Machinery.
+[85] S. Rajbhandari, C. Li, Z. Yao, M. Zhang, R. Y. Aminabadi,
+A. A. Awan, J. Rasley, and Y. He. Deepspeed-moe: Advanc-
+ing mixture-of-experts inference and training to power next-
+generation ai scale, 2022.
+[86] L. Schrage. Letter to the editor—a proof of the optimality of
+the shortest remaining processing time discipline. Operations
+Research, 16(3):687–690, 1968.
+[87] L. E. Schrage and L. W. Miller. The queue m/g/1 with the
+shortest remaining processing time discipline. Operations
+Research, 14(4):670–684, 1966.
+[88] P. Serafini and W. Ukovich. periodic scheduling problems. A mathematical model for
+SIAM Journal on Discrete
+Mathematics, 2(4):550–581, 1989.
+[89] M. Shafiee and J. Ghaderi. Scheduling coflows in datacenter
+networks: Improved bound for total weighted completion
+time. In Proceedings of the 2017 ACM SIGMETRICS /
+International Conference on Measurement and Modeling of
+Computer Systems, SIGMETRICS ’17 Abstracts, page 29–30,
+New York, NY, USA, 2017. Association for Computing
+Machinery.
+[90] M. Shafiee and J. Ghaderi. Scheduling coflows with depen-
+dency graph. IEEE/ACM Trans. Netw., 30(1):450–463, feb
+2022.
+[91] A. Shah, V. Chidambaram, M. Cowan, S. Maleki, M. Musu-
+vathi, T. Mytkowicz, J. Nelson, O. Saarikivi, and R. Singh.
+TACCL: Guiding collective algorithm synthesis using com-
+munication sketches. In 20th USENIX Symposium on Net-
+worked Systems Design and Implementation (NSDI 23), pages
+593–612, Boston, MA, Apr. 2023. USENIX Association.
+[92] M. Shoeybi, M. Patwary, R. Puri, P. LeGresley, J. Casper, and
+B. Catanzaro. Megatron-lm: Training multi-billion parameter
+language models using model parallelism, 2020.
+[93] H. Touvron, T. Lavril, G. Izacard, X. Martinet, M.-A.
+Lachaux, T. Lacroix, B. Rozière, N. Goyal, E. Hambro,
+F. Azhar, A. Rodriguez, A. Joulin, E. Grave, and G. Lample.
+Llama: Open and efficient foundation language models, 2023.
+[94] B. Vamanan, J. Hasan, and T. Vijaykumar. Deadline-aware
+datacenter tcp (d2tcp). In Proceedings of the ACM SIG-
+COMM 2012 Conference on Applications, Technologies, Ar-
+chitectures, and Protocols for Computer Communication,
+16
+
+===== PDF PAGE 17 =====
+SIGCOMM ’12, page 115–126, New York, NY, USA, 2012.
+Association for Computing Machinery.
+[95] W. Wang, M. Khazraee, Z. Zhong, M. Ghobadi, Z. Jia,
+D. Mudigere, Y. Zhang, and A. Kewitsch. TopoOpt: Co-
+optimizing network topology and parallelization strategy for
+distributed training jobs. In 20th USENIX Symposium on Net-
+worked Systems Design and Implementation (NSDI 23), pages
+739–767, Boston, MA, Apr. 2023. USENIX Association.
+[96] P. Watcharapichat, V. L. Morales, R. C. Fernandez, and
+P. Pietzuch. Ako: Decentralised deep learning with partial
+gradient exchange. SoCC ’16, 2016.
+[97] C. Wilson, H. Ballani, T. Karagiannis, and A. Rowtron. Better
+never than late: meeting deadlines in datacenter networks.
+In Proceedings of the ACM SIGCOMM 2011 Conference,
+SIGCOMM ’11, page 50–61, New York, NY, USA, 2011.
+Association for Computing Machinery.
+[98] W. Xiao, R. Bhardwaj, R. Ramjee, M. Sivathanu, N. Kwa-
+tra, Z. Han, P. Patel, X. Peng, H. Zhao, Q. Zhang, F. Yang,
+and L. Zhou. Gandiva: Introspective cluster scheduling for
+deep learning. In 13th USENIX Symposium on Operating
+Systems Design and Implementation (OSDI 18), pages 595–
+610, Carlsbad, CA, Oct. 2018. USENIX Association.
+[99] L. Xu, K. Harfoush, and I. Rhee. Binary increase congestion
+control (bic) for fast long-distance networks. In IEEE INFO-
+COM 2004, volume 4, pages 2514–2524 vol.4, 2004.
+[100] S. Zagoruyko and N. Komodakis. Wide residual networks,
+2016.
+[101] A. Zaplatel and F. Kuipers. Slowdown as a Metric for Con-
+gestion Control Fairness. In Proceedings of the 22nd ACM
+Workshop on Hot Topics in Networks, HotNets ’23, 2023.
+[102] H. Zhang, L. Chen, B. Yi, K. Chen, M. Chowdhury, and
+Y. Geng. Coda: Toward automatically identifying and
+scheduling coflows in the dark. In Proceedings of the 2016
+ACM SIGCOMM Conference, SIGCOMM ’16, page 160–173,
+New York, NY, USA, 2016. Association for Computing Ma-
+chinery.
+[103] Y. Zhao, Y. Liu, Y. Peng, Y. Zhu, X. Liu, and X. Jin. Multi-
+resource interleaving for deep learning training. In Proceed-
+ings of the ACM SIGCOMM 2022 Conference, SIGCOMM
+’22, page 428–440, New York, NY, USA, 2022. Association
+for Computing Machinery.
+[104] P. Zheng, R. Pan, T. Khan, S. Venkataraman, and A. Akella.
+Shockwave: Fair and efficient cluster scheduling for dynamic
+adaptation in machine learning. In 20th USENIX Symposium
+on Networked Systems Design and Implementation (NSDI
+23), pages 703–723, Boston, MA, Apr. 2023. USENIX
+Association.
+[105] Y. Zhu, H. Eran, D. Firestone, C. Guo, M. Lipshteyn, Y. Liron,
+J. Padhye, S. Raindel, M. H. Yahia, and M. Zhang. Conges-
+tion control for large-scale rdma deployments. In Proceed-
+ings of the 2015 ACM Conference on Special Interest Group
+on Data Communication, SIGCOMM ’15, page 523–536,
+New York, NY, USA, 2015. Association for Computing Ma-
+chinery.
+[106] Y. Zhu, R. Kiros, R. Zemel, R. Salakhutdinov, R. Urtasun,
+A. Torralba, and S. Fidler. Aligning books and movies:
+Towards story-like visual explanations by watching movies
+and reading books. In 2015 IEEE International Conference
+on Computer Vision (ICCV), pages 19–27, Los Alamitos, CA,
+USA, dec 2015. IEEE Computer Society.
+17
+
+===== PDF PAGE 18 =====
+Appendix
+A Cassini for Partially Compatible Jobs
+We illustrate the limitation of Cassini’s static unified-circle
+abstraction with a simple example of three partially compati-
+ble jobs, each with an 800 ms iteration time. Their communi-
+cation phases together span 900 ms, making at least 100 ms
+of overlap unavoidable. Figure 24 shows a single iteration of
+each job in isolation on the unified circle of 800 ms perime-
+ter, rotated according to the Cassini’s schedule to minimize
+overlap.
+Figure 25(a) shows Cassini’s hypethetical intended sched-
+ule of the jobs together on a single unified circle of perimeter
+800 ms, where each job’s Figure 25(b) shows the realized ex-
+ecution under fair sharing, where overlap elongates the com-
+munication phases. Because the 100 ms overlap is unavoid-
+able, the very first iteration incurs unequal delays of 0 ms,
+200 ms, and 100 ms across the three jobs, with job J2’s com-
+munication also spilling 100 ms into the second iteration of
+J1. These unequal delays induce differential drift in the next-
+iteration start times, so the expected interleaving is not a sta-
+ble fixed point and degrades over time as jobs slide past one
+another. This pathology does not appear with two jobs, or
+under perfectly symmetric overlap, since identical iteration
+elongation cancels out in relative time shifts.
+200ms
+200ms
+200ms
+300ms
+(a) Job 1 (J1)
+(b) Job 2 (J2)
+(c) Job 3 (J3)
+Figure 24: Jobs in isolation (rotated according to Cassini),s
+50ms
+(J2 – J3 overlap)
+J1
+J2
+J3
+2x50ms
+(J2 – J3 overlap)
+(a) Cassini’s view
+2x100ms
+(J1 – J3 overlap)
+(next iteration)
+(b) Actual dynamics
+Figure 25: Jobs’ schedule under contention
+B Analysis of MLCC’s Convergence for two
+simple DNN jobs
+In this section, we model the bandwidth-time dynamics of two
+periodic jobs competing one a bottleneck link using MLCC’s
+bandwidth aggressiveness function as a controlled dynamics
+system, D. We mathematically study the optimality, conver-
+gence and flow-level and iteration-level fairness properties of
+our approach for the two jobs case. For the simplicity of anal-
+ysis, we assume that the AIMD congestion control algorithm
+stabilizes jobs to a bandwidth allocation following the ratio
+of their additive increase values almost instantaneously. In
+practice, it takes a few RTTs before the flows using AIMD
+settle to the desired bandwidth allocation. We neglect this mi-
+crosecond latency of a few RTTs as it does not alter the func-
+tional model of MLCC. We make this assumption only for
+simplicity of analysis.
+B.1 Analysis Setting
+The use of bandwidth aggressiveness function
+F (bytes_
+ratio) in MLCC creates an instantaneous unfair
+bandwidth allocation to the jobs causing them to "shift" rela-
+tive to each other. The Shift function governs the evolution of
+the jobs’ start times toward a partially or fully interleaved
+state. The goal of interleaving is to start the communication
+phases of the competing jobs at the desired time points, so
+that the communication phase of one job is always within in
+the compute phase of the other.
+Consider a set of two compatible DNN jobs, J1 and J2
+competing on a bottleneck link of capacity B and each hav-
+ing an ideal iteration time I. This ideal iteration time is
+achieved when each job is executed in isolation, as shown
+in Figure 26(a). The compute phase lasts T comp
+1 and T comp
+2
+seconds for the two jobs respectively. Their communication
+phase is of durations T1 and T2 seconds when each uses the
+full link capacity B to send data. We denote the difference
+in the start times of the ith iterations of the two jobs by ∆i.
+Figure 26(b) shows the ith and (i + 1)th iterations of the two
+jobs competing using MLCC. In this scenario, the first job
+receives more than half of the bandwidth allowing it to com-
+plete its current iteration earlier while the second job incurs
+more delay due to lower bandwidth. This phenomenon causes
+the difference in the start times of the next iteration of the
+two jobs to increase to ∆i+1 where ∆i+1 = ∆i + Shi f t(∆i). We
+refer to the increase in the jobs’ start time difference in the
+next iteration compared to the previous one as the Shi f t in-
+troduced by MLCC’s bandwidth aggressiveness. This Shi f t
+induces a sliding effect in the communication pattern of the
+two jobs which, over multiple iterations, aids in interleaving
+their communication demands.
+B.2 A Discrete Time Dynamic System Model
+We use the recipe of Shift and the relative start-time differ-
+ence ∆i at the ith iteration to formally define a dynamic sys-
+tem, D(∆, Φ) for the case of two DNN jobs. To analyze the
+dynamics of the jobs’ relative start times, we observe how the
+value of ∆i changes every iteration considering it as the state
+of the system D. The "trajectory" of the sequence of {∆i}n
+i=1
+over n iterations describes the way the system converges to
+an interleaved state given the initial state, i.e., jobs’ relative
+start-time difference in their first iteration, ∆1. For simplic-
+ity, we assume both the jobs to have the same iteration time I
+(Figure 26). However, the analysis is applicable to the case
+of different iteration times, where the granularity of a "dis-
+crete step" in the dynamics changes from an iteration to the
+least common multiple of the jobs’ iteration times. Thus, we
+describe the system by its infinite state space ∆i ∈∆ and an
+evolution function Φ(xi)
+∆i+1 = Φ(∆i) where Φ(∆i) = ∆i + Shi f t(∆i) (9)
+18
+
+===== PDF PAGE 19 =====
+I
+𝐵
+𝐵
+Bandwidth
+𝑎1𝐵
+T1comp
+T1comp
+T1comp
+T1
+I
+𝐵
+𝐵
+Bandwidth
+T2comp
+Time
+Time
+Δ Δi
+T2
+Δ Δi+1
+(a) Isolation (b) MLCC
+Time
+T2comp
+𝑎2𝐵
+T2comp
+Time
+Figure 26: Illustration of two competing jobs each with single
+communication phase per iteration
+We compute the Shift function using the bandwidth-sharing
+properties of AIMD congestion control algorithm. If the
+competing flows have different values of additive increase
+coefficients at any point in time, the bandwidth sharing settles
+to the ratio of their additive increase values. This principle
+allows us to find the instantaneous bandwidth received by
+each competing job in that iteration, and compute the relative
+start time difference for the next iteration.
+To find the possible interleaved states to which the jobs con-
+verge, we find the equilibrium points of the system D(∆, Φ).
+The equilibrium points of the system D are nothing but the
+fixed points of its evolution function. We set the next state in
+the evolution equation 9 to be the same as the current state.
+Let E be the set of equilibrium states of D(∆, Φ), then E is
+also the set of fixed points of the function Φ.
+I f ∆i+1 = ∆i or Φ(∆i) = ∆i or Shi f t(∆i) = 0= ⇒∆i ∈E (10)
+Mathematically, the evolution function Φ may not have any
+fixed points if the jobs are incompatible. If the set E is empty,
+the system shows limit cycle behavior, meaning that the jobs
+will only visit a finite number of states {∆k}k∈S periodically
+at steady state without staying in one state for long. Here S
+is the set of periodic points of the evolution function Φ of
+period |S |where |S |denotes the cardinality of set S . The
+system shows a limit cycle behavior of least period |S |if
+Φ|S |(∆o) = ∆o ∀∆o ∈S (11)
+Φ|S |denotes the |S |th iterate of the function Φ. Note that the
+fixed points of the function Φ are actually its periodic points
+with period 1.
+B.3 Evolution of Two Jobs
+With the system model in mind, let’s get back to the two
+jobs J1 and J2 in Figure 26 with communication durations T1
+and T2 and compute durations T comp
+1 and T comp
+2 respectively.
+For simplicity, let’s assume them to have the same iteration
+time, I. Let the size of the jobs in terms of data sent in their
+communication phase be D1 and D2 respectively such that
+D1 = B ×T1 and D2 = B ×T2. Without losing generality, as-
+sume T1 > T2 (i.e. D1 > D2). Henceforth, we will call J1 as
+the "big" job and J2 as the "small" job. The goal is to find the
+bandwidth allocation of the two jobs as a function of time,
+given that they use MLCC’s bandwidth aggressiveness func-
+tion (F (bytes_
+ratio)) for modifying their additive increase.
+The bandwidth allocation will decide the iteration time of
+each job and their relative shift.
+Denote by a and b, the Slope and Intercept of function
+F (bytes_
+ratio). If the data sent by a job, Ji, i= 1, 2, till a
+time t in the current iteration is denoted by di(t), i= 1, 2 and
+the total amount of data to be sent every iteration is denoted
+by Di, i= 1, 2, then
+F (t) = b + a ×
+di(t)
+Di
+(12)
+F (t)
+cwnd ←−cwnd +
+cwnd (13)
+B.4 Computation of shift function
+The bandwidth aggressiveness function, F (bytes_
+ratio)
+solely governs the bandwidth allocation to the two jobs. To
+compute shift, we need to find the bandwidths of the two
+jobs as a function of time in their current (let’s say ith) iter-
+ation. We consider the start of network contention between
+the jobs in the current iteration as the origin of the time axis
+(Figure 28(b)). The contention period ends after T seconds.
+Consider a time point t in the period of contention. Let W1
+and W2 denote the data sent by the two jobs in the current ith
+iteration before contention began. Let d1(t) and d2(t) be the
+data sent by the two jobs between time 0 to t. Let B1(t) and
+B2(t) denote the instantaneous bandwidths of the two jobs at
+that time instant t.
+B1(t) = d(d1(t))
+dt , B2(t) = d(d2(t))
+dt
+Also, during the period of contention, the sum of the band-
+widths allocated to the two jobs at any point in time must
+equal the link capacity B :
+d1(t) + d2(t) = B ×t (14)
+Note that W1 and W2 are not a function of time. The ratio of
+bandwidths at time t is the same as the ratio of the additive
+increase factors of the two jobs,
+B1(t)
+F (W1 + d1(t)
+)
+D1
+F (W2 + d2(t)
+)
+D2
+(15)
+d1(t)
+D1
+d2(t)
+D2
+=
+B2(t)
+d(d1(t))/dt
+d(d2(t))/dt=
+=
+b + a ×W1/D1 + a ×
+b + a ×W2/D2 + a ×
+Integrating both sides :
+t
+d(d1(t))
+0
+dt
+   1
+b + a ×W1/D1 + a ×
+=
+t
+0
+d(d2(t))
+dt
+   1
+b + a ×W2/D2 + a ×
+d1(t)
+D1
+   
+(16)
+d2(t)
+D2
+   
+19
+
+===== PDF PAGE 20 =====
+𝐵
+Bandwidth
+𝐵
+Bandwidth
+T2comp Δi
+(a) Case-1 (-T2 ≤ Δi ≤ 0)
+ith Iteration
+𝐵
+Bandwidth
+𝐵
+Bandwidth
+ith Iteration
+ith Iteration
+(i+1)th Iteration (i+1)th Iteration
+𝐵
+T1comp T1comp
+Bandwidth
+Time
+𝐵
+Bandwidth
+T2comp
+Time
+Δi
+(b) Case-2 (0 ≤ Δi ≤ T1
+')
+ith Iteration
+(i+1)th Iteration (i+1)th Iteration
+𝐵
+Time
+Time
+Time
+Time
+T1comp
+Bandwidth
+T1
+𝐵
+T2comp Bandwidth
+T1comp
+T2
+T2comp
+Time
+Time
+Δi Δi
+relative time difference in the next iteration as a function of
+the start time difference ∆i between the jobs in the current
+iteration.
+Shi f t(∆i) = ∆i+1−∆i
+Case-1 (−T2 < ∆i < 0).
+In this case, the ith iteration of J2 starts earlier than J1. So,
+J2 has already sent W2(= B ×∆i) amount of data before the
+contention starts, as shown in Figure 28. However, J1 has
+not sent any data before the contention period, hence W1 = 0.
+At time t = T , the contention period ends as J2 finishes its
+communication phase. Putting the values of W1 and W2 in
+Equation 18, at time t = t, we get
+loge 1 +
+loge 1 +
+a ×d1(t)
+b ×D1
+a ×d2(t)
+b ×D2 + a ×B ×|∆i|
+D2
+=
+(19)
+D1
+(c) Case-3 (T1' ≤ Δi ≤ T1)
+(d) Case-4 (T1 ≤ Δi ≤ I – T2)
+Case-1
+Figure 27: Different scenarios of communication overlap be-
+tween two periodic jobs
+= ⇒D1 ×loge 1 +
+a ×d1(t)
+b ×D1 +W1
+= D2 ×loge 1 +
+a ×d2(t)
+b ×D2 +W2
+(17)
+𝐵
+𝐵
+Bandwidth
+𝐼 − 𝑇1
+B1(t)
+𝐵
+Bandwidth
+𝐼 − 𝑇2
+Δi+1
+(a) Iteration by iteration
+Time
+Time
+𝐵
+B2(t)
+Δi
+Case-1
+W1 = 0
+W2
+Δi
+d1(t)
+d2(t)
+t=0
+t=t
+t = T
+(b) Single iteration zoomed in
+Time
+Time
+loge 1 +
+a ×d1(t)
+b ×D1 + a ×W1
+=
+loge 1 +
+a ×d2(t)
+D2
+D1
+(18)
+b ×D2 + a ×W2
+The above equation will be our recipe for finding the shift
+function and the set E using simple boundary conditions!
+∆i is the start time difference between the two jobs at the ith
+iteration. We define ∆i to be Start
+_
+time(J2)−Start
+_
+time(J1).
+Due to the nature of F (bytes_
+ratio) to favor jobs that sent
+a larger fraction of their total data, there are four possible
+scenarios of bandwidth allocation, depending on this value of
+∆i. These are :
+• Case-1 :−T2 < ∆i < 0 ; J2 starts before J1
+• Case-2 : 0 < ∆i < T ′
+1 ; J2 starts and finishes inside J1
+• Case-3 : T ′
+1 < ∆i < T1 ; J2 starts inside J1 but finishes
+after J1
+• Case-4 : T1 < ∆i < I−T2 ; J2 starts after J1 finishes
+Figure 27 illustrates these four cases. These include all possi-
+ble points of relative alignment of the two jobs’ start times in
+their current iteration. T ′
+1 is a quantity that we calculate later
+in this section.
+We define the Shift function Shi f t(∆i) as the additional
+Figure 28: Case-1 of communication overlap
+We solve the Equations 14 and 19 for t = T when the con-
+tention period ends. In that case, J2 has sent all its data, hence
+W2 + d2(T ) = D2. Since d2(T ) is known, d1(T ) is given by
+Equation 19 :
+d1(T ) = b
+a
+b
+=
+×D1 ×
+a
+×D1 × 1 +
+       1 +
+ 
+a ×(1−
+b ×+a ×
+a ×(D2−B ×|∆i|)
+b ×D2 + a ×B ×|∆i|
+D2
+D1
+−1 
+|∆i|
+)
+T2
+|∆i|
+T2
+  D2
+D1
+ 
+−1
+     
+(20)
+Note that we can solve for T as well using Equation 14 and
+20 but we don’t actually need the value of T for finding the
+Shi f t(∆i). We compute Shi f t(∆i) as the change in the relative
+start time of J2 compared to J1
+Shi f t(∆i) = (T−
+d2(T )
+d1(T )
+(d2(T )−d1(T ))
+B )−(T−
+B ) =−
+B
+D2−B ×|∆i|
+= ⇒Shi f t(∆i) =−
+B
+b
++
+×
+a
+D1
+B
+×
+       1 +
+ 
+a ×(1−
+b + a ×
+|∆i|
+)
+T2
+|∆i|
+T2
+  −1
+     
+(21)
+(22)
+D2
+D1
+ 
+20
+
+===== PDF PAGE 21 =====
+b
+Shi f t(∆i) = |∆i|−T2 + T1 ×
+a
+×
+       1 +
+ 
+a ×(1−
+b ×+a ×
+|∆i|
+)
+T2
+|∆i|
+T2
+  D2
+D1
+ 
+−1
+     
+(23)
+The Equation 23 provides the Shi f t(∆i) function for−T2 <
+∆i < 0. There is no state ∆i in this case where the Shi f t(∆i)
+becomes zero, implying that there are no fixed points of Φ in
+this case.
+Case-2 (0 ≤x ≤T ′
+1).
+In this case, the communication phase of J2 starts and
+ends within the communication phase of J1 (Figure 29). J2
+spends its entire communication phase contending with J1,
+hence d1(T ) = D2 irrespective of the start time difference
+∆i. However, this condition holds until J2 manages to finish
+before J1 finishes, which provides the value of the mysterious
+T ′
+1. Note that T ′
+1 < T1. In this case, W1 = B ×∆i and W2 = 0.
+Using Equations 18 and 14, with the new boundary conditions,
+Case-2
+Case-2
+𝐵
+𝐵
+Bandwidth
+𝐼 − 𝑇1
+𝐵
+B1(t)
+B2(t)
+W1
+W2 = 0
+Bandwidth
+𝐼 − 𝑇2
+Δi
+Time
+Time
+Δi
+(a) Iteration by iteration
+d1(t)
+d2(t)
+t=0 t=t t=T
+(b) Single Iteration zoomed in
+Time
+Time
+Figure 29: Case-2 of communication overlap
+Shi f t(∆i) = T1 ×
+b
+a
++
+∆i
+T1
+× 1 +
+a
+b
+D2
+D1
+−1 −T2 (24)
+Finding the value of T ′
+1
+To find the value of T ′
+1, we need to consider the limiting
+scenario when both the jobs finish their communication phase
+at the same time, i.e. d2(T ) = D2 but d1(T )+W1 = D1 as well.
+Using these values in Equation 18 and solving for ∆i = T ′
+1,
+loge 1 +
+a ×(D1−B ×∆i)
+b ×D1 + a ×B ×∆i
+D2
+=
+(25)
+(26)
+loge 1 +
+a ×D2
+b ×D2
+D1
+−
+D2
+D1
+b
+a
+  = ⇒ ∆i = T ′
+1 = T1 × a + b
+a × 1 + a
+b
+D2
+−→0
+Note that T ′
+D1
+1
+−−−−→T1
+Since, there is maximum overlap in the communication
+phases of the two jobs in this case, both the jobs see a max-
+imum slowdown in their communication phases for some
+states ∆1 and ∆2 in this case.
+Finding the maximum slowdown of the big job :
+Denote by T ML
+1 the time taken by J1’s communication phase
+to complete :
+T ML
+1 =
+= T1 + T−
+W1
+B + T +
+d1(T )
+B
+D1−W1−d1(T )
+B= ∆i + T + T1−∆i−
+d1(T )
+B
+(27)
+Using Equation 14 at time t = T and putting d2(T ) = D,
+d1(T ) + D2 = B ×T= ⇒T2 = T−
+d1(T )
+B (28)
+Substituting,
+T ML
+1 = T1 + T2 (29)
+T ML
+1 is independent of ∆i. This means that the big job J1’s
+communication phase is always slowed down by a factor of
+(1 + T2
+T1 ) irrespective of the value of ∆i
+Finding the maximum slowdown of the small job :
+For J2, the slowdown depends on the value of ∆i unlike the
+big job J1. The job J2 spends its entire communication in
+contention, hence, its communication time T ML
+2 = T . Using
+Equation 18 to find d1(T ) and substituting it in Equation 14
+to find T ,
+B ×T= D2 + D1 ×
+b
+a
++
+∆i
+T1
+× 1 +
+a
+b
+D2
+D1
+−1  (30)
+= ⇒ T ML
+2 = T= T2 + T1 ×
+b
+a
++
+∆i
+T1
+× 1 +
+(31)
+Under the limit D1 >> D2, Equation 31 simplifies to :
+lim
+D2
+→0
+D1
+T ML
+2
+T2
+= 1+ lim
+D2
+D1
+→0
+T1
+T2
+×
+b
+a
++
+∆i
+T1
+× 1 +
+a
+b
+D2
+D1
+−1  (32)
+Since we know that T2
+D2
+=
+T1
+D1 , the above limit is of the form
+of limy→0 (1+c)y−1
+y
+= loge(1 + c) where y=
+D2
+. Hence the
+D1
+slowdown of J2 under this limit is given by:
+lim
+D2
+→0
+D1
+T ML
+2
+T2
+= 1 +
+b
+a
++
+∆i
+T1
+×loge 1 +
+a
+b (33)
+The slowdown of J2’s communication phase increases as ∆i
+increases, and is maximum when ∆i = T ′
+1. Substituting ∆i in
+Equation 31 by T ′
+1 from Equation 26,
+T ML
+2 )max = T2 + T1 ×
+b
+a
+= T2 + T1 × 1 +
+b
+a
+T ′
+1
++
+T1
+× 1−
+× 1 +
+1
+1 + a
+b
+a
+b
+D2
+D1
+ 
+D2
+D1
+−1 
+a
+b
+D2
+D1
+−1 
+(34)
+21
+
+===== PDF PAGE 22 =====
+Fixed point of φ
+In this case, there is a value ∆i = ∆o at which the Shi f t(∆o)
+(Equation 24) between the jobs becomes zero, i.e ∆o is a fixed
+point of the evolution function Φ. This means that if the jobs’
+start time difference is ∆o, then they would maintain that same
+∆o and stay in that configuration for all subsequent iterations.
+To find the value of that ∆o, we use Equation 24
+Shi f t21(∆o) = T1 ×
+b
+a
++
+xo
+T1
+× 1 +
+a
+b
+D2
+D1
+−1 −T2 = 0 (35)
+= ⇒ (36)
+T2
+∆o =
+− T1 ×
+b
+a
+ 1 +
+a
+b
+D2
+D1
+−1 
+Checking the stability of the fixed point
+We compute the derivative of the evolution function Φ(∆i) =
+Shi f t(∆i) + ∆i at with respect to ∆i, the point ∆i = ∆o, using
+Equation 24
+d(Φ)
+d∆i
+=
+d(Shi f t)
+d∆i
++ 1=  1 +
+a
+b
+D2
+D1
+−1 + 1 > 1 (37)
+The magnitude of the derivative of Φ at all points including
+∆o is greater than 1, implying that the point ∆o is an unstable
+state. Even though this ∆o is not an interleaved state, the jobs
+never converge to this point in a real system.
+In the limit D2 << D1,
+lim
+D2
+→0
+D1
+∆o = T1 ×
+     1
+loge 1 +
+a
+b
+b
+−
+a
+     
+(38)
+which is independent of T2. For a = 1.75 and b = 0.25 used in
+our evaluations,
+lim D2
+D1
+→0∆o = 0.33 ×T1 (39)
+This means if the small job J2 starts before the big job J1 has
+completed 33% of its communication, the small job receives
+higher average bandwidth as compared to the bigger job. But,
+if it starts later than this, the situation reverses. No matter what
+the values of the slope and intercept parameters a and b are,
+∆o never increases to 0.5 ×T1. However, this flow-level fair-
+ness disparity is not a concern for average iteration time fair-
+ness of MLCC as we show in our flow-level simulations §H
+Case-3 (T ′
+1 < ∆i < T1)
+In this case, the current iteration of J2 starts before and fin-
+ishes after J1 ends its communication phase. So, J1 has al-
+ready sent W1(= B ×∆i) amount of data before the contention
+starts, as shown in Figure 30. However, J2 has not sent any
+data before the contention period, hence W2 = 0. At time
+22
+t = T , the contention period ends as J1 has finished its com-
+munication phase.
+Putting the values of W1 and W2 in Equation 18, at time t = t,
+we get
+loge 1 +
+a ×d1(t)
+b ×D1 + a ×B ×∆i
+=
+loge 1 +
+a ×d2(t)
+D2
+D1
+(40)
+b ×D2
+Putting boundary conditions at t = T , when d1(T ) = (D1−
+B ×∆i), and using Equation 14 to find d2(T ), we compute the
+Shi f t(∆i)
+b
+Shi f t(∆i) = T1−∆i−T2 ×
+×
+a
+     a + b
+  
+∆i
+b + a ×
+T1
+   
+D1
+D2
+−1
+    
+(41)
+Case-3
+𝐵
+𝐵
+Bandwidth
+𝐼 − 𝑇1
+𝐵
+Bandwidth
+𝐼 − 𝑇2
+Time
+Time
+B1(t)
+B2(t)
+W1
+W2 = 0
+Δi
+Δi
+(a) Iteration by iteration
+Case-3
+d1(t)
+d2(t)
+t=0 t=t t=T
+(b) Single Iteration zoomed in
+Time
+Time
+Figure 30: Case-3 of communication overlap
+Fixed point of Φ
+Note that the shift is positive in this case, which means that
+the bigger job is favored compared to the smaller job. The
+shift becomes zero at ∆i = T1, which is an interleaved state
+where the jobs’ communication phases don’t interfere at all.
+The jobs would not move any further after this point, unless
+noise or external factors cause a relative shift between them.
+Hence, ∆i = T1 is also a fixed point of the function Φ.
+Checking the stability of the fixed point
+We compute the derivative of the evolution function Φ(∆i) =
+Shi f t(∆i) + ∆i at with respect to ∆i at the point ∆i = T1, using
+Equation 40
+d(Φ)
+d∆i
+=
+d(Shi f t)
+d∆i
++ 1
+b
+=−T2 ×
+a
+×
+D1
+D2
+(a + b)
+×
+×
+(b + a ×
+∆i
+)2
+T1
+T1
+×
+   a + b
+∆i
+b + a ×
+T1
+   
+( D1
+D2−1)
+(42)
+= ⇒
+d(Φ)
+d∆i ∆i =T1
+b
+=−
+a + b (43)
+The magnitude of the derivative of evolution function is less
+than 1 at ∆i = T1, implying that it is a stable equilibrium state.
+This proves that the state corresponding to fully interleaved
+state is stable under MLCC.
+a
+
+===== PDF PAGE 23 =====
+I
+Equilibrium points
+𝑆ℎ𝑖𝑓𝑡(Δi)
+ɸ(Δi)
+P2
+P1 P2
+0
+P1
+0
+T1 T1-T2-T2
+0 0
+I I
+Δi
+(a) Shift function Δi
+(b) Evolution function
+Figure 31: System evolution function for two compatible jobs
+B.4.1 Case-4 (T1 < ∆i < I−T2)
+In this case, there is no overlap between the jobs’ communi-
+cation phases, hence shift is zero. This case may or may not
+exist depending on the iteration times of the jobs and their
+communication patterns. F (bytes_
+ratio) does not have any
+effect, as the jobs are already interleaved and there is no net-
+work contention (Figure 27(d)). All the states in this case are
+fixed points of the evolution function Φ. But they are all sad-
+dle points; they are neither stable nor unstable.
+After this case, if ∆i increases further, the prior cases will
+repeat in the same order, i.e. Case-1, then Case-2, and so on
+in a cyclic fashion.
+B.5 Stability of interleaved state
+Figure 31 shows the Shi f t and Φ functions for the two jobs,
+combining all the four cases. Note that the scenarios repeat in
+a circular manner, giving rise to a periodic shift function, with
+period I. Note that the shift becomes zero at ∆i = 0.33 ×T1
+from case-2 (the point P 1), ∆i = T1 from case-3 (the point P 2)
+and all the states belonging to case-4. But, as we mentioned
+earlier, only the fully interleaved state corresponding to the
+point P 2 (where the magnitude of the derivative of the evolu-
+tion function is less than 1) is stable.
+B.6 Fairness
+The slowdown of the communication phase of the jobs
+i
+βi(x) = T ML
+as a function of the current relative start time dif-
+Ti
+ference ∆i is also shown in Figure 32(a). The maximum slow-
+down of the bigger job J1 is bounded by (1 + T2
+T1 ) which is
+less than 2.0 since T2 < T1 by definition. The maximum slow-
+down of the communication phase of the smaller job is sig-
+nificantly higher and given by the expression in Equation 33
+which is nearly equal to 3.0 for the MLCC’s default parame-
+ter values of a = 1.75 and b= 0.25.
+Figure 32(b) provides the average normalized iteration time
+of the jobs as a function of ∆i. Although there is a significant
+unfairness in the regular terms of flow-level fairness, it is still
+irrelevant to the goal of MLCC. This is because we use un-
+fair bandwidth allocation to create the "Shift" that eventually
+slides the jobs into an interleaved state improving the itera-
+tion time of all the jobs. Hence, the conventional definition of
+instantaneous flow rate fairness is not aligned with the goal
+of interleaving. Recently, there have been calls to consider
+new notions of fairness in the network. Zaplatel et al. [101]
+argue that flow completion time rather than bandwidth fair-
+ness should be the metric for fairness. We used this metric
+to redefine the notion of fairness for periodic DNN jobs. Ar-
+slan et al. [11] follow a similar line of reasoning to conclude
+that unfairness can also lead to higher energy efficiency. Re-
+cent work [83] demonstrated that introducing unfairness in
+congestion control has a surprising payoff that accelerates
+the training time of DNN jobs in shared GPU clusters. An
+unfair bandwidth sharing between competing DNN training
+jobs creates a desirable side-effect of "Shift" that nudges the
+communication phase of one job to interleave with the other,
+resulting in better overall network utilization and accelerating
+the training time of both jobs.
+We therefore, define a new notion of Average Iteration
+Time Fairness as the ratio of the normalized average iteration
+time of the faster and slower jobs following the prior work on
+slowdown metric for fairness [101]. Since DNN jobs have dif-
+ferent iteration times, we normalize all average iteration times
+to the best possible iteration time for that DNN job when it is
+run in isolation [10]. Note that the fair sharing congestion con-
+trol algorithms have an Average Iteration Time Fairness index
+of 1. Figure 32(c) plots the flow-level fairness of the jobs as
+the ratio of the slowdowns of the communication phases of
+the faster and the slower job. Figure 32(c) also plots the Itera-
+tion Time Fairness metric for the two jobs using MLCC as
+the ratio of the normalized iteration time of the faster job and
+the slower job as a function of ∆i. The value of this metric is
+within 10% of the baseline fair congestion control for all val-
+ues of start-time difference ∆i. This means that the iteration
+time of the jobs remain within 10% of each other in our set-
+ting of two jobs, despite the large difference in their maximum
+communication phase slowdowns or flow-level unfairness. In
+our flow-level simulations (§H), we observe a maximum dis-
+parity of 20% between the average iteration times of the jobs
+even with multiple communication phases per iteration. (§H).
+C More on Bandwidth Aggressiveness Func-
+tion
+In this section, we discuss the impact of using different band-
+width aggressiveness functions on the convergence and per-
+formance of MLCC. Many aggressiveness functions achieve
+MLCC’s interleaving goals as long as they satisfy the follow-
+ing three requirements: (i) the range is large enough to ab-
+sorb the noise (e.g., slight variations in round-trip time (RTT)
+or iteration times) in the network; (ii) the derivative of the
+function is non-negative; (iii) all flows employ the same band-
+width aggressiveness function.
+We illustrate the performance of different bandwidth ag-
+gressiveness functions using a testbed experiment. We train
+three GPT-2 [81] models using ML-Reno on a dumbbell net-
+work topology. We repeat this training experiment for six dif-
+ferent F (bytes_
+ratio) functions as follows:
+• F1 = 1.75(bytes_
+ratio) + 0.25
+• F2 = 1.75(bytes_
+ratio)2 + 0.25
+23
+
+===== PDF PAGE 24 =====
+Communication slowdown
+J1
+J2
+Average Iteration Time
+J1
+J2
+Fairness index
+Flow-Level Fairness
+Iteration Time
+Fairness
+-T2 0 T1 I
+Δi
+-T2 0 T1 I
+Δi
+-T2 0 T1 I
+Δi
+(a) Communication phase slowdown of jobs
+(b) Average Iteration time of jobs
+(c) Fairness index
+Figure 32: Illustration of flow-level fairness and iteration time fairness for two simple DNN jobs
+Iteration time (ms)
+1600
+1500
+1400
+1300
+1200
+1100
+1000
+ℱ1
+ℱ2
+ℱ3
+ℱ4
+ℱ5
+ℱ6
+Intercept
+Intercept
+better
+Slope Slope
+(a) Average
+(b) 99th percentile
+0 10 20 30 40 50
+Iteration number
+Figure 33: Performance of different F (bytes_
+ratio) functions.
+• F3 = 1/(−3.5(bytes_
+ratio) + 4)
+• F4 =−1.75(bytes_
+ratio)2 + 3.5(bytes_
+ratio) + 0.25
+• F5 =−1.75(bytes_
+ratio) + 2
+• F6 =−1.75(bytes_
+ratio)2 + 2
+All these functions have the same range (0.25 – 2) but
+F1, ..., F4 are increasing and F5 and F6 are decreasing. Fig-
+ure 33 shows the average training iteration time of different it-
+erations as the jobs start their training process. As shown, the
+iteration time of ML-Reno with F1, ..., F4 starts to decrease,
+as the communication demands interleave after ≈20 itera-
+tions. Even though different increasing functions take slightly
+different numbers of iterations to interleave the jobs, they
+eventually achieve the interleaved state. On the other hand,
+the iteration times of ML-Reno with F5 and F6 do not im-
+prove. The functions that don’t comply to the requirements of
+MLCC’s favoritism policy are not able to achieve interleav-
+ing and may even have worse performance than baseline con-
+gestion control. For simplicity and ease of implementation,
+we use the linear function F1 in bytes_
+ratio as the bandwidth
+aggressiveness function of MLCC throughout this paper.
+Choosing Slope and Intercept. Next, to study the impact
+of slope and intercept parameters on F , we sweep a series
+of possible parameters and measure the average and 99th
+Figure 34: Heatmap of ML-Reno’s speedup with different slopes
+and intercepts.
+percentile training iteration time speedups of ML-Reno over
+default Reno, shown in Figure 34. The color in the heatmap
+represents the speedup value. The heatmaps show that ML-
+Reno is able to achieve speedups for a wide range of slope
+and intercept parameters. The star marks the set of parameters
+with the largest speedup in this experiment.
+D Random-Restart Annealing
+We saw previously that there may be multiple stable inter-
+leaved states to which the jobs using MLCC may converge
+depending on the initial state. As the communication patterns
+of the jobs become complex, the possibility of MLCC con-
+verging to a partially interleaved state also increases. We pro-
+pose a simulated annealing heuristic to escape from partially
+interleaved states. We theoretically study our proposed heuris-
+tic, Random-Restarts in this section.
+Simulated annealing is a popular metaheuristic used for
+escaping local minima in optimization problems with large
+search spaces. Although the method of Random-Restarts in
+MLCC is motivated from simulated annealing, there are sub-
+tle differences. First, we have causal system, once we make a
+decision to add random delay, we cannot freely revert back
+to the older equilibrium state if the new state is worse. Sec-
+ond, we jump to any random state, unlike simulated anneal-
+ing which always moves the systems to a neighborhood point.
+24
+
+===== PDF PAGE 25 =====
+To analyze it theoretically, consider an arbitrary set of M pe-
+riodic jobs competing on a bottleneck link using MLCC con-
+gestion control. Let E be the set of stable partially or fully
+interleaved states for this set of jobs. Let us assume that there
+are N such stable equilibrium states, given by {∆k}N
+k=1.
+∆k ∈E ∀1 ≤k ≤N
+If the jobs are compatible, then there is at least one state (let’s
+say ∆k) corresponding to the fully interleaved state.
+Domain of Convergence. Each of these states owns a lo-
+cal region centered around them called the Domain of Con-
+vergence (C ). If the jobs initial start-time difference lies in
+the Domain of Convergence, Ci of the state ∆i, then MLCC
+converges to the state ∆i. This convergence behavior that is
+visible in the vicinity of a stable state is also termed as local
+convergence.
+An important property of simulated annealing is exploring
+the state space in a stochastic manner where each step in
+exploration is taken with some probability measure. In the
+case of periodic jobs, the probability of taking another "step"
+in the exploration by adding a random delay in the job’s start
+time, depends on the quality of the current interleaved state
+and the sizes of the Domain of Convergence of the other
+interleaved states. Hence, the probability of exploring the
+state space is a product of two quantities: a land probability
+and a jump probability.
+Jump Probability. By design of MLCC, the probability
+of leaving the current interleaved state, depends on how much
+larger the current iteration time of the job is, compared to the
+ideal. Let us denote the jump probability of state ∆k by qk
+qk ∝ max 1−
+Ideal Iteration time o f ith Job
+Iteration time o f ith Job
+M
+i=1
+(44)
+The higher the iteration time of a job compared to the ideal,
+the larger is the jump probability. For simplifying the analysis,
+we assume that we add random delay to all jobs once we
+decide to take the jump. Taking a maximum across the jobs
+ensures that the worst-doing job in the current state dictates
+the jump probability.
+Land Probability. As we add a random delay to the jobs,
+the probability of the system to land in the domain Ck of state
+∆k is directly proportional to the size of the region Ck. Let’s
+denote the probability to land in a state ∆k by lk and the size
+of the domain Ck by ck, then
+𝑝𝑘1
+(𝑡) = 𝑙1 𝑞𝑘 𝑒−𝛼𝑡
+𝑝𝑘2
+(𝑡) = 𝑙2 𝑞𝑘 𝑒−𝛼𝑡
+𝑝𝑘3
+(𝑡) = 𝑙3 𝑞𝑘 𝑒−𝛼𝑡
+Δk
+𝑝𝑘𝑁
+(𝑡) = 𝑙𝑁 𝑞𝑘 𝑒−𝛼𝑡
+(𝑡)
+𝑝𝑘𝑘
+Δ1
+Δ2
+Δ3
+𝑝𝑘𝑘
+(𝑡) = (1 − 1 − 𝑙𝑘 𝑞𝑘 𝑒−𝛼𝑡)
+ΔN
+lk ∝ ck = ⇒ lk = R ×ck and
+N
+∑
+k=1
+lk = 1 (45)
+where R is the constant of proportionality.
+Transition Probability. We denote the probability of leav-
+ing the current interleaved state, ∆i to enter a new interleaved
+state, ∆ j by pi j. This "explore" probability depends on the
+jump probability of ∆i, qi and land probability of ∆ j, l j
+pi j= l j ×qi (46)
+Figure 35: State transition diagram for Random-Restart anneal-
+ing
+Taking a maximum across the jobs ensures that the worst-
+doing job in the current state dictates the jump probability.
+Annealing Schedule. To ensure that the jobs remain stable
+in an optimal interleaved state after full exploration of state
+space, we let them explore the state space freely at the start
+and then gradually slow down the exploration pace to achieve
+stability. This calls for a decay of the annealing process
+to terminate it at the optimal interleaved state. Hence, we
+decay the exploration probabilities exponentially with time in
+Equation 46.
+p(t)
+i j= l j ×qi ×e−αt with i ̸= j (47)
+where α is the decay rate of the annealing schedule.
+Markov Chain Model. The probability of going into a new
+state ∆ j from the previous state ∆i given by pi j is indepen-
+dent of the history of states that jobs saw in the past and the
+trajectory of states that the system explored. Hence, the ex-
+ploration of MLCC using annealing is essentially a Markov
+Chain with state space E. We use the explore probabilities
+in Equation 47 to define the transition probabilities of a time-
+dependent Markov Chain with state space consisting of all
+stable interleaved states, E. Figure 35 illustrates the anneal-
+ing process as a Markov Chain and shows its state transition
+diagram for one of the states, ∆k. The transition probability
+matrix P (t) is given by P (t) = [p(t)
+i j ].
+Stationary distribution. We need to find the stationary or
+limiting distribution of the Markov Chain to find the final inter-
+leaved state that MLCC achieves when annealing terminates.
+The stationary distribution provides the likelihood of each in-
+terleaved state ∆k as the final state to which the jobs converge
+eventually. Let us denote the stationary distribution of the
+Markov Chain as Π = [π1 π1... πN ] where πk denotes the like-
+lihood of the state ∆k as the final interleaved state. The station-
+ary distribution of a Markov Chain has the following property:
+Π= Π ×P (t) (48)
+Solving Equation 48 gives the likelihood of interleaved states
+as the final state :
+lk
+1
+Π= Π ×P (t) = ⇒ πk =
+×
+(49)
+∑N
+m=1
+qm
+The stationary distribution exists and is also independent
+lm
+qk
+25
+
+===== PDF PAGE 26 =====
+CDF
+1
+0.8
+0.6
+0.4
+0.2
+0
+derived by analyzing how Reno behaves under loss during
+the congestion avoidance phase. We do a similar analysis
+to show that the throughput of ML-Reno flows is inversely
+proportional to the loss probability, p:
+1
+0.95 1 1.05 1.1 1.15 1.2
+Average performance speedup
+Figure 36: Distribution of performance improvement of MLCC
+with Random-Restarts enabled relative to when disabled.
+of time. The likelihood of a state ∆k depends inversely on
+its jump probability qk and directly on its land probability
+lk. Also, the jump probability qk is close to zero for a fully
+interleaved state. Taking the limit qk →0 in Equation 49,
+MLCC’s improvement with Random-Restarts
+1
+1
+lim
+πk = lim
+qk →0
+qk →0
+lk ×
+∑N
+m=1
+= lk ×
+lm ×qk
+qm
+= 1 (50)
+lk
+Thus, the likelihood of a fully interleaved state to be the final
+converged state is 1. This also means that the likelihood of all
+other partially interleaved states is nill if a fully interleaved
+state exists in the state space E
+Conclusion. Equation 50 proves that a fully interleaved
+state is reachable with probability 1, using Random-Restart
+annealing, even if many stable partially interleaved states
+exist in the state space. However, a real environment has
+noise and all the jobs don’t transition from the current state
+together, further adding to the randomness of the outcome.
+Thus, although this method improves MLCC’s performance
+speedup further for DNN jobs, it does not guarantee optimal
+interleaved schedule in all scenarios.
+Simulation Evaluation. We evaluate the impact of
+Random-Restarts on MLCC using hundreds of flow-level
+simulations, each consisting of two randomly generated jobs
+competing on a single bottleneck link. We run each scenario
+with MLCC both with and without annealing. Figure 36 plots
+the CDF of MLCC ’s performance improvement across these
+runs, showing that Random-Restarts Annealing improves per-
+formance by up to 1.2× through better interleaving.
+E Throughput-Loss Formulation for ML-
+Reno
+In this section, we provide a relation between throughput and
+packet loss-probability for ML-Reno congestion control algo-
+rithm. In 1997, Mathis et al. [67] established the relationship
+between throughput and packet loss for the conventional TCP
+Reno algorithm:
+Conventional Reno T hroughput ≈
+1
+RT T ×√p
+(51)
+where p is the packet loss probability. This formulation has
+been widely used to estimate TCP’s throughput in various
+deployment scenarios [20, 33, 43, 73]. The above equation is
+MLCC Reno T hroughput ≈
+RT T ×p
+(52)
+Derivation. Consider M infinitely long-lived flows with
+identical round-trip times RTT, competing on a single bot-
+tleneck link of capacity C. We further assume that the M
+flows are synchronized; i.e. their window dynamics are in-
+phase and all the flows see packet drops at the same time. Let
+us assume that the packet drop for each flow happens when
+cwnd= 2ω. Given that the multiplicative decrease factor is
+0.5, the window was able to grow from ω to 2ω before ex-
+periencing packet loss at steady state. If the network’s loss
+probability is p, then every flow sends exactly 1
+p packets be-
+tween successive packet drop events.
+During the additive increase phase, the cwnd increases
+by some value (i.e. additive increase for AIMD algorithms)
+every RTT. Let us assume that at the time instant of t = 0, the
+flow’s cwnd is W0 = ω and at an arbitrary t = m ×RT T , the
+cwnd grows to Wm. Also, assume that at time t = N ×RT T ,
+the flows experience a packet drop, hence WN = 2ω. Note
+that cwnd is expressed in packets.
+If the flows use MLCC congestion control, then their addi-
+tive increase factor at any time is given by :
+F (bytes_
+ratio) = Slope ×bytes_
+ratio + Intercept
+bytes_
+sent
+packets_
+sent ×MTU
+where, bytes_
+ratio=
+total
+_bytes=
+total
+_bytes
+where each packet is of size MTU bytes. Note that
+total
+_bytes is a constant for each flow,
+Slope ×MTU
+Let, a =
+total
+_bytes and b= Intercept
+Our aggressiveness functions for additive increase becomes:
+F= a ×packets_
+sent + b
+Hence, the congestion window recurrence for each flow be-
+tween successive packet drops looks like the following:
+W0 = ω
+W1 = W0 + a ×W0 + b
+W2 = W1 + a ×(W0 +W1) + b
+.....
+Wn = Wn−1 + a ×
+n−1
+∑
+m=0
+Wm + b (53)
+= ⇒Wn = a1Wn−1 + a2Wn−2 +.. + an−2W2 + an−1W1 + aW0
+where an−1 = an−2 =
+..
+= a3 = a2 = a and a1 = (1 + a)
+The above recurrence series can be solved using the method
+of generating functions of a variable x with domain (0, 1).
+26
+
+===== PDF PAGE 27 =====
+Consider two such generating functions :
+Z(x) = ∑
+Wmxm and A(x) = ∑
+amxm
+m≥0
+m>0
+Equation 53 can be written in terms of generating functions:
+Z(x) = Z(x) ×A(x) + ω + b ∑
+xm
+m>0
+= ⇒Z(x) = ω + b ∑m>0 xm
+1−A(x) (54)
+The congestion window at t = n ×RT T , given by Wn is actu-
+ally the coefficient of xn in Z(x) in Equation 54. We expand all
+the functions as power series to compute the coefficient of xn
+.
+The power series of the function A(x) is nothing but an infi-
+nite geometric series :
+A(x) = ∑
+amxm
+= x + a(x + x2 + x3 +...) = x +
+ax
+1−x
+m>0
+Similarly, the other geometric series of x in the numerator on
+the right-hand side of Equation 54, can be converted to its
+functional form, giving the functional form of Z(x)
+ω +
+= ⇒Z(x) =
+1−(x +
+bx
+1−x
+ax
+1−x)
+=
+ω−x(ω−b)
+1−x(a + 2−x) (55)
+Note that x(a + 2−x) ∈(0, 1) for x ∈(0, 1) and a << 1.
+Hence,
+Z(x) = (ω−x(ω−b))
+∞
+∑
+m=0
+xm(a + 2−x)m (56)
+The congestion window at t = n ×RT T , given by Wn is ac-
+tually the coefficient of xn in Z(x) in Equation 56. We have
+derived the expression for congestion window for n being an
+even number and odd number in Equation 57 and 58 respec-
+tively.
+= ⇒ (PK (a)−2)
+b
+= 1−
+≈1
+QK (a)
+ω
+= ⇒(PK (a)−QK (a)) ≈2
+The value of K and N= 2K can be obtained by finding the
+roots of the above equation. Note that N is only a function of
+a and is nearly independent of ω.
+We then compute the total number of packets sent between
+time t = 0 when cwnd is W0 = ω and t = N ×RT T= 2K ×
+RT T when the cwnd becomes W2K = 2ω. By using Equa-
+tion 53,
+N−1
+WN−WN−1−b
+∑
+Wm =
+a
+m=0
+N
+= ⇒
+∑
+Wm =
+WN (1 + a)−WN−1−b
+a
+(59)
+m=0
+Note that by definition of N, WN = 2ω and, WN−1 = W2K−1
+can be substituted using Equation 58
+N
+2ω(1 + a)−ωQK (a)−(ω−b)PK−1(a)−b
+= ⇒
+∑
+Wm =
+a
+m=0
+From the above relation, since K is only a function of a, it
+is clear that QK (a) and PK−1(a) is only a function of a, hence
+N
+∑
+m=0
+Wm ∝ ω (60)
+Since the network drop probability is p, exactly 1/p packets
+are sent between two successive drops:
+N
+1
+∑
+Wm =
+m=0
+p
+1
+= ⇒ω ∝
+Throughput for congestion window based protocol is given
+by
+cwnd
+RT T , hence
+Using Equation 60,
+p
+W2k = ωPk(a)−(ω−b)Qk(a) (57)
+W2k+1 = ωQk+1(a)−(ω−b)Pk(a) (58)
+where P and Q are polynomials of a
+k
+Pk(a) =
+∑
+i=0
+k + i
+2i (−1)k−i(a + 2)2i
+k−1
+Qk(a) =
+∑
+i=0
+k + i
+2i + 1 (−1)k−i−1(a + 2)2i+1
+There exists a natural number N such that at t = N ×RT T ,
+the flow experiences a drop as the congestion window WN
+exceeds 2ω. Without losing generality, let us assume that
+N= 2K is an even number so that the congestion window can
+be obtained from Equation 57. We assume that b << ω, i.e.
+the additive increase is much smaller than the actual cwnd.
+= ⇒WN = ω(PK (a)−QK (a)) + bQK (a) ≈2ω
+= ⇒(2−PK (a) + QK (a)) = b
+ω QK (a)
+ω
+1
+T hroughput ≈
+RT T
+∝
+(61)
+RT T ×p
+Intuitively, this implies that given the same packet drop proba-
+bility, an ML-Reno flow claims more bandwidth share than a
+standard TCP-Reno flow. . However, ML-Reno flows would
+not starve the other legacy flows because MLCC allocates
+non-zero bandwidth to the less favored flow as well instead of
+fully blocking it. To avoid delaying latency-sensitive legacy
+flows, service providers can assign them a higher additive in-
+crease value than the range of bandwidth aggressiveness func-
+tion. This way, important short flows won’t be affected by the
+DNN traffic.
+F MLCC using multiplicative decrease
+This section explains how we augment Reno, CUBIC,
+DCTCP, and DCQCN algorithms with MLCC using their
+27
+
+===== PDF PAGE 28 =====
+window (or rate) decrease phase.
+Reno multiplicative decrease. With every dropped packet,
+TCP Reno updates its cwnd as follows:
+cwnd ←0.5 ×cwnd (62)
+In MLCC, we update the above equation to:
+cwnd ←F (bytes_
+ratio) ×0.5 ×cwnd (63)
+DCTCP multiplicative decrease. DCTCP uses ECN-
+marked packets to detect congestion. Upon the receipt of a
+Congestion Notification Packet (CNP) from the receiver, the
+sender reduces its current congestion window using a multi-
+plicative decrease factor:
+cwnd ←(1−
+α
+2) ×cwnd (64)
+where α is the fraction of the ack packets marked with ECN.
+In MLCC, the multiplicative decrease factor is updated to:
+α
+cwnd ←F (bytes_
+ratio) ×(1−
+2) ×cwnd (65)
+CUBIC multiplicative decrease. The multiplicative de-
+crease step of CUBIC is similar to Reno, but instead of hav-
+ing a fixed value of 0.5, CUBIC specifies the multiplicative
+decrease factor as a parameter called β. The cwnd update dur-
+ing multiplicative decrease for CUBIC is given by:
+cwnd ←β ×cwnd (66)
+In MLCC, we update the multiplicative decrease factor of
+CUBIC similar to Reno:
+cwnd ←F (bytes_
+ratio) ×β ×cwnd (67)
+DCQCN rate decrease. DCQCN uses ECN-marked pack-
+ets to detect congestion. Upon the receipt of a CNP from the
+receiver, the sender reduces its current rate using a multiplica-
+tive decrease factor:
+curr
+_
+rate ←(1−
+α
+2) ×curr
+_
+rate (68)
+where α is the rate reduction factor of the DCQCN algorithm.
+We update the above equation to:
+curr
+_
+rate ←F (bytes_
+ratio) ×(1−
+α
+2) ×curr
+_
+rate (69)
+Table 3 summarizes the implementation of MLCC using
+additive increase and multiplicative decrease for all conges-
+tion control algorithms.
+Adjust the increase or decrease? Thus far, our evaluations
+augment the congestion window (or rate) increase phases of
+Reno, CUBIC, and DCQCN. As mentioned in Section 3, the
+MLCC’s modification can be augmented to both the increase
+and decrease phases. Figure 37 compares the training iteration
+time for two jobs running GPT-2 model and sharing a single
+bottleneck link in a dumbbell topology for ML-Reno-WI,
+ML-Reno-MD, ML-CUBIC-WI and ML-CUBIC-MD. We
+find that the WI or MD variants of ML-Reno and ML-CUBIC
+perform similarly for both average and tail iteration times.
+ML -Reno Add. Inc. Mul. Dec. cwnd ←− cwnd + F (bytes_
+ratio) num
+acks
+_
+cwnd
+cwnd ←− F (bytes_
+ratio) (0.5cwnd)
+ML -DCTCP Add. Inc. Mul. Dec. cwnd ←− cwnd + F (bytes_
+ratio) num
+acks
+_
+cwnd
+cwnd ←− F (bytes_
+ratio) 1−
+α
+2 cwnd
+ML -Cubic Add. Inc. Mul. Dec. cwnd ←− Cubic(F (bytes_
+ratio).time) 1
+1
+cwnd ←− F (bytes_
+ratio) (0.8cwnd)
+ML -DCQCN Add. Inc. Mul. Dec. rate ←− rate + F (bytes_
+ratio) ∆R
+1
+1
+rate ←− F (bytes_
+ratio) 1−
+α
+2. rate
+Table 3: Augmenting different congestion control algorithms
+with MLCC.
+Iteration time (ms)
+1000
+800
+600
+400
+200
+0
+Window Increase Multiplicative decrease
+Reno CUBIC Reno CUBIC
+Average 99th percentile
+Figure 37: Window increase vs. multiplicative decrease.
+G Testbed Benchmark for Reno and CUBIC
+ML-Reno. Figure 38(a) compares the number of packet drops
+per second for the first 200 seconds of the training and shows
+that, on average, ML-Reno reduces the packet loss rate by
+3.08×. Consequently, ML-Reno accelerates the average and
+99th percentile training iteration time of both jobs by 1.1×
+and 1.18×, respectively, as shown in Figure 38(b). Note that
+the two ML-Reno curves corresponding to the two jobs, over-
+lapped on top of each other. Moreover, the figure shows that
+ML-Reno’s iteration times are within 5% of the ideal scheme.
+ML-CUBIC. Figure 38(c) shows that ML-CUBIC reduces
+the packet loss rate by a factor of 2.25×compared to default
+CUBIC. Figure 38(d) shows that ML-CUBIC accelerates the
+average and 99th percentile training iteration time of both jobs
+by 1.2×and 1.23×, respectively. Similar to ML-Reno, the
+two ML-CUBIC curves overlap. We also observe a 7.72%
+difference in tail iteration time of the jobs from the ideal
+scheme.
+H Flow-Level Simulations
+In this section, we evaluate MLCC’s performance, conver-
+gence, and fairness properties using a Python-based flow-level
+simulator.
+Topology. We use a dumbbell topology similar to Fig-
+ure 11(a) with a single bottleneck link and multiple servers
+28
+
+===== PDF PAGE 29 =====
+Job1 ML-Reno Job2 ML-Reno Job1 Reno Job2 Reno
+Ideal Ideal
+Job1 ML-CUBIC Job2 ML-CUBIC Job1 CUBIC Job2 CUBIC
+# packet drops (Pkt/s)
+200
+150
+100
+50
+0
+3.08x reduction
+1
+0.8
+0.6
+CDF
+0.4
+0.2
+0
+1.21x Speedup
+# packet drops (Pkt/s)
+80
+60
+40
+20
+0
+2.25x reduction
+CDF
+1
+0.8
+0.6
+0.4
+0.2
+0
+1.23x Speedup
+0 40 80 120 160 200
+Time (sec)
+(a) ML-Reno packet loss 650 710 770 830 890
+Iteration time (ms)
+(b) ML-Reno iteration times 0 40 80 120 160 200
+Time (sec)
+620 680 740 800 860 920
+Iteration time (ms)
+(c) ML-CUBIC packet loss (d) ML-CUBIC iteration times
+Figure 38: Performance of ML-Reno and ML-CUBIC.
+Iterations to converge
+90
+80
+70
+60
+50
+40
+30
+20
+10
+0
+Performance speedup
+1.5
+1.4
+1.3
+1.2
+1.1
+1
+0.9
+Average
+99th %tile
+5th %tile
+CDF
+1
+0.8
+0.6
+0.4
+0.2
+0
+MLCC
+TCP
+CDF
+1
+0.8
+0.6
+0.4
+0.2
+0
+MLCC
+TCP
+0.98 0.99 1 1.01
+0.7 0.8 0.9 1
+2 jobs 3 jobs 4 jobs 5 jobs
+(a) MLCC– Iterations to converge
+0.3 0.4 0.5 0.6 0.7 0.8 0.9 1
+Compatibility score
+(a) Jain fairness index
+(b) Average iteration time fairness
+(b) Speedup of MLCC over baseline CC
+Figure 39: Convergence and performance speedup.
+on either side of the link. Each distributed DNN job commu-
+nicates gradients using the bottleneck link.
+Simulator. Our flow-level simulator allocates bandwidth
+to the competing jobs based on their congestion control vari-
+ant. The additive increase coefficients of flows using MLCC
+is given by the value of F (bytes_
+ratio) which increases with
+time. Hence, the bandwidth allocation changes with time and
+is given by the instantaneous ratio of the bandwidth aggres-
+siveness functions of the flows. In practice, the congestion
+control algorithm takes a few RTTs before the bandwidths
+settle to the ratio of additive increase coefficients. We ignore
+this bandwidth-settling time because the RTTs in a GPU
+cluster are much smaller than a training iteration time.
+Periodic jobs. In our simulations, we randomly sample (i)
+the number of competing jobs, (ii) the size and number of
+their communication phases per iteration, and (iii) the initial
+start time difference of the jobs. We experiment with different
+compatibility scores between the jobs. The simulator captures
+practical aspects of a DNN cluster by adding a Gaussian
+random noise to the compute phases of jobs.
+H.1 Convergence and Performance
+Convergence.
+We execute thousands of simulation runs, each spanning
+hundreds of training iterations of randomly sampled jobs.
+Each simulation run concludes when the jobs reach a stable
+interleaved state. Figure 39(a) shows the distribution of the
+number of iterations of each job before convergence to an
+interleaved state. Although, the number of iterations to con-
+verge increases with the number of jobs, it is still a relatively
+small number (a few tens of iterations) compared to the train-
+ing time with thousands of iterations.
+Performance Speedup.
+Figure 39(b) shows the average, 99th percentile and 5th
+Figure 40: Comparison of TCP and MLCC fairness.
+percentile average iteration time speedup of MLCC over
+TCP as a function of compatibility score between the jobs.
+We simulate a new set of jobs in every simulation run for
+a thousand training iterations. Hence, the speedup varies
+across simulation runs depending on the characteristics of the
+sampled jobs. Note that MLCC is improving performance
+even for partially compatible jobs. For jobs with compatibility
+scores as low as 0.3, MLCC’s 5th percentile speedup over
+TCP is greater than 1. For jobs with compatibility scores
+greater than 0.8, the 99th percentile speedup increases to over
+1.25×over TCP. For fully compatible jobs, MLCC maintains
+the iteration times of the jobs within 5% of their ideal values,
+achieving a 99th percentile job speedup of 1.45×.
+H.2 Fairness
+Fairness across ML flows.
+In this experiment, we study MLCC’s fairness in terms
+of training progress made by different DNN jobs and assess
+whether MLCC causes starvation in any job. Following prior
+work [101], we use the average iteration time of the competing
+DNN jobs to compute the fairness of the congestion control
+algorithms. Since DNN jobs have different iteration times,
+we normalize all average iteration times by the ideal iteration
+time of the job when run in isolation [10]. For a pair of
+DNN jobs competing on a bottleneck link, we define Average
+Iteration Time Fairness as the ratio of the normalized average
+iteration time of the faster and the slower job throughout the
+experiment.
+Figure 40(a) plots the cumulative distribution of Jain’s fair-
+ness index using the jobs’ normalized average iteration times
+in its expression. Each data point in the distribution corre-
+sponds to a single run of the simulator with a randomly sam-
+pled set of jobs. For TCP, Jain’s fairness metric has a value
+of 1 because all jobs achieve the same normalized average
+iteration times in all simulation runs. For MLCC, the value
+of this metric is within 2% of TCP, showing that the normal-
+29
+
+===== PDF PAGE 30 =====
+Elephant flow Mice flows
+50
+25
+0
+z
+0 100 200 300 400
+Bandwidth (Gbps)
+50
+25
+0
+Model Size
+0 100 200 300 400
+50
+25
+0
+0 100 200 300 400
+Time (sec) Model Size
+(a) MLCC’s bandwidth allocation
+(b) Heatmap
+Figure 41: Heatmap of ratio of normalized average iteration
+times of elephant vs mice jobs.
+ized average iteration times of the jobs are close despite the
+unequal instantaneous bandwidth allocation.
+Figure 40(b) plots the distribution of the Average Iteration
+Time Fairness index for MLCC and TCP. MLCC’s fairness
+under this metric is nearly 20% far from TCP at the 99th per-
+centile. This shows that in the worst case scenario, the normal-
+ized average iteration time of the slower job is at most 20%
+longer than the faster job across all our simulation runs with
+MLCC. We do not observe starvation of any job with MLCC
+irrespective of jobs’ sizes and communication patterns.
+To study the impact of DNN model sizes on the fairness
+of MLCC, we plot the ratio of normalized average iteration
+time of the elephant job and the mice job, as we sweep the
+model sizes. We take an average from multiple simulations
+for each job combination with randomly sampled ideal iter-
+ation times. Figure 41(a) plots MLCC’s bandwidth alloca-
+tion between an elephant and a mice job, and figure 41(b)
+plots the heatmap of the ratio of normalized average iteration
+times between elephant vs mice jobs. Figure 41(b) shows that
+MLCC marginally favors the elephant job over the mice jobs
+in terms of job-completion times by at most 4%. This experi-
+ment also shows that MLCC does not starve either elephant
+jobs or mice jobs.
+30
